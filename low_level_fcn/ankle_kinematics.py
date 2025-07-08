@@ -87,7 +87,7 @@ def left_leg_motor_angles(roll: float, pitch: float):
 
 def right_leg_motor_angles(roll: float, pitch: float):
     """(roll, pitch) -> (theta_m5, theta_m6) for the RIGHT ankle."""
-    return  _ankle_mapping(roll, pitch, RIGHT)[::-1]
+    return _ankle_mapping(roll, pitch, RIGHT)[::-1]
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -117,11 +117,11 @@ def _forward_one_leg(thetam, guess, G):
         # analytic Jacobian --------------------------------------------------
         # partials of reference-point coordinates
         dPx_dr = np.zeros(2)                   # Px independent of roll
-        dPy_dr =  c5*c6*Px0 - s5*Py0 - c5*c6*Pz0
-        dPz_dr = -s5*s6*Px0 + c5*Py0 - s5*c6*Pz0
+        dPy_dr =  c5*s6*Px0 - s5*Py0 - c5*c6*Pz0
+        dPz_dr = s5*s6*Px0 + c5*Py0 - s5*c6*Pz0
 
         dPx_dp = -s6*Px0 + c6*Pz0
-        dPy_dp =  s5*c6*Px0 - s5*s6*Pz0
+        dPy_dp =  s5*c6*Px0 + s5*s6*Pz0
         dPz_dp = -c5*c6*Px0 - c5*s6*Pz0
 
         dz_dr, dz_dp = dPz_dr, dPz_dp
@@ -165,7 +165,8 @@ def left_leg_foot_angles(theta_m5, theta_m6,
 def right_leg_foot_angles(theta_m5, theta_m6,
                           roll0: float = 0.0, pitch0: float = 0.0):
     """(theta_m5, theta_m6) -> (roll, pitch)  for the RIGHT ankle."""
-    return _forward_one_leg(np.array([theta_m5, theta_m6]),
+    # swap order back before solver
+    return _forward_one_leg(np.array([theta_m6, theta_m5]),
                             (roll0, pitch0), RIGHT)
 
 
@@ -195,12 +196,12 @@ def _ankle_jacobian_analytic(roll: float, pitch: float, G):
 
     # first partials
     dPy_dr =  c5*s6*Px0 - s5*Py0 - c5*c6*Pz0
-    dPz_dr = -s5*s6*Px0 + c5*Py0 - s5*c6*Pz0
+    dPz_dr = s5*s6*Px0 + c5*Py0 - s5*c6*Pz0
 
     dPy_dp =  s5*c6*Px0 + s5*s6*Pz0          
     dPz_dp = -c5*c6*Px0 - c5*s6*Pz0
-
-
+    dPx_dp = -s6*Px0 + c6*Pz0
+    dx_dp  = -dPx_dp
 
     z  = Pz - h
     x  = d  - Px
@@ -226,10 +227,8 @@ def _ankle_jacobian_analytic(roll: float, pitch: float, G):
     dw_dr = (2*x*0              # dx/dr = 0
              + 2*y*dPy_dr
              + 2*z*dPz_dr) * sdir
-    dw_dp = (2*x*0
-             + 2*y*dPy_dp
-             + 2*z*dPz_dp) * sdir
-
+    
+    dw_dp = (2*x*dx_dp + 2*y*dPy_dp + 2*z*dPz_dp) * sdir
     dR_dr = (u*du_dr + v*dv_dr) / R
     dR_dp = (u*du_dp + v*dv_dp) / R
 
@@ -249,7 +248,7 @@ def _ankle_jacobian_analytic(roll: float, pitch: float, G):
     J_inv[1, 1] = dgamma_dp[1] + dacos_dp[1]   # \partial theta_m6/\partial pitch
     return J_inv
 
-
+# ───────────────────── finite-difference Jacobian (debug) ───────────
 def _ankle_jacobian_fd(roll, pitch, G, h: float = 1.0e-8):
     """Finite-difference """
     f0 = _ankle_mapping(roll, pitch, G)
@@ -258,60 +257,39 @@ def _ankle_jacobian_fd(roll, pitch, G, h: float = 1.0e-8):
     return np.column_stack(((f_r - f0) / h,
                             (f_p - f0) / h))
 
-
 # pick analytic path (comment next line to force FD)
-ankle_jacobian = _ankle_jacobian_analytic
-# ankle_jacobian = _ankle_jacobian_fd     #
+# ankle_jacobian = _ankle_jacobian_analytic
+ankle_jacobian = _ankle_jacobian_fd     #
 
-# ─────────────────  velocity wrappers ────────────────────
-def motor_velocities_from_foot(roll, pitch, roll_d, pitch_d, *, left=True):
-    """
-    Given foot angular velocity (roll̇, pitcḣ) return (theta_̇m5, theta_̇m6).
-    """
-    G  = LEFT if left else RIGHT
-    J  = ankle_jacobian(roll, pitch, G)       # 2×2
-    return J @ np.array([roll_d, pitch_d])
-
-
-def foot_velocities_from_motor(roll, pitch, theta_m_d, *, left=True):
-    """
-    Given motor velocities (theta_̇m5, theta_̇m6) return (roll̇, pitcḣ).
-    """
-    G  = LEFT if left else RIGHT
-    J  = ankle_jacobian(roll, pitch, G)       # 2×2
-    return np.linalg.solve(J, theta_m_d)
-# TORQUE helper
-def ankle_torque_from_motor(roll, pitch, tau_m5, tau_m6, *, left=True):
-    """
-    Motor -> ankle torque:
-        tau_q = J_inv.T @ tau_m
-    """
+# Jacobian in **motor order** (swap rows for right leg)
+def _J_motor(r, p, *, left=True):
     G = LEFT if left else RIGHT
-    J_inv = ankle_jacobian(roll, pitch, G)
-    return J_inv.T @ np.array([tau_m5, tau_m6])
+    J = ankle_jacobian(r, p, G)
+    return J if left else J[::-1]
 
+# ───────────────────── velocity & torque maps ───────────────────────
+def motor_velocities_from_foot(r, p, r_d, p_d, *, left=True):
+    return _J_motor(r, p, left=left) @ np.array([r_d, p_d])
 
-def motor_torque_from_ankle(roll, pitch, tau_roll, tau_pitch, *, left=True):
-    """
-    Ankle -> motor torque:
-        tau_m = (J_inv^{-1}).T @ tau_q
-    """
-    G = LEFT if left else RIGHT
-    J_inv = ankle_jacobian(roll, pitch, G)
+def foot_velocities_from_motor(r, p, theta_m_d, *, left=True):
+    return np.linalg.solve(_J_motor(r, p, left=left), theta_m_d)
 
-    # invert 2×2 J_inv analytically
-    det = J_inv[0, 0]*J_inv[1, 1] - J_inv[0, 1]*J_inv[1, 0]
-    J = np.array([[ J_inv[1, 1], -J_inv[0, 1]],
-                  [-J_inv[1, 0],  J_inv[0, 0]]]) / det
+def ankle_torque_from_motor(r, p, tau_m5, tau_m6, *, left=True):
+    return _J_motor(r, p, left=left).T @ np.array([tau_m5, tau_m6])
 
-    return J.T @ np.array([tau_roll, tau_pitch])
+def motor_torque_from_ankle(r, p, tau_p, tau_r, *, left=True):
+    J = _J_motor(r, p, left=left)
+    det = J[0,0]*J[1,1] - J[0,1]*J[1,0]
+    Jinv = np.array([[ J[1,1], -J[0,1]],
+                     [-J[1,0],  J[0,0]]]) / det
+    return Jinv.T @ np.array([tau_p, tau_r])
 
 # ──────────────────────────────────────────────────────────────────────
 # 5.  Main
 # ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     roll_cmd  = np.deg2rad(0.0)
-    pitch_cmd = np.deg2rad(15)
+    pitch_cmd = np.deg2rad(19)
 
     theta_m_left  = left_leg_motor_angles (roll_cmd, pitch_cmd)
     theta_m_right = right_leg_motor_angles(roll_cmd, pitch_cmd)
@@ -320,5 +298,31 @@ if __name__ == "__main__":
     est_roll_R,  est_pitch_R  = right_leg_foot_angles(*theta_m_right)
 
     print("Cmd   : ", np.rad2deg([roll_cmd, pitch_cmd]))
-    print("theta_motor_left", np.rad2deg(theta_m_left))
-    print("theta_m_right", np.rad2deg(theta_m_right))
+    print("theta_motor_left", theta_m_left)
+    print("theta_m_right", theta_m_right)
+    print("Left  : ", np.rad2deg([est_roll_L, est_pitch_L]))
+    print("Right : ", np.rad2deg([est_roll_R, est_pitch_R]))
+    
+    '''TEST VELOCITY'''
+    roll_dot_cmd, pitch_dot_cmd = np.deg2rad([1.0, -2.0])        # 1 deg/s roll, −2 deg/s pitch
+    theta_dot = motor_velocities_from_foot(roll_cmd, pitch_cmd, roll_dot_cmd, pitch_dot_cmd, left=True)
+    roll_dot_est, pitch_dot_est = foot_velocities_from_motor(est_roll_L, est_pitch_L, theta_dot, left=True)
+    print("input foot vel  :", np.rad2deg([roll_dot_cmd, pitch_dot_cmd]), "deg/s")
+    print("back-computed   :", np.rad2deg([roll_dot_est, pitch_dot_est]), "deg/s")
+
+    J_fd   = _ankle_jacobian_fd(roll_cmd, pitch_cmd, LEFT)   
+    J_anal   = _ankle_jacobian_analytic(roll_cmd, pitch_cmd, LEFT)
+
+    print("max|J_fd - J_anal| =", np.max(np.abs(J_fd - J_anal)))
+
+    tau_m  = np.array([3.0, -4.0])              # Nm at the motors
+    tau_q  = ankle_torque_from_motor(roll_cmd, pitch_cmd, *tau_m, left=True)
+    tau_m2 = motor_torque_from_ankle(roll_cmd, pitch_cmd, *tau_q, left=True)
+    
+    print("ankle torques :", tau_q)
+    print("back to motor :", tau_m2)            # 
+
+    J_fd  = _ankle_jacobian_fd(roll_cmd, pitch_cmd, LEFT)    # your FD helper
+    tau_q_fd = J_fd.T @ tau_m
+
+    print("tau_q_fd = ", tau_q_fd)    # 
