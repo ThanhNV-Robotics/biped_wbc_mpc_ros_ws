@@ -3,7 +3,6 @@ from low_level_fcn import ankle_kinematics
 import mujoco
 import numpy as np
 from mujoco.viewer import launch_passive
-import json
 
 class PD_Control: # MIMO, joint position PD control
     def __init__(self, Kp, Kd):

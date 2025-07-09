@@ -3,7 +3,7 @@ from low_level_fcn import ankle_kinematics
 import mujoco
 import numpy as np
 from mujoco.viewer import launch_passive
-import json
+
 
 class PD_Impedence_Control: # MIMO, joint position PD control
     def __init__(self, Kp, Kd):
@@ -24,7 +24,7 @@ def Get_Motor_Pos (mj_model, mj_data):
     theta_m5 = mj_data.qpos[motor_5_joint_id]
     theta_m6 = mj_data.qpos[motor_6_joint_id]
 
-    return np.array([theta_m5,theta_m6])
+    return np.array([theta_m5,theta_m6]).reshape(-1,1)
 
 def Get_Motor_Vel (mj_model, mj_data):
     motor_5_joint_id = mj_model.joint("Motor5_Joint").id
@@ -32,7 +32,7 @@ def Get_Motor_Vel (mj_model, mj_data):
     theta_m5_vel = mj_data.qvel[motor_5_joint_id]
     theta_m6_vel = mj_data.qvel[motor_6_joint_id]
 
-    return np.array([theta_m5_vel,theta_m6_vel])
+    return np.array([theta_m5_vel,theta_m6_vel]).reshape(-1,1)
 
 def step_ref (t, T, ref_angl): # to generate referenc angle
     if  t <= T:
@@ -104,8 +104,7 @@ if __name__ == "__main__":
         motor_pos_fb = Get_Motor_Pos(mj_model, mj_data) # Get feedback position
         motor_vel_fb = Get_Motor_Vel(mj_model, mj_data)
 
-        if (simu_time >= starting_time): # start ZMP_preview control 
-            # Get feedback CoM and ZMP Position
+        if (simu_time >= starting_time): #
             time_count += 1
 
             if time_count >= (int)(dt_control/time_step):
@@ -113,7 +112,7 @@ if __name__ == "__main__":
                 #   Start main control task
                 # ──────────────────────────────────────────────────────────────────────
                 # Generate motor angle trajectory
-                ankle_kinematics.right_leg_motor_angles(roll_cmd, pitch_cmd)
+                right_motor_pos_cmd = ankle_kinematics.right_leg_motor_angles(roll_cmd, pitch_cmd)
                 motor_ref_anlges, motor_ref_vel = step_ref(t_control, T, right_motor_pos_cmd)
 
                 motor_torque = PDController.PD_Control_Calculate(motor_ref_anlges, motor_ref_vel, motor_pos_fb, motor_vel_fb)
