@@ -87,7 +87,8 @@ def left_leg_motor_angles(roll: float, pitch: float):
 
 def right_leg_motor_angles(roll: float, pitch: float):
     """(roll, pitch) -> (theta_m5, theta_m6) for the RIGHT ankle."""
-    return _ankle_mapping(roll, pitch, RIGHT)[::-1]
+    angle = _ankle_mapping(roll, pitch, RIGHT)[::-1]
+    return angle.reshape(-1,1)
 
 
 # ──────────────────────────────────────────────────────────────────────
