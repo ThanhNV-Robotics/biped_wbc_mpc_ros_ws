@@ -98,7 +98,7 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────────────
 
     T = 0.8 # sec, init time at the beginning
-    f_control = 500 # Hz
+    f_control = 1000 # Hz
     dt_control = 1/f_control #
     t_control = 0
     time_count = 0
@@ -106,10 +106,12 @@ if __name__ == "__main__":
 
     theta_m5_mujo_vel = 0
     theta_m5_jaco_vel = 0
+    theta_m6_jaco_vel = 0
 # ──────────────────────────────────────────────────────────────────────
 #   start simulation
 # ──────────────────────────────────────────────────────────────────────
     viewer = launch_passive(mj_model, mj_data)
+    mj_model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_GRAVITY  # Disable gravity for passive viewer
     #while viewer.is_running():
     while mj_data.time <= 6:
         mujoco.mj_step(mj_model, mj_data) 
@@ -117,8 +119,8 @@ if __name__ == "__main__":
         # ──────────────────────────────────────────────────────────────────────
         #   Get feedback joints' angles and velocity
         # ──────────────────────────────────────────────────────────────────────
-        motor_pos_fb = Get_Motor_Pos(mj_model, mj_data) # Get feedback motor position
-        motor_vel_fb = Get_Motor_Vel(mj_model, mj_data)
+        motor_pos = Get_Motor_Pos(mj_model, mj_data) # Get feedback motor position
+        motor_vel = Get_Motor_Vel(mj_model, mj_data)
 
         ankle_pos = Get_Ankle_Pos(mj_model, mj_data)
         ankle_vel = Get_Ankle_Vel(mj_model, mj_data)
@@ -142,9 +144,9 @@ if __name__ == "__main__":
                 theta_m5_mujo_vel = mj_data.joint("Motor5_Joint").qvel[0]
                 theta_m6_mujo_vel = mj_data.joint("Motor6_Joint").qvel[0]
 
-                theta_jaco_dot = ankle_kinematics.motor_velocities_from_foot(r=theta_5, p=theta_6, r_d=theta_5_vel, p_d=theta_6_vel, left=False)
-                theta_m5_jaco_vel = theta_jaco_dot[0]
-                theta_m6_jaco_vel = theta_jaco_dot[1]
+                theta_m_jaco_dot = ankle_kinematics.motor_velocities_from_foot(r=theta_5, p=theta_6, r_d=theta_5_vel, p_d=theta_6_vel, left=False)
+                theta_m5_jaco_vel = theta_m_jaco_dot[0]
+                theta_m6_jaco_vel = theta_m_jaco_dot[1]
 
                 # ──────────────────────────────────────────────────────────────────────
                 #   target ankle's roll and pitch angle 
@@ -159,7 +161,7 @@ if __name__ == "__main__":
 
                 # Compute motor torque based on PD control
 
-                #motor_torque = PDController.PD_Calculate(right_motor_pos_cmd, motor_pos_fb, np.zeros((mj_model.nu,1)), dt_control)
+                #motor_torque = PDController.PD_Calculate(right_motor_pos_cmd, motor_pos, np.zeros((mj_model.nu,1)), dt_control)
                 
                 # timer
                 t_control += dt_control
@@ -167,7 +169,7 @@ if __name__ == "__main__":
 
         else:
             motor_ref_anlges = np.zeros((mj_model.nu, 1))
-            motor_torque = PDController.PD_Calculate(motor_ref_anlges, motor_pos_fb, np.zeros((mj_model.nu,1)), dt_control)
+            motor_torque = PDController.PD_Calculate(motor_ref_anlges, motor_pos, np.zeros((mj_model.nu,1)), dt_control)
 
         #mj_data.ctrl = np.array(motor_torque).reshape(1,-1) 
     

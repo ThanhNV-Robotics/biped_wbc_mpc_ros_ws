@@ -95,7 +95,7 @@
                 <inertial pos="-3.335E-3 4.815E-3 0" mass="17.273E-3" fullinertia="1402.905E-9 3571.185E-9 2503.653E-9 -214.87E-9 0 0" />
 
                 <body name="Long_Shaft" pos="-0.023 -0.0155 0" euler="90 0 180">
-                    <joint type="hinge" name="Ball1_x" axis="1 0 0" pos="0 0 0" range="-80 80"/>
+                    <joint type="hinge" name="Ball1_x" axis="1 0 0" pos="0 0 -4.5E-3" range="-80 80"/>
                     <joint type="hinge" name="Ball1_y" axis="0 0 1" pos="0 0 0" range="-80 80"/>
                     <geom type="mesh" name = "Long_Shaft" class="visual" mesh="Long_Shaft" />
                     <inertial pos="0 125E-3 -4.5E-3" mass="129.809E-3" fullinertia="9.902E-4 1903.573E-9 9.902E-4 0 0 0" />
@@ -108,7 +108,7 @@
                 <inertial pos="-3.335E-3 4.815E-3 0" mass="17.273E-3" fullinertia="1402.905E-9 3571.185E-9 2503.653E-9 -214.87E-9 0 0" />
 
                 <body name="Short_Shaft" pos="-0.023 -0.0152 0" euler="90 0 0">
-                    <joint type="hinge" name="Ball2_x" axis="1 0 0" pos="0 0 0" range="-80 80"/>
+                    <joint type="hinge" name="Ball2_x" axis="1 0 0" pos="0 0 -4.5E-3" range="-80 80"/>
                     <joint type="hinge" name="Ball2_y" axis="0 0 1" pos="0 0 0" range="-80 80"/>
                     <geom type="mesh" name = "Short_Shaft" class="visual" mesh="Short_Shaft" />
                     <inertial pos="0 82.5E-3 -4.2E-3" mass="103.134E-3" fullinertia="3.878E-4 1714.173E-9 3.878E-4 0 0 0" />
