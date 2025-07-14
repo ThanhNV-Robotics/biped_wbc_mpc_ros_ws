@@ -15,7 +15,7 @@ def step_ref (t, T, ref_angl):
         theta_d = ref_angl*(30*(t/T)**4 - 60*(t/T)**3 + 30*(t/T)**2)# ref velocity
         return theta, theta_d
     else:
-        return ref_angl, 0
+        return ref_angl, np.zeros(len(ref_angl),1)
 
 def sin_ref (sine_freq, t):
     angl_ref = math.sin(2*np.pi*sine_freq*t) * 2 # ref position
@@ -35,49 +35,56 @@ def init_motor (candle_device):
     for i in range(len(ids)):    
         candle_device.controlMd80SetEncoderZero(ids[i])             #  Reset encoder at current position
         candle_device.controlMd80Mode(ids[i], pyCandle.IMPEDANCE)   # Set mode to position Impedence PD control
-        candle_device.controlMd80Enable(ids[i], True)               # Enable the drive <=> Servo ON
-    
-    
+        candle_device.controlMd80Enable(ids[i], True)               # Enable the drive <=> Servo ON    
 
 def main ():
     sampling_time = 0.002 # sec
-    T = 0.5 # sec, for stepping test
-    duration = 2
+    T = 0.75 # sec, for stepping test
+    duration = 10
     t = 0.0
     loop_range = int((duration)/sampling_time)
 
-    data = []
-    time_arr = []
-    ref_angl = []
-    ref_vel = []
-    fb_angl = []
-    fb_vel = []
+
+    # data = []
+    # time_arr = []
+    # ref_angl = []
+    # ref_vel = []
+    # fb_angl = []
+    # fb_vel = []
 
     # ──────────────────────────────────────────────────────────────────────
     #   init candle hat and motors
     # ──────────────────────────────────────────────────────────────────────
     candle = pyCandle.Candle(pyCandle.CAN_BAUD_8M,True)
     init_motor(candle_device= candle)
-    candle.begin() # servo ON
+
+    candle.begin() #
 
     for i in range(loop_range):
         t += sampling_time
 
-        #angle_ref, angle_vel_ref = sin_ref(sine_freq,t)
-        angle_ref, angle_vel_ref = step_ref(t,T,np.pi/2)
+        pitch_cmd = np.deg2rad(15)*np.sin(2*np.pi*0.5*t) # theta_6, pitch
+        roll_cmd = np.deg2rad(15)*np.sin(2*np.pi*0.5*t) # theta_6, pitch
 
-        candle.md80s[0].setTargetPosition(angle_ref)
-        candle.md80s[0].setTargetVelocity(angle_vel_ref)
 
-        fb_angl = candle.md80s[0].getPosition()
-        fb_vel = candle.md80s[0].getVelocity()
-        fb_tqr = candle.md80s[0].getTorque()
+        motor_angle_cmd = ankle_kinematics.right_leg_motor_angles(roll_cmd,pitch_cmd)
 
-        data.append([t, angle_ref, angle_vel_ref, fb_angl, fb_vel, fb_tqr])
+        # angle_ref, angle_vel_ref = step_ref(t,T,motor_angle_cmd)
+
+        candle.md80s[4].setTargetPosition(motor_angle_cmd[0])
+        candle.md80s[4].setTargetVelocity(0)
+
+        candle.md80s[5].setTargetPosition(motor_angle_cmd[1])
+        candle.md80s[5].setTargetVelocity(0)
+
+        # fb_angl = candle.md80s[0].getPosition()
+        # fb_vel = candle.md80s[0].getVelocity()
+        # fb_tqr = candle.md80s[0].getTorque()
 
         time.sleep(sampling_time)
 
     candle.end()
+    return
 
 if __name__ == "__main__":
     main()
