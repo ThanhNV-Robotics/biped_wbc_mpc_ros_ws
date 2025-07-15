@@ -3,6 +3,7 @@ from low_level_fcn import ankle_kinematics
 import mujoco
 import numpy as np
 from mujoco.viewer import launch_passive
+import os
 
 class PD_Control: # MIMO, joint position PD control
     def __init__(self, Kp, Kd):
@@ -80,7 +81,7 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────────────
 #   Load xml mujoco model
 # ──────────────────────────────────────────────────────────────────────
-    mujoco_xml_path = 'mjcf/Right_Ankle_Closed_Chain.xml'
+    mujoco_xml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mjcf", "Right_Ankle_Closed_Chain.xml")
     mj_model = mujoco.MjModel.from_xml_path(mujoco_xml_path)
     mj_data = mujoco.MjData(mj_model)
     time_step = mj_model.opt.timestep     
@@ -103,6 +104,10 @@ if __name__ == "__main__":
     time_count = 0
     motor_torque = np.zeros(mj_model.nu)
 
+    theta_5 = 0
+    theta_6 = 0
+    theta_5_vel = 0
+    theta_6_vel = 0
     theta_m5_mujo_vel = 0
     theta_m5_jaco_vel = 0
     theta_m6_jaco_vel = 0
@@ -147,43 +152,20 @@ if __name__ == "__main__":
                 theta_m5_jaco_vel = theta_m_jaco_dot[0]
                 theta_m6_jaco_vel = theta_m_jaco_dot[1]
 
-                # ──────────────────────────────────────────────────────────────────────
-                #   target ankle's roll and pitch angle 
-                # ──────────────────────────────────────────────────────────────────────
-                roll_cmd = np.deg2rad(15)*np.sin(2*np.pi*0.5*t_control)
-                pitch_cmd = np.deg2rad(15)*np.sin(2*np.pi*0.5*t_control)
 
-                # ──────────────────────────────────────────────────────────────────────
-                #   solve IK to get motor cmd
-                # ──────────────────────────────────────────────────────────────────────
-                #right_motor_pos_cmd = ankle_kinematics.right_leg_motor_angles(roll_cmd, pitch_cmd)
-
-                # Compute motor torque based on PD control
-
-                #motor_torque = PDController.PD_Calculate(right_motor_pos_cmd, motor_pos, np.zeros((mj_model.nu,1)), dt_control)
-                
-                # timer
                 t_control += dt_control
                 time_count = 0
 
         else:
-            motor_ref_anlges = np.zeros((mj_model.nu, 1))
-            motor_torque = PDController.PD_Calculate(motor_ref_anlges, motor_pos, np.zeros((mj_model.nu,1)), dt_control)
-
-        #mj_data.ctrl = np.array(motor_torque).reshape(1,-1) 
+            pass
     
         viewer.sync()
         
         # save data for plotting
-        data_point = np.hstack([t_control, theta_m5_mujo_vel, theta_m5_jaco_vel])
+        data_point = np.hstack([t_control, theta_m5_mujo_vel, theta_m5_jaco_vel, theta_5_vel, theta_6_vel])
         save_data.append(data_point)
 
     viewer.close()
 
-    data_array = np.vstack(save_data)  # shape (N, 5)
+    data_array = np.vstack(save_data)
     np.save('jacobian_evaluate.npy', data_array)
-
-
-    # #save the simulation data
-    # with open('save_data.json', 'w') as file:
-    #     json.dump(np.array(save_data).tolist(), file)

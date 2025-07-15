@@ -39,7 +39,7 @@
         </default>
 
         <default class="Revolute">
-            <joint damping="0.01" frictionloss="0.3" />
+            <joint damping="0.0" frictionloss="0.0" />
         </default>
     </default>
 
