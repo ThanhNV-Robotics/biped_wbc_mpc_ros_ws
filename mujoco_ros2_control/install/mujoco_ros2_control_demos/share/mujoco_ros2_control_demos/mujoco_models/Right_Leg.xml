@@ -1,0 +1,118 @@
+<mujoco model="Bipedal_Final">
+    <option gravity="0 0 -9.81" />
+    <compiler angle="degree" meshdir="meshes/" autolimits="true" />
+    <!-- discardvisual="True"  -->
+
+    <option timestep="0.001"></option>
+    <statistic extent="0.3" center="0.3 0 0" meansize=".03" />
+
+    <default>
+        <geom type="mesh" />
+    </default>
+    <default>
+        <default class="visual">
+            <geom contype="0" conaffinity="0" group="0" density="0" rgba="0.5 0.5 0.5 1" />
+        </default>
+        <default class="transparent">
+            <geom contype="0" conaffinity="0" group="0" density="0" rgba="0.5 0.5 0.5 0.3" />
+        </default>
+        <default class="collision">
+            <geom group="0" rgba="0.7 0.7 0.7 1" />
+        </default>
+    </default>
+
+    <default>
+        <default class="AK8064_actuator">
+            <joint damping="0.02" armature="0.231" frictionloss="4.8" />
+        </default>
+
+        <default class="AK7010_actuator">
+            <joint damping="0.015" armature="0.00414" frictionloss="0.5" />
+        </default>
+
+        <default class="AK109_actuator">
+            <joint damping="0.03" armature="0.00812" frictionloss="0.5" />
+        </default>
+
+        <default class="AK606_actuator">
+            <joint damping="0.02" armature="0.00088" frictionloss="0.25" />
+        </default>
+    </default>
+
+    <!--   Fusion outputs meshes with mm units by default, but must be converted to m in MuJoCo, hence
+    the scaling   -->
+    <asset>
+        <!--   Right stl file  -->
+        <mesh name="Right_Link1_Hip" file="Right_Link1_Hip.stl" scale="0.001 0.001 0.001" />
+        <mesh name="Right_Link2_Hip" file="Right_Link2_Hip.stl" scale="0.001 0.001 0.001" />
+        <mesh name="Right_Link3_Thigh" file="Right_Link3_Thigh.stl" scale="0.001 0.001 0.001" />
+        <mesh name="Right_Link4_Shank" file="Right_Link4_Shank.stl" scale="0.001 0.001 0.001" />
+        <mesh name="Right_Link5_AnkleRoll" file="Right_Link5_AnkleRoll.stl" scale="0.001 0.001 0.001" />
+        <mesh name="Right_Link6_Foot" file="Left_Link6_Foot.stl" scale="0.001 0.001 0.001" />
+
+    </asset>
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
+        <rgba haze="0.15 0.25 0.35 1" />
+        <global azimuth="-130" elevation="-20" />
+    </visual>
+
+    <asset>
+        <texture builtin="gradient" height="100" rgb1=".4 .5 .6" rgb2="0 0 0" type="skybox" width="100" />
+        <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .3 .4" rgb2=".1 0.15 0.2" width="100" height="100" />
+        <material name="MatPlane" reflectance="0.1" texture="texplane" texrepeat="1 1" texuniform="true" />
+    </asset>    
+
+    <worldbody>
+        <geom name="ground" pos="0 0 0" size="5 5 0.05" type="plane" material = "MatPlane" friction= "1 1 0.1" condim="3" conaffinity="1" contype="1" group="2" rgba="0.8 0.9 0.8 1" />
+
+        <light cutoff="1000" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1" castshadow="false" />
+
+            <body name="Right_Link1_Hip" pos="0 0 0.75" euler="90 90 105">
+                <joint type="hinge" name="Right_Hip_Pitch" axis="0 -1 0" pos="0 0 0" range="-80 80" class = "AK109_actuator"/>
+                <geom type="mesh" class="visual" mesh="Right_Link1_Hip" />
+                <site name="Right_Hip_Site" type = "box" pos="0 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/>
+                <inertial pos="0.581E-3 -15.23E-3 5.579E-3" mass="1.751" fullinertia="3.417E-3 2.285E-3 3.245E-3 1738.735E-9 5415.03E-9 -1.178E-4" />
+
+                    <body name="Right_Link2_Hip" pos="0 0 0" euler="90 75 0">
+                        <joint type="hinge" name="Right_Hip_Roll" axis="0 1 0" pos="0 0 0" range="-60 15" class = "AK109_actuator"/>
+                        <geom type="mesh" class="visual" mesh="Right_Link2_Hip" />
+                        <inertial pos="0.008E-3 0.064E-3 -73.742E-3" mass="1.332" fullinertia="2.866E-3 2.199E-3 1.882E-3 -1153.521E-9 3574.449E-9 -3293.076E-9" />
+                        
+                            <body name="Right_Link3_Thigh" pos="0 0 -324E-3" euler="-90 -90 0">
+                                <joint type="hinge" name="Right_Hip_Yaw" axis="0 -1 0" pos="0 -220E-3 0" range="-40 40" class = "AK109_actuator"/>
+                                <geom type="mesh" class="visual" mesh="Right_Link3_Thigh" />
+                                <inertial pos="-0.028E-3 -32.607E-3 12.468E-3" mass="1.983" fullinertia="1.116E-2 2.158E-3 1.159E-2 752.04E-9 2449.992E-9 -7.911E-4" />
+
+                                <body name="Right_Link4_Shank" pos="0 335E-3 0" euler="90 90 0">
+                                    <joint type="hinge" name="Right_Knee" axis="0 1 0" pos="-335E-3 0 0" range="-10 120" class = "AK109_actuator"/>
+                                    <geom type="mesh" class="visual" mesh="Right_Link4_Shank" />
+                                    <inertial pos="-171.962E-3 -3.761E-3 9.336E-3" mass="1.879" fullinertia="1.480E-3 1.633E-2 1.653E-2 -8.795E-4 -7.738E-4 -35348.501E-9" />
+                                    
+                                    <body name="Right_Link5_AnkleRoll" pos="0 0 0" euler="0 0 0">
+                                        <joint type="hinge" name="Right_Ankle_Roll" axis="0 0 1" pos="0 0 0" range="-30 30" class = "AK606_actuator"/>
+                                        <geom type="mesh" class="visual" mesh="Right_Link5_AnkleRoll" />
+                                        <inertial pos="0 0 0" mass="40.313E-3" fullinertia="7009E-9 3498.104E-9 5125.014E-9 0 0 0" />
+
+                                        <body name="Right_Link6_Foot" pos="0 0 0" euler="-90 0 0">
+                                            <joint type="hinge" name="Right_Ankle_Pitch" axis="0 0 1" pos="0 0 0" range="-50 30" class = "AK606_actuator"/>
+                                            <geom type="mesh" name = "Right_Foot" class="visual" mesh="Right_Link6_Foot" />
+                                            <inertial pos="30.483E-3 -29.106E-3 0" mass="343.229E-3" fullinertia="9.434E-4 1.546E-4 8.770E-4 50230.908E-9 -40.36E-9 9.97E-9" />
+                                            <site name="Right_Force_Torque_Sensor" type = "box" pos="0 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/>
+                                        </body>
+                                    </body>
+                                </body>
+                            </body>
+                    </body>
+            </body>
+    </worldbody>
+
+        <actuator>
+            <motor name="Right_Hip_Pitch_m" joint="Right_Hip_Pitch" ctrlrange="-48 48" />        
+            <motor name="Right_Hip_Roll_m" joint="Right_Hip_Roll" ctrlrange="-48 48" />        
+            <motor name="Right_Hip_Yaw_m" joint="Right_Hip_Yaw" ctrlrange="-16 16" />
+            <motor name="Right_Knee_m" joint="Right_Knee" ctrlrange="-48 48" />
+            <motor name="Right_Ank_Roll_m" joint="Right_Ankle_Roll" ctrlrange="-18 18" />
+            <motor name="Right_Ank_Pitch_m" joint="Right_Ankle_Pitch" ctrlrange="-18 18" />       
+        </actuator>
+</mujoco>
