@@ -3,6 +3,8 @@ from low_level_fcn import ankle_kinematics
 import mujoco
 import numpy as np
 from mujoco.viewer import launch_passive
+import glfw
+
 import os
 
 class PD_Control: # MIMO, joint position PD control
@@ -116,8 +118,8 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────────────
     viewer = launch_passive(mj_model, mj_data)
     mj_model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_GRAVITY  # Disable gravity for passive viewer
-    #while viewer.is_running():
-    while mj_data.time <= 6:
+    while viewer.is_running():
+    #while mj_data.time <= 6:
         mujoco.mj_step(mj_model, mj_data) 
         simu_time = mj_data.time # simulation time 
         # ──────────────────────────────────────────────────────────────────────
