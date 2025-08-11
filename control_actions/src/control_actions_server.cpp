@@ -53,7 +53,42 @@ namespace control_actions_cpp
 
         void execute (const std::shared_ptr<GoalHandleControlActions> goal_handle)
         {
-            
+            RCLCPP_INFO(this->get_logger(), "Executing goal");
+            rclcpp::Rate loop_rate(1);
+            const auto goal = goal_handle->get_goal(); //Get the user provided message describing the goal.
+            auto feedback = std::make_shared<ControlActions::Feedback>(); //The feedback message defined in the action definition.
+            //std::shared_ptr<const ControlActions::Goal> goal;
+            feedback->joint_name = goal->joint_name;
+            feedback->feedback_position = 0.0; // init feedback_position
+            auto result = std::make_shared<ControlActions::Result>();
+
+            for (int i = 1; i<10; ++i)
+            {
+                // Check if there is a cancel request
+                if (goal_handle->is_canceling()) {
+                    result->joint_name = goal->joint_name;
+                    result->final_position = 0;
+
+                    goal_handle->canceled(result);
+                    RCLCPP_INFO(this->get_logger(), "Goal canceled");
+                    return;
+                }
+
+                // Update feedback_position
+                feedback->feedback_position += 1;
+                // publish feedback
+                goal_handle->publish_feedback(feedback);
+                RCLCPP_INFO(this->get_logger(), "Publish feedback");
+                loop_rate.sleep();
+            }
+
+            // Check if goal is done
+        if (rclcpp::ok()) {
+            result->joint_name = goal->joint_name;
+            goal_handle->succeed(result);
+            RCLCPP_INFO(this->get_logger(), "Goal succeeded");
+        }
         }
     };
 }
+RCLCPP_COMPONENTS_REGISTER_NODE(control_actions_cpp::ControlActionServer)

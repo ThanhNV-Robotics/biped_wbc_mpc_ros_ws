@@ -2,13 +2,13 @@ controller_manager:
   ros__parameters:
     update_rate: 500  # Hz
 
-    joint_position_controller:
-      type: "joint_position_controllers/JointPositionController"
+    position_controller:
+      type: position_controllers/JointGroupPositionController
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-joint_trajectory_controller:
+position_controller:
   ros__parameters:
     joints:
       - left_hip_pitch
@@ -22,4 +22,4 @@ joint_trajectory_controller:
       - position
     state_interfaces:
       - position
-      - velocity
+      - velocity    

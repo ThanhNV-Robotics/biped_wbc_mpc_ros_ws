@@ -5,8 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "/home/vanthanhnguyen/mujoco/mujoco-3.3.4",                // MuJoCo
-                "/opt/ros/humble/include",                   // ROS 2 core
-                "${workspaceFolder}/install/**/include" 
+                "/opt/ros/humble/include/**",                   // ROS 2 core
+                "${workspaceFolder}/install/**/include/**" 
             ],
             "defines": [],
             "compilerPath": "/usr/bin/g++",
