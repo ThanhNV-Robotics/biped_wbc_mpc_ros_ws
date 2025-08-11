@@ -272,133 +272,22 @@ void MujocoRendering::scroll_callback_impl(
 
 void MujocoRendering::select_object(double xpos, double ypos)
 {
-  if (!mj_model_ || !mj_data_)
-    return;
-
-  // Get framebuffer size
-  int width, height;
-  glfwGetFramebufferSize(window_, &width, &height);
-
-  // Ray casting for object selection
-  mjtNum pnt[3];
-  int sel;
-  
-  // Find closest object using mjv_select
-  double aspectratio = (double)width / height;
-  double relx = xpos / width;
-  double rely = 1.0 - ypos / height;  // Flip Y coordinate
-  
-  sel = mjv_select(mj_model_, mj_data_, &mjv_opt_, aspectratio, relx, rely, 
-                   &mjv_scn_, pnt, &selected_body_, &selected_geom_, NULL);
-  
-  if (sel >= 0)
-  {
-    // Object selected
-    selected_body_ = mj_model_->geom_bodyid[sel];
-    selected_geom_ = sel;
-    
-    // Store the position where force will be applied
-    force_pos_[0] = pnt[0];
-    force_pos_[1] = pnt[1];
-    force_pos_[2] = pnt[2];
-    
-    printf("Selected body %d, geom %d at position (%.3f, %.3f, %.3f)\n", 
-           selected_body_, selected_geom_, pnt[0], pnt[1], pnt[2]);
-  }
-  else
-  {
-    // No object selected
-    selected_body_ = -1;
-    selected_geom_ = -1;
-    printf("No object selected\n");
-  }
+  return;
 }
 
 void MujocoRendering::apply_force(double dx, double dy)
 {
-  if (!mj_model_ || !mj_data_ || selected_body_ < 0)
-    return;
-
-  // Get window size for scaling
-  int width, height;
-  glfwGetWindowSize(window_, &width, &height);
-  
-  // Convert mouse movement to force vector in world coordinates
-  // This is a simplified approach - you might want to make it more sophisticated
-  
-  // Get camera orientation
-  mjtNum cam_forward[3], cam_right[3], cam_up[3];
-  
-  // Compute camera vectors
-  mjtNum cam_pos[3] = {mjv_cam_.lookat[0] + mjv_cam_.distance * mjv_cam_.azimuth * cos(mjv_cam_.elevation),
-                       mjv_cam_.lookat[1] + mjv_cam_.distance * mjv_cam_.azimuth * sin(mjv_cam_.elevation),
-                       mjv_cam_.lookat[2] + mjv_cam_.distance * sin(mjv_cam_.elevation)};
-  
-  // Simplified camera vectors (you can make this more sophisticated)
-  cam_forward[0] = mjv_cam_.lookat[0] - cam_pos[0];
-  cam_forward[1] = mjv_cam_.lookat[1] - cam_pos[1];
-  cam_forward[2] = mjv_cam_.lookat[2] - cam_pos[2];
-  
-  // Normalize forward vector
-  double forward_norm = sqrt(cam_forward[0]*cam_forward[0] + cam_forward[1]*cam_forward[1] + cam_forward[2]*cam_forward[2]);
-  if (forward_norm > 0)
-  {
-    cam_forward[0] /= forward_norm;
-    cam_forward[1] /= forward_norm;
-    cam_forward[2] /= forward_norm;
-  }
-  
-  // Right vector (cross product with up)
-  cam_right[0] = cam_forward[1] * 0.0 - cam_forward[2] * 1.0;
-  cam_right[1] = cam_forward[2] * 0.0 - cam_forward[0] * 0.0;
-  cam_right[2] = cam_forward[0] * 1.0 - cam_forward[1] * 0.0;
-  
-  // Up vector (cross product with right)
-  cam_up[0] = cam_right[1] * cam_forward[2] - cam_right[2] * cam_forward[1];
-  cam_up[1] = cam_right[2] * cam_forward[0] - cam_right[0] * cam_forward[2];
-  cam_up[2] = cam_right[0] * cam_forward[1] - cam_right[1] * cam_forward[0];
-  
-  // Scale factors
-  double scale_x = force_scale_ / width;
-  double scale_y = force_scale_ / height;
-  
-  // Compute force vector based on mouse movement
-  force_vec_[0] = dx * scale_x * cam_right[0] - dy * scale_y * cam_up[0];
-  force_vec_[1] = dx * scale_x * cam_right[1] - dy * scale_y * cam_up[1];
-  force_vec_[2] = dx * scale_x * cam_right[2] - dy * scale_y * cam_up[2];
-  
-  // Apply force to the selected body using mj_applyFT
-  // Note: mj_applyFT applies force and torque at a point
-  mjtNum torque[3] = {0.0, 0.0, 0.0};  // No torque, just force
-  mj_applyFT(mj_model_, mj_data_, force_vec_, torque, force_pos_, selected_body_, force_pos_);
-  
-  // Update force visualization
-  update_force_visualization();
-  
-  printf("Applied force (%.3f, %.3f, %.3f) to body %d\n", 
-         force_vec_[0], force_vec_[1], force_vec_[2], selected_body_);
+  return;
 }
 
 void MujocoRendering::update_force_visualization()
 {
-  // This method can be used to visualize the applied force
-  // For now, we'll just print the force magnitude
-  double force_magnitude = sqrt(force_vec_[0]*force_vec_[0] + 
-                               force_vec_[1]*force_vec_[1] + 
-                               force_vec_[2]*force_vec_[2]);
-  
-  if (force_magnitude > 0.1)  // Only show significant forces
-  {
-    printf("Force magnitude: %.3f N\n", force_magnitude);
-  }
+  return;
 }
 
 void MujocoRendering::clear_force()
 {
-  // Clear the force vectors
-  force_vec_[0] = force_vec_[1] = force_vec_[2] = 0.0;
-  force_active_ = false;
-  printf("Force cleared\n");
+  return;
 }
 
 }  // namespace mujoco_ros2_control

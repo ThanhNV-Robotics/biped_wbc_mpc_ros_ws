@@ -32,11 +32,11 @@ mjModel *mujoco_model = nullptr;
 mjData *mujoco_data = nullptr;
 
 // Real-time control parameters
-const double SIMULATION_RATE = 500.0;  // Hz (matches controller update rate)
+double SIMULATION_RATE = 1000.0;  // Hz match mujoco model's timestep
 const double RENDERING_RATE = 60.0;    // Hz
 const double CAMERA_RATE = 6.0;        // Hz
 
-const double SIMULATION_DT = 1.0 / SIMULATION_RATE;
+double SIMULATION_DT = 1.0 / SIMULATION_RATE;
 const double RENDERING_DT = 1.0 / RENDERING_RATE;
 const double CAMERA_DT = 1.0 / CAMERA_RATE;
 
@@ -71,7 +71,7 @@ int main(int argc, const char **argv)
   RCLCPP_INFO_STREAM(node->get_logger(), "Mujoco model has been successfully loaded !");
   
   // Set MuJoCo timestep to match simulation rate
-  mujoco_model->opt.timestep = SIMULATION_DT;
+  SIMULATION_DT = mujoco_model->opt.timestep;
   
   // make data
   mujoco_data = mj_makeData(mujoco_model);
