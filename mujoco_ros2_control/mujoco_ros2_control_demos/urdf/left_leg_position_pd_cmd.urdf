@@ -206,22 +206,20 @@
   
   <ros2_control name="MujocoSystem" type="system">
     <hardware>
-      <plugin>mujoco_ros2_control/MujocoSystem</plugin>
+      <plugin>mujoco_ros2_control/MujocoSystem</plugin> <!--inlcude mujoco driver/interface-->
     </hardware>
-
       <joint name="left_hip_pitch">
-        <param name="min">-1.05</param>
-        <param name="max">1.05</param>
-        <param name="position_kp">650.0</param>
+        <param name="min">-1.05</param> <!--joint position limit-->
+        <param name="max">1.05</param> <!--joint position limit-->
+        <param name="position_kp">650.0</param> <!--define kp gain of the pid controller-->
         <param name="position_ki">0.0</param>
         <param name="position_kd">1.5</param>
         <param name="position_i_max">50.0</param>
         <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
+        <command_interface name="position_pid"/> <!--define command interface, to use pid controller, need to include _pid in the name-->
+        <state_interface name="position"/> <!--require position interface/feedback-->
+        <state_interface name="velocity"/> <!--require velocity interface/feedback-->
       </joint>
-
       <joint name="left_hip_roll">       
         <param name="min">-0.35</param>
         <param name="max">0.8</param>
@@ -234,7 +232,6 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
-
       <joint name="left_hip_yaw">        
         <param name="min">-0.8</param>
         <param name="max">0.8</param>
@@ -247,7 +244,6 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
-
       <joint name="left_knee">        
         <param name="min">0</param>
         <param name="max">2.09</param>
@@ -260,7 +256,6 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
-
       <joint name="left_ankle_roll">
         <param name="min">-0.34</param>
         <param name="max">0.34</param>
@@ -273,7 +268,6 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
-
       <joint name="left_ankle_pitch">        
         <param name="min">-0.34</param>
         <param name="max">0.34</param>
@@ -286,7 +280,6 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
-
   </ros2_control>
   
 </robot>
