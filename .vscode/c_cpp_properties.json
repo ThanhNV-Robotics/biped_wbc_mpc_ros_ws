@@ -4,9 +4,11 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/home/vanthanhnguyen/mujoco/mujoco-3.3.4",                // MuJoCo
-                "/opt/ros/humble/include/**",                   // ROS 2 core
-                "${workspaceFolder}/install/**/include/**" 
+                "/home/vanthanhnguyen/mujoco/mujoco-3.3.4",
+                "/opt/ros/humble/include/**",
+                "${workspaceFolder}/install/**/include/**",
+
+                "/usr/include/eigen3"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/g++",

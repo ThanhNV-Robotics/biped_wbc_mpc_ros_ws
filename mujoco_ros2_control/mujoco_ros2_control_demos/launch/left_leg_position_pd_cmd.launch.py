@@ -24,7 +24,7 @@ def generate_launch_description():
     xacro.process_doc(doc)
     robot_description = {'robot_description': doc.toxml()}
 
-    controller_config_file = os.path.join(mujoco_ros2_control_demos_path, 'config', 'left_leg_effort_controller.yaml')
+    controller_config_file = os.path.join(mujoco_ros2_control_demos_path, 'config', 'left_leg_position_pd_controller.yaml')
 
     node_mujoco_ros2_control = Node(
         package='mujoco_ros2_control',
@@ -48,11 +48,11 @@ def generate_launch_description():
         cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
              'joint_state_broadcaster'],
         output='screen'
-    )
+    ) # publish joint states (position and velocity)
 
-    load_joint_effort_controller = ExecuteProcess(
+    load_joint_position_controller = ExecuteProcess(
         cmd=['ros2', 'control', 'load_controller', '--set-state', 'active',
-             'effort_controller'],
+             'joint_position_controller'],
         output='screen'
     )
 
@@ -66,7 +66,7 @@ def generate_launch_description():
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=load_joint_state_controller,
-                on_exit=[load_joint_effort_controller],
+                on_exit=[load_joint_position_controller],
             )
         ),
         node_mujoco_ros2_control,

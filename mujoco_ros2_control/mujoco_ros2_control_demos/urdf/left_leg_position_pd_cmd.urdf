@@ -209,91 +209,80 @@
       <plugin>mujoco_ros2_control/MujocoSystem</plugin>
     </hardware>
 
-       <joint name="left_hip_pitch">
-        <command_interface name="position_pid">
-          <param name="min">-1.05</param>
-          <param name="max">1.05</param>
-          <param name="position_pid_kp">650.0</param>
-          <param name="position_pid_ki">0.0</param>
-          <param name="position_pid_kd">1.5</param>
-          <param name="position_pid_i_max">50.0</param>
-          <param name="position_pid_i_min">-50.0</param>
-        </command_interface>
-
+      <joint name="left_hip_pitch">
+        <param name="min">-1.05</param>
+        <param name="max">1.05</param>
+        <param name="position_kp">650.0</param>
+        <param name="position_ki">0.0</param>
+        <param name="position_kd">1.5</param>
+        <param name="position_i_max">50.0</param>
+        <param name="position_i_min">-50.0</param>       
+        <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
 
-      <joint name="left_hip_roll">
-        <command_interface name="position_pid">
-          <param name="min">-0.35</param>
-          <param name="max">0.8</param>
-          <param name="position_pid_kp">600.0</param>
-          <param name="position_pid_ki">0.0</param>
-          <param name="position_pid_kd">1.5</param>
-          <param name="position_pid_i_max">50.0</param>
-          <param name="position_pid_i_min">-50.0</param>
-        </command_interface>
+      <joint name="left_hip_roll">       
+        <param name="min">-0.35</param>
+        <param name="max">0.8</param>
+        <param name="position_kp">600.0</param>
+        <param name="position_ki">0.0</param>
+        <param name="position_kd">1.5</param>
+        <param name="position_i_max">50.0</param>
+        <param name="position_i_min">-50.0</param>
+        <command_interface name="position_pid"/>       
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
 
-      <joint name="left_hip_yaw">
-        <command_interface name="position_pid">
-          <param name="min">-0.8</param>
-          <param name="max">0.8</param>
-          <param name="position_pid_kp">150.0</param>
-          <param name="position_pid_ki">0.0</param>
-          <param name="position_pid_kd">1.5</param>
-          <param name="position_pid_i_max">50.0</param>
-          <param name="position_pid_i_min">-50.0</param>
-        </command_interface>
-
+      <joint name="left_hip_yaw">        
+        <param name="min">-0.8</param>
+        <param name="max">0.8</param>
+        <param name="position_kp">150.0</param>
+        <param name="position_ki">0.0</param>
+        <param name="position_kd">1.5</param>
+        <param name="position_i_max">50.0</param>
+        <param name="position_i_min">-50.0</param>       
+        <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
 
-      <joint name="left_knee">
-        <command_interface name="position_pid">
-          <param name="min">0</param>
-          <param name="max">2.09</param>
-          <param name="position_pid_kp">350.0</param>
-          <param name="position_pid_ki">0.0</param>
-          <param name="position_pid_kd">1.5</param>
-          <param name="position_pid_i_max">50.0</param>
-          <param name="position_pid_i_min">-50.0</param>
-        </command_interface>
-
+      <joint name="left_knee">        
+        <param name="min">0</param>
+        <param name="max">2.09</param>
+        <param name="position_kp">350.0</param>
+        <param name="position_ki">0.0</param>
+        <param name="position_kd">1.5</param>
+        <param name="position_i_max">50.0</param>
+        <param name="position_i_min">-50.0</param>       
+        <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
 
       <joint name="left_ankle_roll">
-        <command_interface name="position_pid">
-          <param name="min">-0.34</param>
-          <param name="max">0.34</param>
-          <param name="position_pid_kp">250.0</param>
-          <param name="position_pid_ki">0.0</param>
-          <param name="position_pid_kd">1.5</param>
-          <param name="position_pid_i_max">50.0</param>
-          <param name="position_pid_i_min">-50.0</param>
-        </command_interface>
-
+        <param name="min">-0.34</param>
+        <param name="max">0.34</param>
+        <param name="position_kp">250.0</param>
+        <param name="position_ki">0.0</param>
+        <param name="position_kd">1.5</param>
+        <param name="position_i_max">50.0</param>
+        <param name="position_i_min">-50.0</param>       
+        <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
 
-      <joint name="left_ankle_pitch">
-        <command_interface name="position_pid">
-          <param name="min">-0.34</param>
-          <param name="max">0.34</param>
-          <param name="position_pid_kp">250.0</param>
-          <param name="position_pid_ki">0.0</param>
-          <param name="position_pid_kd">1.5</param>
-          <param name="position_pid_i_max">50.0</param>
-          <param name="position_pid_i_min">-50.0</param>
-        </command_interface>
-        
+      <joint name="left_ankle_pitch">        
+        <param name="min">-0.34</param>
+        <param name="max">0.34</param>
+        <param name="position_kp">250.0</param>
+        <param name="position_ki">0.0</param>
+        <param name="position_kd">1.5</param>
+        <param name="position_i_max">50.0</param>
+        <param name="position_i_min">-50.0</param>
+        <command_interface name="position_pid"/>        
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>

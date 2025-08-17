@@ -2,13 +2,17 @@ controller_manager:
   ros__parameters:
     update_rate: 500  # Hz
 
-    position_controller:
+    # joint_trajectory_controller:
+    #   type: joint_trajectory_controller/JointTrajectoryController
+
+    joint_position_controller:
       type: position_controllers/JointGroupPositionController
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-position_controller:
+# joint_trajectory_controller:
+joint_position_controller:
   ros__parameters:
     joints:
       - left_hip_pitch
@@ -17,9 +21,9 @@ position_controller:
       - left_knee
       - left_ankle_roll
       - left_ankle_pitch
-    interface_name: position
-    command_interfaces:
-      - position
-    state_interfaces:
-      - position
-      - velocity    
+    # interface_name: position
+    # command_interfaces:
+    #   - position
+    # state_interfaces:
+    #   - position
+    #   - velocity    
