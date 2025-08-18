@@ -30,11 +30,11 @@ struct MotorState
 #pragma pack(push, 1)
 struct MotorCommand {
     uint16_t drive_ids;                 // Motor ID
-    float    kp;                        // P Gain
-    float    kd;                        // D Gain
+    // float    kp;                        // P Gain
+    // float    kd;                        // D Gain
     float    target_position;           // Target Position
-    float    target_velocity;           // Target Velocity
-    float    target_torque;             // Target Torque
+    // float    target_velocity;           // Target Velocity
+    // float    target_torque;             // Target Torque
 };
 #pragma pack(pop)
 
