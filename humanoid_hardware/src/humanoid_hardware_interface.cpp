@@ -17,7 +17,7 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_init(
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Initializing...");
 
     size_t num_joints = info_.joints.size();
-    hw_commands_.resize(num_joints, 0.0);
+    hw_commands_.resize(num_joints, std::numeric_limits<double>::quiet_NaN());
     hw_positions_.resize(num_joints, std::numeric_limits<double>::quiet_NaN());
     hw_velocities_.resize(num_joints, std::numeric_limits<double>::quiet_NaN());
     hw_torques_.resize(num_joints, std::numeric_limits<double>::quiet_NaN());
@@ -30,114 +30,64 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_init(
         if (info_.joints[i].parameters.find("motor_id") == info_.joints[i].parameters.end() ||
             info_.joints[i].parameters.find("rpi_id") == info_.joints[i].parameters.end())
         {
-            RCLCPP_FATAL(
-                rclcpp::get_logger("HumanoidHardwareInterface"),
-                "URDF joint '%s' is missing 'motor_id' or 'rpi_id' parameter.",
-                joint_map_[i].name.c_str());
-            return hardware_interface::CallbackReturn::ERROR;
+        RCLCPP_FATAL(
+            rclcpp::get_logger("HumanoidHardwareInterface"),
+            "URDF joint '%s' is missing 'motor_id' or 'rpi_id' parameter.",
+            joint_map_[i].name.c_str());
+        return hardware_interface::CallbackReturn::ERROR;
         }
 
         try
         {
-            joint_map_[i].motor_id = std::stoul(info_.joints[i].parameters.at("motor_id"));
-            joint_map_[i].rpi_id = std::stoi(info_.joints[i].parameters.at("rpi_id"));
+        joint_map_[i].motor_id = std::stoul(info_.joints[i].parameters.at("motor_id"));
+        joint_map_[i].rpi_id = std::stoi(info_.joints[i].parameters.at("rpi_id"));
         }
         catch (const std::invalid_argument & e)
         {
-            RCLCPP_FATAL(
-                rclcpp::get_logger("HumanoidHardwareInterface"),
-                "Invalid 'motor_id' or 'rpi_id' for joint '%s'.", joint_map_[i].name.c_str());
-            return hardware_interface::CallbackReturn::ERROR;
+        RCLCPP_FATAL(
+            rclcpp::get_logger("HumanoidHardwareInterface"),
+            "Invalid 'motor_id' or 'rpi_id' for joint '%s'.", joint_map_[i].name.c_str());
+        return hardware_interface::CallbackReturn::ERROR;
         }
 
         if (joint_map_[i].rpi_id == 1)
-            motor_ids_rpi1_.push_back(joint_map_[i].motor_id);
+        {
+        motor_ids_rpi1_.push_back(joint_map_[i].motor_id);
+        }
         else if (joint_map_[i].rpi_id == 2)
-            motor_ids_rpi2_.push_back(joint_map_[i].motor_id);
+        {
+        motor_ids_rpi2_.push_back(joint_map_[i].motor_id);
+        }
         else
         {
-            RCLCPP_FATAL(
-                rclcpp::get_logger("HumanoidHardwareInterface"), "Invalid 'rpi_id' (%d) for joint '%s'. Must be 1 or 2.",
-                joint_map_[i].rpi_id, joint_map_[i].name.c_str());
-            return hardware_interface::CallbackReturn::ERROR;
+        RCLCPP_FATAL(
+            rclcpp::get_logger("HumanoidHardwareInterface"), "Invalid 'rpi_id' (%d) for joint '%s'. Must be 1 or 2.",
+            joint_map_[i].rpi_id, joint_map_[i].name.c_str());
+        return hardware_interface::CallbackReturn::ERROR;
         }
     }
-
-    // for (const auto & sensor : info_.sensors) 
-    // {
-    //     if (sensor.name == "imu_sensor") 
-    //     {
-    //         imu_sensor_name_ = sensor.name;
-    //         has_imu_ = true;
-    //         break;
-    //     }
-    // }
-
-    // if (has_imu_) 
-    // {
-    //     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"),
-    //             "IMU sensor '%s' detected.", imu_sensor_name_.c_str());
-    // }
-
 
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Initialization successful.");
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn HumanoidHardwareInterface::on_configure(
-  const rclcpp_lifecycle::State & /*previous_state*/)
-{
-    RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Configuring...");
-
-    for (double &pos : hw_positions_) { pos = 0.0; }
-    for (double &vel : hw_velocities_) { vel = 0.0; }
-    for (double &cmd : hw_commands_) { cmd = 0.0; }
-
-    try
-    {
-        udp_rpi1_comm_ = std::make_unique<UDPCommunication>("192.168.10.20", 5002, 6002);
-        udp_rpi2_comm_ = std::make_unique<UDPCommunication>("192.168.10.30", 5003, 6003);
-    }
-    catch (const std::exception & e)
-    {
-        RCLCPP_FATAL(
-            rclcpp::get_logger("HumanoidHardwareInterface"),
-            "Failed to create UDP communication objects: %s", e.what());
-        return hardware_interface::CallbackReturn::ERROR;
-    }
-
-    RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Configuration successful.");
-    return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-
-hardware_interface::CallbackReturn HumanoidHardwareInterface::on_activate(
-  const rclcpp_lifecycle::State & /*previous_state*/)
+hardware_interface::CallbackReturn HumanoidHardwareInterface::on_activate(const rclcpp_lifecycle::State & /*previous_state*/)
 {
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Activating...");
 
-    if (!udp_rpi1_comm_ || !udp_rpi1_comm_->checkStart(motor_ids_rpi1_.data(), motor_ids_rpi1_.size()))
+    udp_rpi1_comm_ = std::make_unique<UDPCommunication>("192.168.10.20", 5002, 6002);
+    udp_rpi2_comm_ = std::make_unique<UDPCommunication>("192.168.10.30", 5003, 6003);
+
+    if (!udp_rpi1_comm_->checkStart(motor_ids_rpi1_.data(), motor_ids_rpi1_.size()))
     {
         RCLCPP_ERROR(rclcpp::get_logger("HumanoidHardwareInterface"), "Failed to start RPI1");
         return hardware_interface::CallbackReturn::FAILURE;
     }
-    if (!udp_rpi2_comm_ || !udp_rpi2_comm_->checkStart(motor_ids_rpi2_.data(), motor_ids_rpi2_.size()))
+    if (!udp_rpi2_comm_->checkStart(motor_ids_rpi2_.data(), motor_ids_rpi2_.size()))
     {
         RCLCPP_ERROR(rclcpp::get_logger("HumanoidHardwareInterface"), "Failed to start RPI2");
         return hardware_interface::CallbackReturn::FAILURE;
     }
-
-    read(rclcpp::Time(0), rclcpp::Duration(0, 0));
-
-    for(size_t i = 0; i < hw_commands_.size(); ++i)
-    {
-        hw_commands_[i] = hw_positions_[i];
-    }
-
-    struct timespec ts;
-    ts.tv_sec = 2;
-    ts.tv_nsec = 0;
-    nanosleep(&ts, nullptr);
 
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Activation successful.");
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -163,24 +113,9 @@ std::vector<hardware_interface::StateInterface> HumanoidHardwareInterface::expor
         info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_positions_[i]));
     state_interfaces.emplace_back(hardware_interface::StateInterface(
         info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_velocities_[i]));
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_EFFORT, &hw_torques_[i]));
     }
-
-    // if (has_imu_) 
-    // {
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.x", &imu_.qx);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.y", &imu_.qy);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.z", &imu_.qz);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.w", &imu_.qw);
-
-    //     state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.x", &imu_.wx);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.y", &imu_.wy);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.z", &imu_.wz);
-
-    //     state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.x", &imu_.ax);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.y", &imu_.ay);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.z", &imu_.az);
-    // }
-
     return state_interfaces;
 }
 
@@ -203,14 +138,14 @@ hardware_interface::return_type HumanoidHardwareInterface::read(
     {
         for (size_t i = 0; i < motor_ids_rpi1_.size(); ++i)
         {
-            auto it = std::find_if(joint_map_.begin(), joint_map_.end(), 
-                [&](const JointInfo& j){ return j.motor_id == states_rpi1[i].drive_ids; });
-            if (it != joint_map_.end()) 
-            {
-                size_t joint_idx = std::distance(joint_map_.begin(), it);
-                hw_positions_[joint_idx] = states_rpi1[i].position;
-                hw_velocities_[joint_idx] = states_rpi1[i].velocity;
-            }
+        auto it = std::find_if(joint_map_.begin(), joint_map_.end(), 
+            [&](const JointInfo& j){ return j.motor_id == states_rpi1[i].drive_ids; });
+        if (it != joint_map_.end()) {
+            size_t joint_idx = std::distance(joint_map_.begin(), it);
+            hw_positions_[joint_idx] = states_rpi1[i].position;
+            hw_velocities_[joint_idx] = states_rpi1[i].velocity;
+            hw_torques_[joint_idx] = states_rpi1[i].torque;
+        }
         }
     }
 
@@ -219,18 +154,18 @@ hardware_interface::return_type HumanoidHardwareInterface::read(
     {
         for (size_t i = 0; i < motor_ids_rpi2_.size(); ++i)
         {
-            auto it = std::find_if(joint_map_.begin(), joint_map_.end(), 
-                [&](const JointInfo& j){ return j.motor_id == states_rpi2[i].drive_ids; });
-            if (it != joint_map_.end()) 
-            {
-                size_t joint_idx = std::distance(joint_map_.begin(), it);
-                hw_positions_[joint_idx] = states_rpi2[i].position;
-                hw_velocities_[joint_idx] = states_rpi2[i].velocity;
-            }
+        auto it = std::find_if(joint_map_.begin(), joint_map_.end(), 
+            [&](const JointInfo& j){ return j.motor_id == states_rpi2[i].drive_ids; });
+        if (it != joint_map_.end()) {
+            size_t joint_idx = std::distance(joint_map_.begin(), it);
+            hw_positions_[joint_idx] = states_rpi2[i].position;
+            hw_velocities_[joint_idx] = states_rpi2[i].velocity;
+            hw_torques_[joint_idx] = states_rpi2[i].torque;
+        }
         }
     }
 
-    return hardware_interface::return_type::OK;
+  return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type HumanoidHardwareInterface::write(
@@ -244,6 +179,10 @@ hardware_interface::return_type HumanoidHardwareInterface::write(
         MotorCommand cmd;
         cmd.drive_ids = joint_map_[i].motor_id;
         cmd.target_position = hw_commands_[i]; 
+        // cmd.kp = 5.0;
+        // cmd.kd = 0.1;
+        // cmd.target_velocity = 0.0;
+        // cmd.target_torque = 0.0;
 
         if (joint_map_[i].rpi_id == 1)
         {

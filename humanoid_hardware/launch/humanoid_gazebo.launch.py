@@ -66,19 +66,12 @@ def generate_launch_description():
         output='screen',
     )
 
-    imu_sensor_broadcaster_spawner = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['imu_sensor_broadcaster', '--controller-manager', '/controller_manager'],
-    )
-
     spawn_then_spawn_controllers = RegisterEventHandler(
         OnProcessExit(
             target_action=spawn_entity_node,
             on_exit=[
                 joint_state_broadcaster_spawner,
                 joint_trajectory_controller_spawner,
-                imu_sensor_broadcaster_spawner,
             ],
         )
     )
