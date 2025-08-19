@@ -1,8 +1,8 @@
 """
 ankle_kinematics.py  :  fast closed-chain ankle kinematics
 ----------------------------------------------------------
-roll  = theta_5   (rad, limited to ±20°)
-pitch = theta_6   (rad, limited to ±20°)
+roll  = theta_5   //ankle joint angle
+pitch = theta_6   //ankle joint angle
 --------------
 left_leg_motor_angles (roll, pitch)      -> (theta_m5, theta_m6)
 right_leg_motor_angles(roll, pitch)      -> (theta_m5, theta_m6)
@@ -87,8 +87,7 @@ def left_leg_motor_angles(roll: float, pitch: float):
 
 def right_leg_motor_angles(roll: float, pitch: float):
     """(roll, pitch) -> (theta_m5, theta_m6) for the RIGHT ankle."""
-    angle = _ankle_mapping(roll, pitch, RIGHT)[::-1]
-    return angle.reshape(-1,1)
+    return _ankle_mapping(roll, pitch, RIGHT)[::-1]
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -249,24 +248,15 @@ def _ankle_jacobian_analytic(roll: float, pitch: float, G):
     J_inv[1, 1] = dgamma_dp[1] + dacos_dp[1]   # \partial theta_m6/\partial pitch
     return J_inv
 
-# ───────────────────── finite-difference Jacobian (debug) ───────────
-def _ankle_jacobian_fd(roll, pitch, G, h: float = 1.0e-8):
-    """Finite-difference """
-    f0 = _ankle_mapping(roll, pitch, G)
-    f_r = _ankle_mapping(roll + h, pitch, G)
-    f_p = _ankle_mapping(roll, pitch + h, G)
-    return np.column_stack(((f_r - f0) / h,
-                            (f_p - f0) / h))
-
-# pick analytic path (comment next line to force FD)
-# ankle_jacobian = _ankle_jacobian_analytic
-ankle_jacobian = _ankle_jacobian_fd     #
-
 # Jacobian in **motor order** (swap rows for right leg)
 def _J_motor(r, p, *, left=True):
     G = LEFT if left else RIGHT
-    J = ankle_jacobian(r, p, G)
+    J = _ankle_jacobian_analytic(r, p, G)
     return J if left else J[::-1]
+
+# pick analytic path (comment next line to force FD)
+ankle_jacobian = _ankle_jacobian_analytic
+# ankle_jacobian = _ankle_jacobian_fd     #
 
 # ───────────────────── velocity & torque maps ───────────────────────
 def motor_velocities_from_foot(r, p, r_d, p_d, *, left=True):
@@ -285,12 +275,20 @@ def motor_torque_from_ankle(r, p, tau_p, tau_r, *, left=True):
                      [-J[1,0],  J[0,0]]]) / det
     return Jinv.T @ np.array([tau_p, tau_r])
 
+# ───────────────────── finite-difference Jacobian (debug) ───────────
+def _ankle_jacobian_fd(roll, pitch, G, h: float = 1.0e-8):
+    """Finite-difference """
+    f0 = _ankle_mapping(roll, pitch, G)
+    f_r = _ankle_mapping(roll + h, pitch, G)
+    f_p = _ankle_mapping(roll, pitch + h, G)
+    return np.column_stack(((f_r - f0) / h,
+                            (f_p - f0) / h))
 # ──────────────────────────────────────────────────────────────────────
 # 5.  Main
 # ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    roll_cmd  = np.deg2rad(0.0)
-    pitch_cmd = np.deg2rad(19)
+    roll_cmd  = np.deg2rad(15)
+    pitch_cmd = np.deg2rad(0)
 
     theta_m_left  = left_leg_motor_angles (roll_cmd, pitch_cmd)
     theta_m_right = right_leg_motor_angles(roll_cmd, pitch_cmd)
@@ -299,8 +297,8 @@ if __name__ == "__main__":
     est_roll_R,  est_pitch_R  = right_leg_foot_angles(*theta_m_right)
 
     print("Cmd   : ", np.rad2deg([roll_cmd, pitch_cmd]))
-    print("theta_motor_left", theta_m_left)
-    print("theta_m_right", theta_m_right)
+    print("theta_motor_left", np.rad2deg(theta_m_left))
+    print("theta_m_right", np.rad2deg(theta_m_right))
     print("Left  : ", np.rad2deg([est_roll_L, est_pitch_L]))
     print("Right : ", np.rad2deg([est_roll_R, est_pitch_R]))
     
@@ -316,14 +314,15 @@ if __name__ == "__main__":
 
     print("max|J_fd - J_anal| =", np.max(np.abs(J_fd - J_anal)))
 
-    tau_m  = np.array([3.0, -4.0])              # Nm at the motors
-    tau_q  = ankle_torque_from_motor(roll_cmd, pitch_cmd, *tau_m, left=True)
+    # tau_m  = np.array([3.0, -4.0])              # Nm at the motors
+    # tau_q  = ankle_torque_from_motor(roll_cmd, pitch_cmd, *tau_m, left=True)
+    tau_q  = np.array([-1,0])
     tau_m2 = motor_torque_from_ankle(roll_cmd, pitch_cmd, *tau_q, left=True)
     
     print("ankle torques :", tau_q)
     print("back to motor :", tau_m2)            # 
 
     J_fd  = _ankle_jacobian_fd(roll_cmd, pitch_cmd, LEFT)    # your FD helper
-    tau_q_fd = J_fd.T @ tau_m
+    # tau_q_fd = J_fd.T @ tau_m
 
-    print("tau_q_fd = ", tau_q_fd)    # 
+    # print("tau_q_fd = ", tau_q_fd)    # 

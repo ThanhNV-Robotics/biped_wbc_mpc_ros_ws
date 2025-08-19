@@ -63,8 +63,8 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────────────
 #   Init Low-level PD impedence controller
 # ──────────────────────────────────────────────────────────────────────
-    Joint_Kp = np.diag([50, 50]) # N.m/rad
-    Joint_Kd = np.diag([0.25, 0.25]) #N.ms/rad
+    Joint_Kp = np.diag([20, 20]) # N.m/rad
+    Joint_Kd = np.diag([1.25, 1.25]) #N.ms/rad
     PDController= PD_Impedence_Control(Joint_Kp, Joint_Kd) # init robot's joint PD controller
 
 # ──────────────────────────────────────────────────────────────────────
