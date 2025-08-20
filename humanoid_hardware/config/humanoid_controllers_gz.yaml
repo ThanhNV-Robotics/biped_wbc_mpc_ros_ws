@@ -1,0 +1,34 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    effort_cmd:
+      type: forward_command_controller/ForwardCommandController
+
+    imu_sensor_broadcaster:
+      type: imu_sensor_broadcaster/IMUSensorBroadcaster
+
+effort_cmd:
+  ros__parameters:
+    joints:
+      - Left_Hip_Pitch
+      - Left_Hip_Roll
+      - Left_Hip_Yaw
+      - Left_Knee
+      - Left_Ankle_Roll
+      - Left_Ankle_Pitch
+      - Right_Hip_Pitch
+      - Right_Hip_Roll
+      - Right_Hip_Yaw
+      - Right_Knee
+      - Right_Ankle_Roll
+      - Right_Ankle_Pitch
+
+    interface_name: "effort"
+
+imu_sensor_broadcaster:
+  ros__parameters:
+    sensor_name: "imu_sensor"
+    frame_id: "imu_link"  
