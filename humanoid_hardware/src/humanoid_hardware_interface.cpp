@@ -1,4 +1,6 @@
 #include "humanoid_hardware/humanoid_hardware_interface.hpp"
+#include "humanoid_hardware/ankle_kinematics.hpp"
+
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "pluginlib/class_list_macros.hpp"
 
@@ -41,6 +43,7 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_init(
         {
             joint_map_[i].motor_id = std::stoul(info_.joints[i].parameters.at("motor_id"));
             joint_map_[i].rpi_id = std::stoi(info_.joints[i].parameters.at("rpi_id"));
+            joint_map_[i].direction = std::stoi(info_.joints[i].parameters.at("direction"));
         }
         catch (const std::invalid_argument & e)
         {
@@ -62,6 +65,22 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_init(
             return hardware_interface::CallbackReturn::ERROR;
         }
     }
+
+    auto find_index = [&](const std::string& name)->int {
+    for (size_t i = 0; i < info_.joints.size(); ++i) {
+        if (info_.joints[i].name == name) return static_cast<int>(i);
+    }
+    return -1;
+    };
+
+    idx_L_ankle_roll  = find_index("Left_Ankle_Roll");
+    idx_L_ankle_pitch = find_index("Left_Ankle_Pitch");
+    idx_R_ankle_roll  = find_index("Right_Ankle_Roll");
+    idx_R_ankle_pitch = find_index("Right_Ankle_Pitch");
+
+
+    std::cout << "Left Ankle Roll Index: " << idx_L_ankle_roll << std::endl;
+    std::cout << "Left Ankle Pitch Index: " << idx_L_ankle_pitch << std::endl;
 
     // for (const auto & sensor : info_.sensors) 
     // {
@@ -198,35 +217,72 @@ std::vector<hardware_interface::CommandInterface> HumanoidHardwareInterface::exp
 hardware_interface::return_type HumanoidHardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-    MotorState states_rpi1[motor_ids_rpi1_.size()];
-    if (udp_rpi1_comm_ && udp_rpi1_comm_->readState(states_rpi1, motor_ids_rpi1_.size()))
+    std::vector<MotorState> states_rpi1(motor_ids_rpi1_.size());
+    std::vector<MotorState> states_rpi2(motor_ids_rpi2_.size());
+
+    if (udp_rpi1_comm_) udp_rpi1_comm_->readState(states_rpi1.data(), states_rpi1.size());
+    if (udp_rpi2_comm_) udp_rpi2_comm_->readState(states_rpi2.data(), states_rpi2.size());
+
+
+    auto find_state = [&](uint16_t id, double& pos, double& vel)->bool {
+        for (const auto& s: states_rpi1) if (s.drive_ids==id) { pos=s.position; vel=s.velocity; return true; }
+        for (const auto& s: states_rpi2) if (s.drive_ids==id) { pos=s.position; vel=s.velocity; return true; }
+        return false;
+    };
+
+    for (size_t i=0;i<joint_map_.size();++i)
     {
-        for (size_t i = 0; i < motor_ids_rpi1_.size(); ++i)
+        if ((int)i==idx_L_ankle_roll || (int)i==idx_L_ankle_pitch ||
+            (int)i==idx_R_ankle_roll || (int)i==idx_R_ankle_pitch) 
+            continue;
+
+        double pos, vel;
+        if (find_state(joint_map_[i].motor_id, pos, vel))
         {
-            auto it = std::find_if(joint_map_.begin(), joint_map_.end(), 
-                [&](const JointInfo& j){ return j.motor_id == states_rpi1[i].drive_ids; });
-            if (it != joint_map_.end()) 
-            {
-                size_t joint_idx = std::distance(joint_map_.begin(), it);
-                hw_positions_[joint_idx] = states_rpi1[i].position;
-                hw_velocities_[joint_idx] = states_rpi1[i].velocity;
-            }
+            hw_positions_[i]  = joint_map_[i].direction * pos;
+            hw_velocities_[i] = joint_map_[i].direction * vel;
         }
     }
 
-    MotorState states_rpi2[motor_ids_rpi2_.size()];
-    if (udp_rpi2_comm_ && udp_rpi2_comm_->readState(states_rpi2, motor_ids_rpi2_.size()))
-    {
-        for (size_t i = 0; i < motor_ids_rpi2_.size(); ++i)
+    if (idx_L_ankle_roll>=0 && idx_L_ankle_pitch>=0){
+        const auto& jr = joint_map_[idx_L_ankle_roll];
+        const auto& jp = joint_map_[idx_L_ankle_pitch];
+        double p5, v5, p6, v6;
+        if (find_state(jr.motor_id, p5, v5) && find_state(jp.motor_id, p6, v6))
         {
-            auto it = std::find_if(joint_map_.begin(), joint_map_.end(), 
-                [&](const JointInfo& j){ return j.motor_id == states_rpi2[i].drive_ids; });
-            if (it != joint_map_.end()) 
-            {
-                size_t joint_idx = std::distance(joint_map_.begin(), it);
-                hw_positions_[joint_idx] = states_rpi2[i].position;
-                hw_velocities_[joint_idx] = states_rpi2[i].velocity;
-            }
+            const double t5  = jr.direction * p5;
+            const double t6  = jp.direction * p6;
+            const double t5d = jr.direction * v5;
+            const double t6d = jp.direction * v6;
+
+            auto rp  = ankle_kinematics::leftJointAngles(t5, t6);
+            auto rpd = ankle_kinematics::footVelFromMotor(rp[0], rp[1], t5d, t6d, /*left=*/true);
+
+            hw_positions_[idx_L_ankle_roll ] = rp[0];
+            hw_positions_[idx_L_ankle_pitch] = rp[1];
+            hw_velocities_[idx_L_ankle_roll ] = rpd[0];
+            hw_velocities_[idx_L_ankle_pitch] = rpd[1];
+        }
+    }
+
+    if (idx_R_ankle_roll>=0 && idx_R_ankle_pitch>=0){
+        const auto& jr = joint_map_[idx_R_ankle_roll];
+        const auto& jp = joint_map_[idx_R_ankle_pitch];
+        double p5, v5, p6, v6;
+        if (find_state(jr.motor_id, p5, v5) && find_state(jp.motor_id, p6, v6))
+        {
+            const double t5  = jr.direction * p5;
+            const double t6  = jp.direction * p6;
+            const double t5d = jr.direction * v5;
+            const double t6d = jp.direction * v6;
+
+            auto rp  = ankle_kinematics::rightJointAngles(t5, t6);
+            auto rpd = ankle_kinematics::footVelFromMotor(rp[0], rp[1], t5d, t6d, /*left=*/false);
+
+            hw_positions_[idx_R_ankle_roll ] = rp[0];
+            hw_positions_[idx_R_ankle_pitch] = rp[1];
+            hw_velocities_[idx_R_ankle_roll ] = rpd[0];
+            hw_velocities_[idx_R_ankle_pitch] = rpd[1];
         }
     }
 
@@ -234,37 +290,72 @@ hardware_interface::return_type HumanoidHardwareInterface::read(
 }
 
 hardware_interface::return_type HumanoidHardwareInterface::write(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time &, const rclcpp::Duration &)
 {
     std::vector<MotorCommand> commands_rpi1;
     std::vector<MotorCommand> commands_rpi2;
 
-    for (size_t i = 0; i < joint_map_.size(); ++i)
+    auto push_motor = [&](uint16_t motor_id, int rpi_id, double target)
     {
         MotorCommand cmd;
-        cmd.drive_ids = joint_map_[i].motor_id;
-        cmd.target_position = hw_commands_[i]; 
-
-        if (joint_map_[i].rpi_id == 1)
-        {
+        cmd.drive_ids = motor_id;
+        cmd.target_position = target;
+        if (rpi_id == 1) 
             commands_rpi1.push_back(cmd);
-        }
-        else
-        {
+        else             
             commands_rpi2.push_back(cmd);
+    };
+
+    auto push_with_dir = [&](const JointInfo& jinfo, double target_in_joint_space)
+    {
+        push_motor(jinfo.motor_id, jinfo.rpi_id, jinfo.direction * target_in_joint_space);
+    };
+
+    for (size_t i = 0; i < joint_map_.size(); ++i)
+    {
+        if ((int)i == idx_L_ankle_roll  || (int)i == idx_L_ankle_pitch ||
+            (int)i == idx_R_ankle_roll  || (int)i == idx_R_ankle_pitch)
+        {
+            continue;
         }
+
+        push_with_dir(joint_map_[i], hw_commands_[i]);
+    }
+
+    if (idx_L_ankle_roll >=0 && idx_L_ankle_pitch >=0)
+    {
+        const double r_cmd = hw_commands_[idx_L_ankle_roll ];
+        const double p_cmd = hw_commands_[idx_L_ankle_pitch];
+
+        ankle_kinematics::vec2 m = ankle_kinematics::leftMotorAngles(r_cmd, p_cmd);
+
+        const JointInfo& m5 = joint_map_[idx_L_ankle_roll ];
+        const JointInfo& m6 = joint_map_[idx_L_ankle_pitch];
+
+        push_with_dir(m5, m[0]);
+        push_with_dir(m6, m[1]);
+    }
+
+    if (idx_R_ankle_roll >=0 && idx_R_ankle_pitch >=0)
+    {
+        const double r_cmd = hw_commands_[idx_R_ankle_roll ];
+        const double p_cmd = hw_commands_[idx_R_ankle_pitch];
+
+        ankle_kinematics::vec2 m = ankle_kinematics::rightMotorAngles(r_cmd, p_cmd);
+
+        const JointInfo& m5 = joint_map_[idx_R_ankle_roll ]; 
+        const JointInfo& m6 = joint_map_[idx_R_ankle_pitch];
+
+        push_with_dir(m5, m[0]);
+        push_with_dir(m6, m[1]);
     }
 
     if (udp_rpi1_comm_ && !commands_rpi1.empty())
-    {
         udp_rpi1_comm_->sendCommand(commands_rpi1.data(), commands_rpi1.size());
-    }
     if (udp_rpi2_comm_ && !commands_rpi2.empty())
-    {
         udp_rpi2_comm_->sendCommand(commands_rpi2.data(), commands_rpi2.size());
-    }
 
-  return hardware_interface::return_type::OK;
+    return hardware_interface::return_type::OK;
 }
 
 }  // namespace humanoid_hardware
