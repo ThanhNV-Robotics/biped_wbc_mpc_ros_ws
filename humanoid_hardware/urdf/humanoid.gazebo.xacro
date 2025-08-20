@@ -377,37 +377,43 @@
         <origin rpy="0 0 0" xyz="0.0 0.089761 -0.081437"/>
         <parent link="base_link"/>
         <child link="Left_Hip_Pitch_1"/>
-        <axis xyz="-0.0 0.965926 -0.258819"/>
+        <axis xyz="-0.0 -0.965926 0.258819"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
         <joint name="Left_Hip_Roll" type="continuous">
         <origin rpy="0 0 0" xyz="0.0445 0.072444 -0.019412"/>
         <parent link="Left_Hip_Pitch_1"/>
         <child link="Left_Link2_Hip_1"/>
         <axis xyz="1.0 0.0 -0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
         <joint name="Left_Hip_Yaw" type="continuous">
         <origin rpy="0 0 0" xyz="-0.0445 0.0 -0.1205"/>
         <parent link="Left_Link2_Hip_1"/>
         <child link="Left_Thigh_1"/>
         <axis xyz="-0.0 0.0 -1.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
         <joint name="Left_Knee" type="continuous">
         <origin rpy="0 0 0" xyz="0.0 0.017 -0.2035"/>
         <parent link="Left_Thigh_1"/>
         <child link="Left_Shank_1"/>
         <axis xyz="-0.0 1.0 0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
         <joint name="Left_Ankle_Roll" type="continuous">
         <origin rpy="0 0 0" xyz="0.019 -0.017 -0.335"/>
         <parent link="Left_Shank_1"/>
         <child link="Left_Ankle_Roll_1"/>
         <axis xyz="-1.0 -0.0 0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
         <joint name="Left_Ankle_Pitch" type="continuous">
         <origin xyz="-0.019 -0.015 0.0" rpy="0 0 0"/>
         <parent link="Left_Ankle_Roll_1"/>
         <child link="Left_Foot_1"/>
         <axis xyz="-0.0 1.0 -0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
 
     <!-- 오른쪽 다리 --> 
@@ -415,37 +421,43 @@
         <origin rpy="0 0 0" xyz="0.0 -0.089761 -0.081437"/>
         <parent link="base_link"/>
         <child link="Right_Hip_Pitch_1"/>
-        <axis xyz="0.0 0.965926 0.258819"/>
+        <axis xyz="0.0 -0.965926 -0.258819"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
         <joint name="Right_Hip_Roll" type="continuous">
         <origin rpy="0 0 0" xyz="0.0445 -0.072444 -0.019412"/>
         <parent link="Right_Hip_Pitch_1"/>
         <child link="Right_Link2_Hip_1"/>
         <axis xyz="1.0 0.0 0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
         <joint name="Right_Hip_Yaw" type="continuous">
         <origin rpy="0 0 0" xyz="-0.0445 0.0 -0.1205"/>
         <parent link="Right_Link2_Hip_1"/>
         <child link="Right_Thigh_1"/>
         <axis xyz="0.0 0.0 -1.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
     <joint name="Right_Knee" type="continuous">
         <origin rpy="0 0 0" xyz="0.0 -0.017 -0.2035"/>
         <parent link="Right_Thigh_1"/>
         <child link="Right_Shank_1"/>
-        <axis xyz="0.0 -1.0 0.0"/>
+        <axis xyz="0.0 1.0 0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
     <joint name="Right_Ankle_Roll" type="continuous">
         <origin rpy="0 0 0" xyz="0.019 0.017 -0.335"/>
         <parent link="Right_Shank_1"/>
         <child link="Right_Ankle_Roll_1"/>
         <axis xyz="-1.0 -0.0 -0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
     <joint name="Right_Ankle_Pitch" type="continuous">
         <origin xyz="-0.019 0.015 0.0" rpy="0 0 0"/>
         <parent link="Right_Ankle_Roll_1"/>
         <child link="Right_Foot_1"/>
         <axis xyz="-0.0 1.0 -0.0"/>
+        <dynamics friction="0.5" damping="1.0"/>
     </joint>
 
     <joint name="imu_joint" type="fixed">
@@ -462,7 +474,8 @@
         <joint name="Left_Hip_Pitch">
             <param name="motor_id">10</param>
             <param name="rpi_id">2</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             
@@ -471,97 +484,98 @@
         <joint name="Left_Hip_Roll">
             <param name="motor_id">20</param>
             <param name="rpi_id">2</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Left_Hip_Yaw">
             <param name="motor_id">30</param>
             <param name="rpi_id">2</param>
-            <command_interface name="position"/>
+            <param name="direction">-1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Left_Knee">
             <param name="motor_id">40</param>
             <param name="rpi_id">2</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Left_Ankle_Roll">
             <param name="motor_id">50</param>
             <param name="rpi_id">2</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Left_Ankle_Pitch">
             <param name="motor_id">60</param>
             <param name="rpi_id">2</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Right_Hip_Pitch">
             <param name="motor_id">70</param>
             <param name="rpi_id">1</param>
-            <command_interface name="position"/>
+            <param name="direction">-1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Right_Hip_Roll">
             <param name="motor_id">80</param>
             <param name="rpi_id">1</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Right_Hip_Yaw">
             <param name="motor_id">90</param>
             <param name="rpi_id">1</param>
-            <command_interface name="position"/>
+            <param name="direction">-1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Right_Knee">
             <param name="motor_id">100</param>
             <param name="rpi_id">1</param>
-            <command_interface name="position"/>
+            <param name="direction">-1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Right_Ankle_Roll">
             <param name="motor_id">110</param>
             <param name="rpi_id">1</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
-            
         </joint>
 
         <joint name="Right_Ankle_Pitch">
             <param name="motor_id">120</param>
             <param name="rpi_id">1</param>
-            <command_interface name="position"/>
+            <param name="direction">1</param>
+            <command_interface name="effort"/>
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
@@ -584,7 +598,7 @@
     <gazebo>
         <plugin filename="gz_ros2_control-system"
                 name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-            <parameters>$(find humanoid_hardware)/config/humanoid_controllers.yaml</parameters>
+            <parameters>$(find humanoid_hardware)/config/humanoid_controllers_gz.yaml</parameters>
         </plugin>
         <plugin filename="gz-sim-imu-system"
                 name="gz::sim::systems::Imu">
@@ -612,18 +626,5 @@
             </actuator>
         </transmission>
     </xacro:macro>
-
-    <xacro:joint_transmission joint_name="Left_Hip_Pitch"/>
-    <xacro:joint_transmission joint_name="Left_Hip_Roll"/>
-    <xacro:joint_transmission joint_name="Left_Hip_Yaw"/>
-    <xacro:joint_transmission joint_name="Left_Knee"/>
-    <xacro:joint_transmission joint_name="Left_Ankle_Roll"/>
-    <xacro:joint_transmission joint_name="Left_Ankle_Pitch"/>
-    <xacro:joint_transmission joint_name="Right_Hip_Pitch"/>
-    <xacro:joint_transmission joint_name="Right_Hip_Roll"/>
-    <xacro:joint_transmission joint_name="Right_Hip_Yaw"/>
-    <xacro:joint_transmission joint_name="Right_Knee"/>
-    <xacro:joint_transmission joint_name="Right_Ankle_Roll"/>
-    <xacro:joint_transmission joint_name="Right_Ankle_Pitch"/>
 
 </robot>
