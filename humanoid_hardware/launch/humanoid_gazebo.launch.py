@@ -34,7 +34,6 @@ def generate_launch_description():
         }.items(),
     )
 
-
     xacro_file = os.path.join(pkg_path, 'urdf', 'humanoid.gazebo.xacro')
     robot_description_config = xacro.process_file(xacro_file)
     robot_description = {'robot_description': robot_description_config.toxml()}
@@ -59,10 +58,11 @@ def generate_launch_description():
         arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
         output='screen',
     )
-    joint_trajectory_controller_spawner = Node(
+    
+    effort_cmd_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_trajectory_controller', '--controller-manager', '/controller_manager'],
+        arguments=['effort_cmd', '--controller-manager', '/controller_manager'],
         output='screen',
     )
 
@@ -77,7 +77,7 @@ def generate_launch_description():
             target_action=spawn_entity_node,
             on_exit=[
                 joint_state_broadcaster_spawner,
-                joint_trajectory_controller_spawner,
+                effort_cmd_spawner,
                 imu_sensor_broadcaster_spawner,
             ],
         )
