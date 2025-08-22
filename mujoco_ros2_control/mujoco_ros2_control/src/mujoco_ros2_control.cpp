@@ -18,9 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
- #include "hardware_interface/component_parser.hpp"
-// #include "hardware_interface/resource_manager.hpp"
-// #include "hardware_interface/system_interface.hpp"
+#include "hardware_interface/component_parser.hpp"
+#include "hardware_interface/resource_manager.hpp"
+#include "hardware_interface/system_interface.hpp"
 
 #include "mujoco_ros2_control/mujoco_ros2_control.hpp"
 

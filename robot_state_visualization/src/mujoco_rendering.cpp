@@ -21,6 +21,13 @@
 #include "robot_state_visualization/mujoco_rendering.hpp"
 
 #include "sensor_msgs/image_encodings.hpp"
+// Real-time control parameters
+const double SIMULATION_RATE = 1000.0;  // Hz 
+const double RENDERING_RATE = 60.0;    // Hz
+const double CAMERA_RATE = 6.0;        // Hz
+
+const double SIMULATION_DT = 1.0 / SIMULATION_RATE;
+const double RENDERING_DT = 1.0 / RENDERING_RATE;
 
 namespace robot_state_visualization
 {
@@ -36,25 +43,15 @@ MujocoRendering *MujocoRendering::get_instance()
   return instance_;
 }
 
-MujocoRendering::MujocoRendering()
+MujocoRendering::MujocoRendering() // constructor
     : mj_model_(nullptr),
       mj_data_(nullptr),
       button_left_(false),
       button_middle_(false),
       button_right_(false),
       lastx_(0.0),
-      lasty_(0.0),
-      selected_body_(-1),
-      selected_geom_(-1),
-      force_mode_(false),
-      force_scale_(10.0),
-      force_active_(false),
-      last_click_time_(0.0),
-      double_click_time_(0.3)
+      lasty_(0.0)
 {
-  // Initialize force vectors
-  force_pos_[0] = force_pos_[1] = force_pos_[2] = 0.0;
-  force_vec_[0] = force_vec_[1] = force_vec_[2] = 0.0;
 }
 
 void MujocoRendering::init(mjModel *mujoco_model, mjData *mujoco_data)
@@ -65,7 +62,7 @@ void MujocoRendering::init(mjModel *mujoco_model, mjData *mujoco_data)
   // create window, make OpenGL context current, request v-sync
   glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
   glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
-  window_ = glfwCreateWindow(1200, 900, "Demo", NULL, NULL);
+  window_ = glfwCreateWindow(1200, 900, "Robot Visualization", NULL, NULL);
   glfwMakeContextCurrent(window_);
 
   // initialize visualization data structures
@@ -75,7 +72,7 @@ void MujocoRendering::init(mjModel *mujoco_model, mjData *mujoco_data)
   mjr_defaultContext(&mjr_con_);
 
   mjv_cam_.type = mjCAMERA_FREE;
-  mjv_cam_.distance = 2.;
+  mjv_cam_.distance = 3.;
 
   // create scene and context
   mjv_makeScene(mj_model_, &mjv_scn_, 2000);
@@ -87,9 +84,9 @@ void MujocoRendering::init(mjModel *mujoco_model, mjData *mujoco_data)
   glfwSetMouseButtonCallback(window_, &MujocoRendering::mouse_button_callback);
   glfwSetScrollCallback(window_, &MujocoRendering::scroll_callback);
 
-  // Enable vertical sync for real-time rendering
-  // This ensures the rendering is synchronized with the monitor refresh rate
-  glfwSwapInterval(1);
+  // This might cause tearing, but having RViz and the renderer both open can
+  // wreak havoc on the rendering process.
+  glfwSwapInterval(0);
 }
 
 bool MujocoRendering::is_close_flag_raised() { return glfwWindowShouldClose(window_); }
@@ -99,10 +96,6 @@ void MujocoRendering::update()
   // get framebuffer viewport
   mjrRect viewport = {0, 0, 0, 0};
   glfwGetFramebufferSize(window_, &viewport.width, &viewport.height);
-  glfwMakeContextCurrent(window_);
-
-  // Reset the buffer
-  mjr_setBuffer(mjFB_WINDOW, &mjr_con_);
 
   // update scene and render
   mjv_updateScene(mj_model_, mj_data_, &mjv_opt_, NULL, &mjv_cam_, mjCAT_ALL, &mjv_scn_);
@@ -121,11 +114,6 @@ void MujocoRendering::close()
   mjv_freeScene(&mjv_scn_);
   mjr_freeContext(&mjr_con_);
   glfwDestroyWindow(window_);
-
-  // terminate GLFW (crashes with Linux NVidia drivers)
-#if defined(__APPLE__) || defined(_WIN32)
-  glfwTerminate();
-#endif
 }
 
 void MujocoRendering::keyboard_callback(
@@ -161,7 +149,7 @@ void MujocoRendering::keyboard_callback_impl(
 }
 
 void MujocoRendering::mouse_button_callback_impl(
-  GLFWwindow *window, int button, int act, int mods)
+  GLFWwindow *window, int /* button */, int /* act */, int /* mods */)
 {
   // update button state
   button_left_ = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
@@ -170,70 +158,21 @@ void MujocoRendering::mouse_button_callback_impl(
 
   // update mouse position
   glfwGetCursorPos(window, &lastx_, &lasty_);
-  
-  // Check for Ctrl key (force mode)
-  bool ctrl_pressed = (mods & GLFW_MOD_CONTROL) != 0;
-  force_mode_ = ctrl_pressed;
-  
-  // Handle left mouse button events
-  if (button == GLFW_MOUSE_BUTTON_LEFT)
-  {
-    if (act == GLFW_PRESS)
-    {
-      double current_time = glfwGetTime();
-      
-      // Check for double-click (object selection)
-      if (current_time - last_click_time_ < double_click_time_)
-      {
-        // Double-click detected - select object
-        select_object(lastx_, lasty_);
-        force_active_ = false;  // Clear any active force
-      }
-      else if (ctrl_pressed)
-      {
-        // Ctrl + left click - start force application
-        if (selected_body_ >= 0)
-        {
-          force_active_ = true;
-          // Get the position where force will be applied
-          select_object(lastx_, lasty_);
-        }
-      }
-      
-      last_click_time_ = current_time;
-    }
-    else if (act == GLFW_RELEASE)
-    {
-      // Stop force application when mouse is released
-      if (force_active_)
-      {
-        force_active_ = false;
-        clear_force();
-      }
-    }
-  }
 }
 
 void MujocoRendering::mouse_move_callback_impl(GLFWwindow *window, double xpos, double ypos)
 {
-  // compute mouse displacement, save
-  double dx = xpos - lastx_;
-  double dy = ypos - lasty_;
-  lastx_ = xpos;
-  lasty_ = ypos;
-
-  // Handle force application (Ctrl + left mouse drag)
-  if (force_active_ && button_left_ && force_mode_)
-  {
-    apply_force(dx, dy);
-    return;  // Don't move camera when applying force
-  }
-
   // no buttons down: nothing to do
   if (!button_left_ && !button_middle_ && !button_right_)
   {
     return;
   }
+
+  // compute mouse displacement, save
+  double dx = xpos - lastx_;
+  double dy = ypos - lasty_;
+  lastx_ = xpos;
+  lasty_ = ypos;
 
   // get current window size
   int width, height;
@@ -270,24 +209,4 @@ void MujocoRendering::scroll_callback_impl(
   mjv_moveCamera(mj_model_, mjMOUSE_ZOOM, 0, -0.05 * yoffset, &mjv_scn_, &mjv_cam_);
 }
 
-void MujocoRendering::select_object(double xpos, double ypos)
-{
-  return;
-}
-
-void MujocoRendering::apply_force(double dx, double dy)
-{
-  return;
-}
-
-void MujocoRendering::update_force_visualization()
-{
-  return;
-}
-
-void MujocoRendering::clear_force()
-{
-  return;
-}
-
-}  // namespace mujoco_ros2_control
+}  // namespace robot_state_visualization

@@ -31,6 +31,15 @@ def generate_launch_description():
         ]
     ) # mujoco simulator node
 
+    node_mujoco_ros2_mimic = Node(
+        package='robot_state_visualization',
+        executable='robot_state_visualization_node',
+        output='screen',
+        parameters=[
+            {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Left_Leg.xml')}
+        ]
+    ) # mujoco mimic node
+
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -64,5 +73,6 @@ def generate_launch_description():
             )
         ),
         node_mujoco_ros2_control,
+        node_mujoco_ros2_mimic,
         node_robot_state_publisher
     ])

@@ -1,26 +1,17 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.5)
 project(robot_state_visualization)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+# Default C++ standard
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
 endif()
 
-# find dependencies
-find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
-# find dependencies
+# Dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(glfw3 REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
-set(THIS_PACKAGE_DEPENDS
-  ament_cmake
-  rclcpp
-  glfw3
-)
-
+# MuJoCo + GLFW
 find_package(mujoco QUIET)
 if(mujoco_FOUND)
   message(STATUS "Mujoco build from source has been found")
@@ -37,45 +28,65 @@ else()
   message(FATAL_ERROR "Failed to find mujoco with find_package.
   Either build and install mujoco from source or set the MUJOCO_DIR environment variable to tell CMake where to find the binary install. ")
 endif()
-target_include_directories(robot_state_visualization
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-    ${MUJOCO_INCLUDE_DIR}
-    ${EIGEN3_INCLUDE_DIR})
-# Executable
-add_executable(robot_state_visualization
-  src/robot_state_visualization_node.cpp
-  src/mujoco_cameras.cpp
-  src/mujoco_rendering.cpp  
-  )
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GLFW REQUIRED glfw3)
+
+find_path(MUJOCO_INCLUDE_DIR mujoco/mujoco.h)
+find_library(MUJOCO_LIB mujoco)
 
 # Include directories
-target_include_directories(robot_state_visualization PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-
-# Link dependencies
-ament_target_dependencies(robot_state_visualization
-  rclcpp
+include_directories(
+  include
+  ${MUJOCO_INCLUDE_DIR}
+  ${GLFW_INCLUDE_DIRS}
 )
-# # Link against MuJoCo
-# target_link_libraries(robot_state_visualization mujoco)
 
-# Install
-install(TARGETS robot_state_visualization
-  DESTINATION lib/${PROJECT_NAME})
+# Library from rendering + cameras
+add_library(robot_state_visualization_lib
+  # src/mujoco_cameras.cpp
+  src/mujoco_rendering.cpp
+)
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
-  set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
-endif()
+ament_target_dependencies(robot_state_visualization_lib
+  rclcpp
+  sensor_msgs
+)
+
+target_link_libraries(robot_state_visualization_lib
+  ${MUJOCO_LIB}
+  ${GLFW_LIBRARIES}
+)
+
+# Executable node
+add_executable(robot_state_visualization_node
+  src/robot_state_visualization_node.cpp
+)
+
+ament_target_dependencies(robot_state_visualization_node
+  rclcpp
+  sensor_msgs
+)
+
+target_link_libraries(robot_state_visualization_node
+  robot_state_visualization_lib
+)
+
+# Install targets
+install(TARGETS
+  robot_state_visualization_lib
+  robot_state_visualization_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install headers
+install(DIRECTORY include/
+  DESTINATION include
+)
+
+install(DIRECTORY
+  launch
+  mujoco_models
+  DESTINATION share/${PROJECT_NAME}/
+)
 
 ament_package()

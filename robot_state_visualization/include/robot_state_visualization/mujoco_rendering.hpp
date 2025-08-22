@@ -1,34 +1,9 @@
-// Copyright (c) 2025 Sangtaek Lee
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
 
-#ifndef MUJOCO_ROS2_CONTROL__MUJOCO_RENDERING_HPP_
-#define MUJOCO_ROS2_CONTROL__MUJOCO_RENDERING_HPP_
+#include <cstdio>
+#include <cstring>
 
-#include <string>
-#include <vector>
-
-#include "GLFW/glfw3.h"
-#include "mujoco/mujoco.h"
-#include "rclcpp/rclcpp.hpp"
-
-#include "rclcpp/node.hpp"
+#include <GLFW/glfw3.h>
+#include <mujoco/mujoco.h>
 
 namespace robot_state_visualization
 {
@@ -36,8 +11,6 @@ namespace robot_state_visualization
 class MujocoRendering
 {
 public:
-  MujocoRendering(const MujocoRendering &obj) = delete;
-  void operator=(const MujocoRendering &) = delete;
 
   static MujocoRendering *get_instance();
   void init(mjModel *mujoco_model, mjData *mujoco_data);
@@ -56,12 +29,6 @@ private:
   void mouse_button_callback_impl(GLFWwindow *window, int button, int act, int mods);
   void mouse_move_callback_impl(GLFWwindow *window, double xpos, double ypos);
   void scroll_callback_impl(GLFWwindow *window, double xoffset, double yoffset);
-  
-  // Interactive force application methods
-  void select_object(double xpos, double ypos);
-  void apply_force(double dx, double dy);
-  void update_force_visualization();
-  void clear_force();
 
   static MujocoRendering *instance_;
 
@@ -82,20 +49,5 @@ private:
   bool button_right_;
   double lastx_;
   double lasty_;
-  
-  // Interactive force application
-  int selected_body_;           // Currently selected body ID
-  int selected_geom_;           // Currently selected geometry ID
-  bool force_mode_;             // True when applying force (Ctrl pressed)
-  double force_scale_;          // Scale factor for force magnitude
-  mjtNum force_pos_[3];         // Position where force is applied
-  mjtNum force_vec_[3];         // Force vector
-  bool force_active_;           // True when force is being applied
-  
-  // Mouse interaction timing
-  double last_click_time_;      // Time of last click for double-click detection
-  double double_click_time_;    // Time window for double-click (seconds)
 };
-}  // namespace mujoco_ros2_control
-
-#endif  // MUJOCO_ROS2_CONTROL__MUJOCO_RENDERING_HPP_
+} 
