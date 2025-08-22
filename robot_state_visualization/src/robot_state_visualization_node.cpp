@@ -6,8 +6,9 @@
 #include <string>
 #include <vector>
 // MuJoCo data structures
-mjModel *mujoco_model = nullptr;
-mjData *mujoco_data = nullptr;
+mjModel *mj_model = nullptr;
+mjData *mj_data = nullptr;
+std::unordered_map<std::string, int> joint_qpos_index; // (joint_name, qpos_index)
 
 // Real-time control parameters
 const double SIMULATION_RATE = 1000.0;  // Hz 
@@ -17,8 +18,22 @@ const double CAMERA_RATE = 6.0;        // Hz
 const double SIMULATION_DT = 1.0 / SIMULATION_RATE;
 const double RENDERING_DT = 1.0 / RENDERING_RATE;
 
-//
-
+// JointState callback: copy positions into MuJoCo
+void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
+{
+  for (size_t i = 0; i < msg->name.size(); i++) {
+    auto it = joint_qpos_index.find(msg->name[i]);
+    if (it != joint_qpos_index.end()) {
+      int qpos_id = it->second;
+      mj_data->qpos[qpos_id] = msg->position[i];
+      if (i < msg->velocity.size()) {
+        mj_data->qvel[qpos_id] = msg->velocity[i];
+      }
+    }
+  }
+  // // Update derived states after modifying qpos/qvel
+  // mj_forward(mj_model, mj_data);
+}
 
 // main function
 int main(int argc, const char **argv)
@@ -39,14 +54,14 @@ int main(int argc, const char **argv)
     std::strlen(model_path.c_str()) > 4 &&
     !std::strcmp(model_path.c_str() + std::strlen(model_path.c_str()) - 4, ".mjb"))
   {
-    mujoco_model = mj_loadModel(model_path.c_str(), 0);
+    mj_model = mj_loadModel(model_path.c_str(), 0);
   }
   else
   {
-    mujoco_model = mj_loadXML(model_path.c_str(), 0, error, 1000);
+    mj_model = mj_loadXML(model_path.c_str(), 0, error, 1000);
     
   }
-  if (!mujoco_model)
+  if (!mj_model)
   {
     mju_error("Load model error: %s", error);
   }
@@ -56,12 +71,17 @@ int main(int argc, const char **argv)
   }
   
   // make data
-  mujoco_data = mj_makeData(mujoco_model);
+  mj_data = mj_makeData(mj_model);
 
-  
+  // Build mapping: joint name → qpos index
+  for (int j = 0; j < mj_model->njnt; j++) {
+    std::string jname = mj_model->names + mj_model->name_jntadr[j];
+    int qpos_adr = mj_model->jnt_qposadr[j];
+    joint_qpos_index[jname] = qpos_adr;
+  }
 
   // initialize mujoco control
-  //auto mujoco_control = mujoco_ros2_control::MujocoRos2Control(node, mujoco_model, mujoco_data);
+  //auto mujoco_control = mujoco_ros2_control::MujocoRos2Control(node, mj_model, mj_data);
 
   //mujoco_control.init();
   RCLCPP_INFO_STREAM(
@@ -73,7 +93,7 @@ int main(int argc, const char **argv)
     mju_error("Could not initialize GLFW");
   }
   auto rendering = robot_state_visualization::MujocoRendering::get_instance();
-  rendering->init(mujoco_model, mujoco_data);
+  rendering->init(mj_model, mj_data);
   RCLCPP_INFO_STREAM(node->get_logger(), "Mujoco rendering has been successfully initialized !");
 
   // run main loop, target real-time simulation and 60 fps rendering with cameras around 6 hz
@@ -85,23 +105,7 @@ int main(int argc, const char **argv)
 
   // Create a subscription
   auto subscription = node->create_subscription<sensor_msgs::msg::JointState>(
-      "/joint_states", 10, 
-      [](const sensor_msgs::msg::JointState::SharedPtr msg)
-      {
-        // Print first joint name and position if available
-        if (!msg->name.empty() && !msg->position.empty())
-        {
-          RCLCPP_INFO(rclcpp::get_logger("robot_visualization"),
-                      "Joint %s = %f",
-                      msg->name[0].c_str(),
-                      msg->position[0]);
-        }
-        else
-        {
-          RCLCPP_INFO(rclcpp::get_logger("robot_visualization"),
-                      "Received JointState with no data");
-        }
-      });
+      "/joint_states", 10, joint_state_callback );
 
   while (rclcpp::ok() && !rendering->is_close_flag_raised())
   //while (!rendering->is_close_flag_raised())
@@ -113,7 +117,7 @@ int main(int argc, const char **argv)
     // Update simulation at fixed rate
     if (elapsed_simulation >= SIMULATION_DT)
     {
-      mj_forward(mujoco_model, mujoco_data);
+      mj_forward(mj_model, mj_data);
       last_simulation_time = current_time;
     }
 
@@ -124,9 +128,9 @@ int main(int argc, const char **argv)
       last_rendering_time = current_time;
     }
     rclcpp::spin_some(node); //spin(node) not work
-    // mjtNum simstart = mujoco_data->time;
-    // while (mujoco_data->time - simstart < 1.0/60.0) {
-    //   mj_step(mujoco_model, mujoco_data);      
+    // mjtNum simstart = mj_data->time;
+    // while (mj_data->time - simstart < 1.0/60.0) {
+    //   mj_step(mj_model, mj_data);      
     // }
     // rclcpp::spin_some(node); //spin(node) not work
     // rendering->update();
@@ -136,8 +140,8 @@ int main(int argc, const char **argv)
   //cameras->close();
 
   // free MuJoCo model and data
-  mj_deleteData(mujoco_data);
-  mj_deleteModel(mujoco_model);
+  mj_deleteData(mj_data);
+  mj_deleteModel(mj_model);
 
   return 1;
 }
