@@ -28,7 +28,6 @@
 // MuJoCo data structures
 mjModel *mujoco_model = nullptr;
 mjData *mujoco_data = nullptr;
-
 // main function
 int main(int argc, const char **argv)
 {
@@ -36,6 +35,8 @@ int main(int argc, const char **argv)
   std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared(
     "mujoco_ros2_control_node",
     rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
+
+  //std::shared_ptr<rclcpp::Node> node_ptr = & node;
 
   RCLCPP_INFO_STREAM(node->get_logger(), "Initializing mujoco_ros2_control node...");
   auto model_path = node->get_parameter("mujoco_model_path").as_string();
@@ -60,6 +61,30 @@ int main(int argc, const char **argv)
   RCLCPP_INFO_STREAM(node->get_logger(), "Mujoco model has been successfully loaded !");
   // make data
   mujoco_data = mj_makeData(mujoco_model);
+  
+  // check the simulation type
+  bool is_mimic = false;  
+  if (node->has_parameter("simulator_type"))
+  {
+    std::string simulation_type_string = node->get_parameter("simulator_type").as_string();
+    if (simulation_type_string == "mimic")
+    {
+      RCLCPP_INFO_STREAM(node->get_logger(), "Simulator Type: " + simulation_type_string);
+      is_mimic = true;
+      // create a subscription to get the joint states topic
+      auto subscription = node->create_subscription<std_msgs::msg::String>(
+        "/joint_states",  // topic name
+        10,          // queue size
+        [](const std_msgs::msg::String::SharedPtr msg)
+        {
+          RCLCPP_INFO(rclcpp::get_logger("simple_subscriber"), "I heard: '%s'", msg->data.c_str());
+        });
+      RCLCPP_INFO_STREAM(node->get_logger(), "Joint State subscription was created");
+    }    
+  }
+  else{
+    RCLCPP_INFO_STREAM(node->get_logger(), "Is a Physic Simulator: Yes");
+  }
 
   // initialize mujoco control
   auto mujoco_control = mujoco_ros2_control::MujocoRos2Control(node, mujoco_model, mujoco_data);
@@ -102,6 +127,7 @@ int main(int argc, const char **argv)
       cameras->update(mujoco_model, mujoco_data);
       last_cam_update = simstart;
     }
+    rclcpp::spin(node);
   }
 
   rendering->close();
