@@ -5,11 +5,13 @@ namespace control_actions_cpp
     ControlActionServer::ControlActionServer(const rclcpp::NodeOptions &options)
         : Node("control_action_server", options)
     {
-        this->declare_parameter<std::string>("mujoco_model_path", ""); 
+        this->declare_parameter<std::string>("mujoco_model_path", "");
         joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
             "/joint_states", 10,
-            [this](const sensor_msgs::msg::JointState::SharedPtr msg) {
-                for (size_t i = 0; i < msg->name.size(); ++i) {
+            [this](const sensor_msgs::msg::JointState::SharedPtr msg)
+            {
+                for (size_t i = 0; i < msg->name.size(); ++i)
+                {
                     current_joint_positions_[msg->name[i]] = msg->position[i];
                 }
             }); // read joint position from /joint_states topic
@@ -79,8 +81,8 @@ namespace control_actions_cpp
         }
         else // valid joint name
         {
-            //check the duration value
-            if (goal->duration <0.5 || goal ->duration > 5.0)
+            // check the duration value
+            if (goal->duration < 0.5 || goal->duration > 5.0)
             {
                 RCLCPP_WARN(this->get_logger(), "The duration value is out of range [0.5, 5.0]");
                 // cancle the goal
@@ -123,7 +125,42 @@ namespace control_actions_cpp
             traj_pub->publish(traj_msg);
             RCLCPP_INFO(this->get_logger(), "Published trajectory command to move joint %s to position %f in duration %f",
                         goal->joint_name.c_str(), goal->target_position, goal->duration);
-            return;
+            // Feedback loop, update feedback at 20 Hz
+            // update current joint positions
+            rclcpp::Rate rate(20); // 20 Hz feedback
+            while (rclcpp::ok())
+            {
+                double current_position = 0.0;
+                auto it = current_joint_positions_.find(goal->joint_name);
+                if (it != current_joint_positions_.end())
+                    current_position = it->second;
+
+                feedback->joint_name = goal->joint_name;
+                feedback->feedback_position = current_position;
+                goal_handle->publish_feedback(feedback);
+
+                double error = std::abs(current_position - goal->target_position);
+                if (error <= 0.0872665) // 5 degrees in radians
+                {
+                    result->joint_name = goal->joint_name;
+                    result->final_position = current_position;
+                    goal_handle->succeed(result);
+                    RCLCPP_INFO(this->get_logger(), "Goal succeeded for joint %s at position %f (error: %f rad)",
+                                goal->joint_name.c_str(), current_position, error);
+                    break;
+                }
+
+                if (!rclcpp::ok() || goal_handle->is_canceling())
+                {
+                    result->joint_name = goal->joint_name;
+                    result->final_position = current_position;
+                    goal_handle->canceled(result);
+                    RCLCPP_INFO(this->get_logger(), "Goal canceled for joint %s", goal->joint_name.c_str());
+                    break;
+                }
+
+                rate.sleep();
+            }
         }
     }
 }
