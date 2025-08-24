@@ -1,6 +1,7 @@
 # Request/Goal
 string joint_name
 float64 target_position
+float64 duration
 ---
 # Result
 string joint_name
