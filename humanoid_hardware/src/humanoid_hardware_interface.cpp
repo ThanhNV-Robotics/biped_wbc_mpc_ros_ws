@@ -73,6 +73,13 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_init(
     return -1;
     };
 
+<<<<<<< HEAD
+    idx_L_ankle_roll  = find_index("left_ankle_roll");
+    idx_L_ankle_pitch = find_index("left_ankle_pitch");
+    idx_R_ankle_roll  = find_index("right_ankle_roll");
+    idx_R_ankle_pitch = find_index("right_ankle_pitch");
+    
+=======
     idx_L_ankle_roll  = find_index("Left_Ankle_Roll");
     idx_L_ankle_pitch = find_index("Left_Ankle_Pitch");
     idx_R_ankle_roll  = find_index("Right_Ankle_Roll");
@@ -82,6 +89,7 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_init(
     std::cout << "Left Ankle Roll Index: " << idx_L_ankle_roll << std::endl;
     std::cout << "Left Ankle Pitch Index: " << idx_L_ankle_pitch << std::endl;
 
+>>>>>>> d0ef5ffc2175bfb6a6953953f175936d8aef17ac
     // for (const auto & sensor : info_.sensors) 
     // {
     //     if (sensor.name == "imu_sensor") 
