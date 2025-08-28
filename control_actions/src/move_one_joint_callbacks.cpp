@@ -1,40 +1,37 @@
 #include <control_actions/control_actions_server.hpp>
 
-namespace control_actions_cpp
+namespace control_actions
 {
-    rclcpp_action::GoalResponse ControlActionServer::move_one_joint_handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const ControlActions::Goal> goal)
+    rclcpp_action::GoalResponse ControlActionServer::move_one_joint_handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const MoveOneJointAction::Goal> goal)
     {
         RCLCPP_INFO(this->get_logger(), "Received goal request with: %s , target position: %f", goal->joint_name.c_str(), goal->target_position);
         (void)uuid;
         return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
     }
 
-    rclcpp_action::CancelResponse ControlActionServer::move_one_joint_handle_cancel(const std::shared_ptr<GoalHandleControlActions> goal_handle)
+    rclcpp_action::CancelResponse ControlActionServer::move_one_joint_handle_cancel(const std::shared_ptr<GoalHandleCMoveOneJoint> goal_handle)
     {
         RCLCPP_INFO(this->get_logger(), "Received request to cancel goal");
         (void)goal_handle;
         return rclcpp_action::CancelResponse::ACCEPT;
     }
-    void ControlActionServer::move_one_joint_handle_accepted(const std::shared_ptr<GoalHandleControlActions> goal_handle)
+    void ControlActionServer::move_one_joint_handle_accepted(const std::shared_ptr<GoalHandleCMoveOneJoint> goal_handle)
     {
         using namespace std::placeholders;
         // this needs to return quickly to avoid blocking the executor, so spin up a new thread
         std::thread{std::bind(&ControlActionServer::move_one_joint_execute, this, _1), goal_handle}.detach();
     }
-    std::unordered_map<std::string, double> ControlActionServer::get_current_joint_positions(std::vector<std::string> joint_names)
-    {
-        return current_joint_positions_;
-    }
-    void ControlActionServer::move_one_joint_execute(const std::shared_ptr<GoalHandleControlActions> goal_handle)
+
+    void ControlActionServer::move_one_joint_execute(const std::shared_ptr<GoalHandleCMoveOneJoint> goal_handle)
     {
         RCLCPP_INFO(this->get_logger(), "Executing goal");
         rclcpp::Rate loop_rate(1);
         const auto goal = goal_handle->get_goal();                    // Get the user provided message describing the goal.
-        auto feedback = std::make_shared<ControlActions::Feedback>(); // The feedback message defined in the action definition.
-        // std::shared_ptr<const ControlActions::Goal> goal;
+        auto feedback = std::make_shared<MoveOneJointAction::Feedback>(); // The feedback message defined in the action definition.
+        // std::shared_ptr<const MoveOneJointAction::Goal> goal;
         feedback->joint_name = goal->joint_name;
         feedback->feedback_position = 0.0; // init feedback_position
-        auto result = std::make_shared<ControlActions::Result>();
+        auto result = std::make_shared<MoveOneJointAction::Result>();
 
         // validate the joint name
         int joint_id = mj_name2id(mj_model_, mjOBJ_JOINT, goal->joint_name.c_str());
@@ -69,8 +66,9 @@ namespace control_actions_cpp
                     return; // cancel the goal
                 }
             }
+            std::vector<std::string> joint_names =  ControlActionServer::get_joint_names();
             // get the current joint position
-            std::unordered_map<std::string, double> target_position = get_current_joint_positions(joint_names_);
+            std::unordered_map<std::string, double> target_position = ControlActionServer::get_current_joint_positions(joint_names);
             target_position[goal->joint_name] = goal->target_position;
 
             // create a publisher to publish to the joint trajectory command

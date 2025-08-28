@@ -14,7 +14,7 @@ namespace control_actions
     Matrix3d rot_z(double theta);
 
     // Helper: clamp safely for asin/acos with tolerance
-    double safeClamp(double x, double tol = 1e-9);
+    double safeClamp(double x);
     // Helper: check if value is NaN or Inf
     inline bool isInvalid(double x);
     // Inverse kinematics from hip to foot

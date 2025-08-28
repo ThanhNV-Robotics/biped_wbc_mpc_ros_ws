@@ -31,8 +31,10 @@ namespace control_actions
     }
 
     // Helper: clamp safely for asin/acos with tolerance
-    double safeClamp(double x, double tol = 1e-9)
+    double safeClamp(double x)
+
     {
+        double tol = 1e-9;
         if (x > 1.0 + tol || x < -1.0 - tol)
         {
             // way outside domain → invalid
@@ -58,10 +60,12 @@ namespace control_actions
         const std::vector<double> &current_joint_angle,
         bool isRight)
     {
+        // isRight = true -> compute for right leg
+        // isRight = false -> compute for left leg
         // Link lengths
-        double L1 = 0.324; // thigh
-        double L2 = 0.335; // shank
-        double L3 = 0.0;   // ankle offset
+        const double L1 = 0.324; // thigh
+        const double L2 = 0.335; // shank
+        const double L3 = 0.0;   // ankle offset
 
         double delta = isRight ? M_PI / 12.0 : -M_PI / 12.0; // 15 deg in rad
 

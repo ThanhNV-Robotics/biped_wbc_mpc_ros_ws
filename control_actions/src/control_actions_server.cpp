@@ -1,6 +1,6 @@
 #include <control_actions/control_actions_server.hpp>
 
-namespace control_actions_cpp
+namespace control_actions
 {
     ControlActionServer::ControlActionServer(const rclcpp::NodeOptions &options)
         : Node("control_action_server", options)
@@ -19,12 +19,23 @@ namespace control_actions_cpp
             }); // read joint position from /joint_states topic
             
         using namespace std::placeholders;
-        this->act_serv_move_one_joint_ = rclcpp_action::create_server<ControlActions>(
+
+        // create move_one_joint action server
+        this->act_serv_move_one_joint_ = rclcpp_action::create_server<MoveOneJointAction>(
             this,
             "move_one_joint",
             std::bind(&ControlActionServer::move_one_joint_handle_goal, this, _1, _2),
             std::bind(&ControlActionServer::move_one_joint_handle_cancel, this, _1),
             std::bind(&ControlActionServer::move_one_joint_handle_accepted, this, _1));
+        
+        //create initial_standing action server
+
+        this->act_serv_initial_standing_ = rclcpp_action::create_server<InitialStandingAction>(
+            this,
+            "initial_standing",
+            std::bind(&ControlActionServer::initial_standing_handle_goal, this, _1, _2),
+            std::bind(&ControlActionServer::initial_standing_handle_cancel, this, _1),
+            std::bind(&ControlActionServer::initial_standing_handle_accepted, this, _1));
     }
 
     void ControlActionServer::set_mujoco_model(mjModel *mj_model)
@@ -36,5 +47,10 @@ namespace control_actions_cpp
     {
         joint_limits_ = joint_limits;
         return;
+    }
+
+    std::unordered_map<std::string, double> ControlActionServer::get_current_joint_positions(std::vector<std::string> joint_names)
+    {
+        return current_joint_positions_;
     }
 }

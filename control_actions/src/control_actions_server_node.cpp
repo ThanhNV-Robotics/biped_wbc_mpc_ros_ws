@@ -6,7 +6,7 @@ mjModel *mj_model; // to read the robot configuration
 int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
-    auto control_action_server_node = std::make_shared<control_actions_cpp::ControlActionServer>();
+    auto control_action_server_node = std::make_shared<control_actions::ControlActionServer>();
 
     //check input parameters, shoulde include a path to mujoco model
     if (control_action_server_node->get_parameter("mujoco_model_path").as_string().empty())
@@ -54,7 +54,10 @@ int main(int argc, char *argv[])
     for (int j = 0; j < mj_model->njnt; j++) // loop over all joints
     {
         std::string jname = mj_model->names + mj_model->name_jntadr[j];
-        joint_names.push_back(jname);
+        if (jname != "root") // do not include root joint
+        {
+            joint_names.push_back(jname);
+        }        
     }
     control_action_server_node->set_joint_names(joint_names);
 

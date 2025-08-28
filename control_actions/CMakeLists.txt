@@ -36,18 +36,22 @@ endif()
 # Action interface generation
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveOneJoint.action"
+  "action/InitialStanding.action"
 )
 
 # Build the action server library
 add_library(action_server SHARED
   src/control_actions_server.cpp
   src/move_one_joint_callbacks.cpp
+  src/initial_standing_callbacks.cpp
+  src/computation_utils.cpp
 )
 target_include_directories(action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp>
   $<INSTALL_INTERFACE:include>
   ${MUJOCO_INCLUDE_DIR}
+  ${EIGEN3_INCLUDE_DIRS} 
 )
 target_compile_definitions(action_server
   PRIVATE "CONTROL_ACTIONS_CPP_BUILDING_DLL"
@@ -73,6 +77,7 @@ target_include_directories(control_actions_server_node PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp>
   ${MUJOCO_INCLUDE_DIR}
+  ${EIGEN3_INCLUDE_DIRS} 
 )
 add_dependencies(control_actions_server_node ${PROJECT_NAME}__cpp)
 
