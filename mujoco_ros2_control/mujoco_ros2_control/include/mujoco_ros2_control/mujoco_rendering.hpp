@@ -57,11 +57,7 @@ private:
   void mouse_move_callback_impl(GLFWwindow *window, double xpos, double ypos);
   void scroll_callback_impl(GLFWwindow *window, double xoffset, double yoffset);
   
-  // Interactive force application methods
-  void select_object(double xpos, double ypos);
-  void apply_force(double dx, double dy);
-  void update_force_visualization();
-  void clear_force();
+
 
   static MujocoRendering *instance_;
 
@@ -82,6 +78,12 @@ private:
   bool button_right_;
   double lastx_;
   double lasty_;
+  
+  // Interactive force application methods
+  void select_object(double xpos, double ypos);
+  void apply_force(double dx, double dy);
+  void update_force_visualization();
+  void clear_force();
   
   // Interactive force application
   int selected_body_;           // Currently selected body ID

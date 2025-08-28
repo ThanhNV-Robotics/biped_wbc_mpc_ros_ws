@@ -13,8 +13,10 @@ find_package(rclcpp_components REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
 
-find_package(mujoco QUIET)
+# Find mujoco lib
+find_package(mujoco QUIET) 
 if(mujoco_FOUND)
   message(STATUS "Mujoco build from source has been found")
   set(MUJOCO_LIB mujoco::mujoco)
@@ -39,6 +41,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 # Build the action server library
 add_library(action_server SHARED
   src/control_actions_server.cpp
+  src/move_one_joint_callbacks.cpp
 )
 target_include_directories(action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
     RCLCPP_INFO_STREAM(control_action_server_node->get_logger(), " Control Action Server: successfully loaded !");
     // load mj_model to node class
     control_action_server_node->set_mujoco_model(mj_model);
-    // set joint limits
+    // read joint limits from the mujoco model
     std::unordered_map<std::string, std::pair<double, double>> joint_limits;
     for (int j = 0; j < mj_model->njnt; j++) // loop over all joints
     {
@@ -45,6 +45,8 @@ int main(int argc, char *argv[])
         double upper_limit = mj_model->jnt_range[2 * j + 1];
         joint_limits[jname] = std::make_pair(lower_limit, upper_limit);
     }
+
+    // set joint limits to the node class
     control_action_server_node->set_joint_limits(joint_limits);
 
     // set joint names
