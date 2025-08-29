@@ -24,9 +24,16 @@
         <mesh filename="../meshes/base_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
-    </visual>
-
+    </visual>  
   </link>
+
+  <link name="torso_imu">
+    <inertial>
+      <mass value="0.01"/>
+      <inertia ixx="1E-7" ixy="0" ixz="0" iyy="1E-7" iyz="0" izz="1E-7"/>
+    </inertial>
+  </link>
+
   <link name="Left_Hip_Pitch_1">
     <inertial>
       <origin xyz="5.535e-03 5.735e-02 -1.4768e-02" rpy="0 0 0"/>
@@ -290,6 +297,13 @@
 
 
   <!-- 왼쪽 다리 -->
+  <joint name="torso_imu_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0"/>
+    <parent link="base_link"/>
+    <child link="torso_imu"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
   <joint name="left_hip_pitch" type="continuous">
     <origin rpy="0 0 0" xyz="0.0 0.089761 -0.081437"/>
     <parent link="base_link"/>
@@ -576,7 +590,18 @@
         <state_interface name="position"/>
         <state_interface name="velocity"/>
       </joint>
-
+    <sensor name="torso_imu">
+      <state_interface name="orientation.x"/>
+      <state_interface name="orientation.y"/>
+      <state_interface name="orientation.z"/>
+      <state_interface name="orientation.w"/>
+      <state_interface name="linear_acceleration.x"/>
+      <state_interface name="linear_acceleration.y"/>
+      <state_interface name="linear_acceleration.z"/>
+      <state_interface name="angular_velocity.x"/>
+      <state_interface name="angular_velocity.y"/>
+      <state_interface name="angular_velocity.z"/>
+    </sensor>
   </ros2_control>
   
 </robot>
