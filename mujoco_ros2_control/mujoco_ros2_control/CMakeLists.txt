@@ -61,7 +61,7 @@ target_include_directories(mujoco_system_plugins
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${MUJOCO_INCLUDE_DIR}
-    ${EIGEN3_INCLUDE_DIR})
+    ${EIGEN3_INCLUDE_DIRS})
 
 install(TARGETS
   mujoco_system_plugins
@@ -76,6 +76,10 @@ add_executable(mujoco_ros2_control
   src/mujoco_rendering.cpp
   src/mujoco_ros2_control.cpp
   src/mujoco_cameras.cpp
+  src/glfw_adapter.cc
+  src/glfw_dispatch.cc
+  src/simulate.cc
+  src/platform_ui_adapter.cc
 )
 ament_target_dependencies(mujoco_ros2_control ${THIS_PACKAGE_DEPENDS})
 target_link_libraries(mujoco_ros2_control ${MUJOCO_LIB} glfw)
@@ -84,7 +88,7 @@ target_include_directories(mujoco_ros2_control
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${MUJOCO_INCLUDE_DIR}
-    ${EIGEN3_INCLUDE_DIR})
+    ${EIGEN3_INCLUDE_DIRS})
 
 install(TARGETS
   mujoco_ros2_control
