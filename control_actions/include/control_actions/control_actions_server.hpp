@@ -1,6 +1,7 @@
 #pragma once
 #include "control_actions/action/move_one_joint.hpp"
 #include "control_actions/action/initial_standing.hpp"
+#include "control_actions/action/standing_balance.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -18,11 +19,15 @@ namespace control_actions
     class ControlActionServer : public rclcpp::Node
     {
         public:
+            // For MoveOneJoint action
             using MoveOneJointAction = control_actions::action::MoveOneJoint;
             using GoalHandleCMoveOneJoint = rclcpp_action::ServerGoalHandle<MoveOneJointAction>;
-
+            // For InitialStanding action
             using InitialStandingAction = control_actions::action::InitialStanding;
             using GoalHandleInitialStanding = rclcpp_action::ServerGoalHandle<InitialStandingAction>;
+            // For StandingBalance action
+            using StandingBalanceAction = control_actions::action::StandingBalance;
+            using GoalHandleStandingBalance = rclcpp_action::ServerGoalHandle<StandingBalanceAction>;
 
             CONTROL_ACTIONS_CPP_PUBLIC
             explicit ControlActionServer(const rclcpp::NodeOptions &options = rclcpp::NodeOptions()); //constructor
@@ -53,6 +58,13 @@ namespace control_actions
             rclcpp_action::CancelResponse initial_standing_handle_cancel(const std::shared_ptr<GoalHandleInitialStanding> goal_handle);
             void initial_standing_handle_accepted(const std::shared_ptr<GoalHandleInitialStanding> goal_handle);
             void initial_standing_execute (const std::shared_ptr<GoalHandleInitialStanding> goal_handle);
+
+            // for standing_balance action
+            rclcpp_action::Server<StandingBalanceAction>::SharedPtr act_serv_standing_balance_;
+            rclcpp_action::GoalResponse standing_balance_handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const StandingBalanceAction::Goal> goal);
+            rclcpp_action::CancelResponse standing_balance_handle_cancel(const std::shared_ptr<GoalHandleStandingBalance> goal_handle);
+            void standing_balance_handle_accepted(const std::shared_ptr<GoalHandleStandingBalance> goal_handle);
+            void standing_balance_execute (const std::shared_ptr<GoalHandleStandingBalance> goal_handle);
 
     };
 } // namespace control_actions_cpp

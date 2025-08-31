@@ -4,6 +4,9 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/control_actions/include",
+                "${workspaceFolder}/control_actions/include/control_actions",
+                "${workspaceFolder}/control_actions/src",
                 "/home/vanthanhnguyen/mujoco/mujoco-3.3.4",
                 "/opt/ros/humble/include/**",
                 "${workspaceFolder}/install/**/include/**",

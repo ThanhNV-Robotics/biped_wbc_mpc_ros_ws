@@ -28,7 +28,7 @@ namespace control_actions
             std::bind(&ControlActionServer::move_one_joint_handle_cancel, this, _1),
             std::bind(&ControlActionServer::move_one_joint_handle_accepted, this, _1));
         
-        //create initial_standing action server
+        // create initial_standing action server
 
         this->act_serv_initial_standing_ = rclcpp_action::create_server<InitialStandingAction>(
             this,
@@ -36,6 +36,14 @@ namespace control_actions
             std::bind(&ControlActionServer::initial_standing_handle_goal, this, _1, _2),
             std::bind(&ControlActionServer::initial_standing_handle_cancel, this, _1),
             std::bind(&ControlActionServer::initial_standing_handle_accepted, this, _1));
+
+        // create standing_balance action server
+        this->act_serv_standing_balance_ = rclcpp_action::create_server<StandingBalanceAction>(
+            this,
+            "standing_balance",
+            std::bind(&ControlActionServer::standing_balance_handle_goal, this, _1, _2),
+            std::bind(&ControlActionServer::standing_balance_handle_cancel, this, _1),
+            std::bind(&ControlActionServer::standing_balance_handle_accepted, this, _1));
     }
 
     void ControlActionServer::set_mujoco_model(mjModel *mj_model)

@@ -95,6 +95,7 @@ namespace control_actions
             while (rclcpp::ok())
             {
                 double current_position = 0.0;
+                //current_joint_positions_ subscribes to /joint_states
                 auto it = current_joint_positions_.find(goal->joint_name);
                 if (it != current_joint_positions_.end())
                     current_position = it->second;

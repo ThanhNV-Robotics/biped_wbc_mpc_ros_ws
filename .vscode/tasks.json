@@ -8,6 +8,8 @@
                 "-fdiagnostics-color=always",
                 "-g",
                 "${file}",
+                "-I/usr/include/eigen3",
+                "-I${workspaceFolder}/control_actions/include/control_actions",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}"
             ],

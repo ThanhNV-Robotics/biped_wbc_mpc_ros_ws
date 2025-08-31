@@ -37,6 +37,7 @@ endif()
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveOneJoint.action"
   "action/InitialStanding.action"
+  "action/StandingBalance.action"
 )
 
 # Build the action server library

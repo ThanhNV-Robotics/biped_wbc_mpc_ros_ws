@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <unsupported/Eigen/MatrixFunctions> 
 
 namespace control_actions
 {
@@ -23,4 +24,13 @@ namespace control_actions
         const Vector3d &p,
         const std::vector<double> &current_joint_angle,
         bool isRight);
+    void c2d(const Eigen::MatrixXd &A_c,
+             const Eigen::MatrixXd &B_c,
+             const Eigen::MatrixXd &C_c,
+             const Eigen::MatrixXd &D_c,
+             double dt,
+             Eigen::MatrixXd &A_d,
+             Eigen::MatrixXd &B_d,
+             Eigen::MatrixXd &C_d,
+             Eigen::MatrixXd &D_d);
 }
