@@ -93,17 +93,6 @@ bool MujocoRendering::is_close_flag_raised() { return glfwWindowShouldClose(wind
 
 void MujocoRendering::update()
 {
-  // visulize CoM position
-  mjtNum com[3];
-  mju_copy3 (com, mj_data_->subtree_com); //index = 0 -> com of the whole model
-  int site_id = mj_name2id(mj_model_, mjOBJ_SITE, "com");    
-
-  if (site_id >= 0)
-  {
-    // Set site position = CoM
-    mju_copy3(mj_data_->site_xpos + 3 * site_id, com);
-  }
-
   // get framebuffer viewport
   mjrRect viewport = {0, 0, 0, 0};
   glfwGetFramebufferSize(window_, &viewport.width, &viewport.height);

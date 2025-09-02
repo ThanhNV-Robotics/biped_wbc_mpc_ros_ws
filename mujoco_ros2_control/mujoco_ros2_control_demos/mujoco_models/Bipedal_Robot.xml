@@ -96,7 +96,7 @@
             <freejoint name="root"/>
             <inertial pos="0.022E-3 0.011E-3 -9.359E-3" mass="5.721" fullinertia="1.338E-1 1.019E-1 6.278E-2 -7542.256E-9 8599.288E-9 8566.243E-9"/>
             <camera name="track" pos="1 0 1.5" xyaxes="0.78 -0.63 0 0.27 0.33 0.9"/>
-            <site name="torso_imu" type = "box" pos="0.0 0 0.1" euler="0 0 90" size="0.01 0.01 0.01" rgba="1 0 0 1"/>
+            <site name="torso_imu" type = "box" pos="0.0 0 0.1" euler="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1"/>
 
             <!--   Left leg kinematic chain  -->
             <body name="Left_Link1_Hip" pos="0 162.205E-3 -100.849E-3" euler="90 90 75"> 

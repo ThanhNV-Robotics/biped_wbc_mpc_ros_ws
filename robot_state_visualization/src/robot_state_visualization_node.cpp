@@ -2,6 +2,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "robot_state_visualization/mujoco_rendering.hpp"
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -18,6 +19,43 @@ const double CAMERA_RATE = 6.0;        // Hz
 const double SIMULATION_DT = 1.0 / SIMULATION_RATE;
 const double RENDERING_DT = 1.0 / RENDERING_RATE;
 
+void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
+{
+  // Get torso free joint id
+  int body_id = mj_name2id(mj_model, mjOBJ_BODY, "Link0_Torso");
+  if (body_id < 0) return;
+
+  int jnt_id = mj_model->body_jntadr[body_id];
+  if (mj_model->jnt_type[jnt_id] != mjJNT_FREE) {
+    RCLCPP_WARN(rclcpp::get_logger("imu_callback"),
+                "Link0_Torso is not a free joint, cannot set quaternion directly!");
+    return;
+  }
+
+  int qpos_adr = mj_model->jnt_qposadr[jnt_id];
+
+  // Position: keep current
+  // Orientation: reorder ROS (x,y,z,w) → MuJoCo (w,x,y,z)
+  mj_data->qpos[qpos_adr + 3] = msg->orientation.w;
+  mj_data->qpos[qpos_adr + 4] = msg->orientation.x;
+  mj_data->qpos[qpos_adr + 5] = msg->orientation.y;
+  mj_data->qpos[qpos_adr + 6] = msg->orientation.z;
+
+}
+
+void visualize_com()
+{
+  // visulize CoM position
+  mjtNum com[3];
+  mju_copy3 (com, mj_data->subtree_com); //index = 0 -> com of the whole model
+  int site_id = mj_name2id(mj_model, mjOBJ_SITE, "com");    
+
+  if (site_id >= 0)
+  {
+    // Set site position = CoM
+    mju_copy3(mj_data->site_xpos + 3 * site_id, com);
+  }
+}
 // JointState callback: copy positions into MuJoCo
 void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
 {
@@ -31,8 +69,16 @@ void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
       }
     }
   }
-  // // Update derived states after modifying qpos/qvel
-  // mj_forward(mj_model, mj_data);
+  // visulize CoM position
+  mjtNum com[3];
+  mju_copy3 (com, mj_data->subtree_com); //index = 0 -> com of the whole model
+  int site_id = mj_name2id(mj_model, mjOBJ_SITE, "com");    
+
+  if (site_id >= 0)
+  {
+    // Set site position = CoM
+    mju_copy3(mj_data->site_xpos + 3 * site_id, com);
+  }
 }
 
 // main function
@@ -103,9 +149,13 @@ int main(int argc, const char **argv)
   auto last_rendering_time = start_time;
   auto last_camera_time = start_time;
 
-  // Create a subscription
-  auto subscription = node->create_subscription<sensor_msgs::msg::JointState>(
+  // Create a subscription to subsribe to /joint_states
+  auto subscription_joint_states = node->create_subscription<sensor_msgs::msg::JointState>(
       "/joint_states", 10, joint_state_callback );
+
+  // create a subscription to subscribe to /imu
+  auto subscription_imu = node->create_subscription<sensor_msgs::msg::Imu>(
+      "/imu_sensor_broadcaster/imu", 10, imu_callback );
 
   while (rclcpp::ok() && !rendering->is_close_flag_raised())
   //while (!rendering->is_close_flag_raised())
@@ -124,6 +174,7 @@ int main(int argc, const char **argv)
     // Update rendering at fixed rate
     if (elapsed_rendering >= RENDERING_DT)
     {
+      visualize_com();
       rendering->update();
       last_rendering_time = current_time;
     }
