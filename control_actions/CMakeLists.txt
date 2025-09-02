@@ -46,6 +46,7 @@ add_library(action_server SHARED
   src/move_one_joint_callbacks.cpp
   src/initial_standing_callbacks.cpp
   src/computation_utils.cpp
+  src/standing_balance_callbacks.cpp
 )
 target_include_directories(action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

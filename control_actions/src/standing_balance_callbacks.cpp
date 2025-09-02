@@ -19,12 +19,14 @@ namespace control_actions
 
     void ControlActionServer::standing_balance_handle_accepted(const std::shared_ptr<GoalHandleStandingBalance> goal_handle)
     {
-        RCLCPP_INFO(this->get_logger(), "Accepted goal for standing_balance");
-        standing_balance_execute(goal_handle);
+        using namespace std::placeholders;
+        // this needs to return quickly to avoid blocking the executor, so spin up a new thread
+        std::thread{std::bind(&ControlActionServer::standing_balance_execute, this, _1), goal_handle}.detach();
     }
 
     void ControlActionServer::standing_balance_execute(const std::shared_ptr<GoalHandleStandingBalance> goal_handle)
     {
-        RCLCPP_INFO(this->get_logger(), "Executing goal for standing_balance");
+        return;
     }
+
 }

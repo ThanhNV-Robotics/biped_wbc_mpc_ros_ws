@@ -41,6 +41,15 @@ def generate_launch_description():
             ]
         ) # control actions server node
     
+    node_mujoco_ros2_mimic = Node(
+        package='robot_state_visualization',
+        executable='robot_state_visualization_node',
+        output='screen',
+        parameters=[
+            {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Fixed_Base.xml')}
+        ]
+    ) # mujoco mimic node
+    
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -86,5 +95,6 @@ def generate_launch_description():
         ),
         node_mujoco_ros2_control,
         node_robot_state_publisher,
+        node_mujoco_ros2_mimic,
         node_control_action
     ])
