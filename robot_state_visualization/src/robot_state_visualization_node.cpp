@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <string>
 #include <vector>
+#include <Eigen/Dense>
 // MuJoCo data structures
 mjModel *mj_model = nullptr;
 mjData *mj_data = nullptr;
@@ -18,6 +19,13 @@ const double CAMERA_RATE = 6.0;        // Hz
 
 const double SIMULATION_DT = 1.0 / SIMULATION_RATE;
 const double RENDERING_DT = 1.0 / RENDERING_RATE;
+
+// Vector3d represent CoM position
+mjtNum com[3];
+//Vector2d represent ZMP position
+mjtNum zmp_position[3];
+//vector3d represent acceleration
+Eigen::Vector3d acceleration;
 
 void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
@@ -41,12 +49,15 @@ void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   mj_data->qpos[qpos_adr + 5] = msg->orientation.y;
   mj_data->qpos[qpos_adr + 6] = msg->orientation.z;
 
+  //store acceleration measurement to acceleration
+  acceleration[0] = msg->linear_acceleration.x;
+  acceleration[1] = msg->linear_acceleration.y;
+  acceleration[2] = msg->linear_acceleration.z;
 }
 
 void visualize_com()
 {
-  // visulize CoM position
-  mjtNum com[3];
+  // visulize CoM position  
   mju_copy3 (com, mj_data->subtree_com); //index = 0 -> com of the whole model
   int site_id = mj_name2id(mj_model, mjOBJ_SITE, "com");    
 
@@ -54,6 +65,21 @@ void visualize_com()
   {
     // Set site position = CoM
     mju_copy3(mj_data->site_xpos + 3 * site_id, com);
+  }
+}
+
+void visualize_zmp ()
+{
+  zmp_position[0] = com[0] - (com[2]/9.81) * acceleration[0];
+  zmp_position[1] = com[1] - (com[2]/9.81) * acceleration[1];
+  zmp_position[2] = 0.0; // on the ground
+
+  // set posiiton to <site name="ZMP_est" pos="0 0 0" size="0.02" rgba="0 1 0 1"/>
+  int site_id = mj_name2id(mj_model, mjOBJ_SITE, "ZMP_est");
+  if (site_id >= 0)
+  {
+    // Set site position = zmp position
+    mju_copy3(mj_data->site_xpos + 3 * site_id, zmp_position);
   }
 }
 // JointState callback: copy positions into MuJoCo
@@ -175,6 +201,7 @@ int main(int argc, const char **argv)
     if (elapsed_rendering >= RENDERING_DT)
     {
       visualize_com();
+      visualize_zmp ();
       rendering->update();
       last_rendering_time = current_time;
     }

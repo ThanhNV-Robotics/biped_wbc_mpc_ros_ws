@@ -10,7 +10,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
-
+find_package(Eigen3 REQUIRED)
 # MuJoCo + GLFW
 find_package(mujoco QUIET)
 if(mujoco_FOUND)
@@ -39,6 +39,7 @@ include_directories(
   include
   ${MUJOCO_INCLUDE_DIR}
   ${GLFW_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 # Library from rendering + cameras
