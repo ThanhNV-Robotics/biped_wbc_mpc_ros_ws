@@ -16,7 +16,7 @@
     <xacro:property name="pkg_share" value="$(find humanoid_hardware)"/>
     <xacro:property name="mesh_dir" value="file://${pkg_share}/urdf/meshes"/>
 
-    <!-- Link Definitions -->
+    <!-- link Definitions -->
     <link name="base_link">
         <inertial>
             <origin xyz="2.1e-05 1.1e-05 -0.008802" rpy="0 0 0"/>
@@ -70,7 +70,7 @@
         </collision>
     </link>
 
-    <link name="Left_Link2_Hip_1">
+    <link name="left_link2_hip_1">
         <inertial>
             <origin xyz="-0.044636 -1.6e-05 -0.073241" rpy="0 0 0"/>
             <mass   value="1.291801"/>
@@ -85,19 +85,19 @@
         <visual>
             <origin rpy="0 0 0" xyz="-0.0445 -0.162205 0.100849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_link2_hip_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin rpy="0 0 0" xyz="-0.0445 -0.162205 0.100849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_link2_hip_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
 
-    <link name="Left_Thigh_1">
+    <link name="left_thigh_1">
         <inertial>
             <!-- CoM 위치: -0.314 mm, 148.871 mm, -387.384 mm  →  m 단위 -->
             <origin xyz="-0.000314 -0.013334 -0.166035" rpy="0 0 0"/>
@@ -116,19 +116,19 @@
         <visual>
             <origin rpy="0 0 0" xyz="0.0 -0.162205 0.221349"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_thigh_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin rpy="0 0 0" xyz="0.0 -0.162205 0.221349"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_thigh_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
 
-    <link name="Left_Shank_1">
+    <link name="left_shank_1">
         <inertial>
             <origin xyz="0.009700 -0.013414 -0.163789" rpy="0 0 0"/>
             <mass   value="1.894225"/>
@@ -142,14 +142,14 @@
         <visual>
             <origin rpy="0 0 0" xyz="0.0 -0.179205 0.424849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Shank_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_shank_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin rpy="0 0 0" xyz="0.0 -0.179205 0.424849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Shank_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_shank_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
@@ -180,7 +180,7 @@
         </collision>
     </link>
 
-    <link name="Left_Foot_1">
+    <link name="left_Foot_1">
         <inertial>
             <origin xyz="0.032253955762776725 0.015102247849545392 -0.03191414365676737" rpy="0 0 0"/>
             <mass value="0.343229"/>
@@ -190,14 +190,14 @@
         <visual>
             <origin xyz="0.0 -0.147205 0.759849" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Foot_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_Foot_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin xyz="0.0 -0.147205 0.759849" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Left_Foot_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/left_Foot_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
@@ -230,7 +230,7 @@
         </collision>
     </link>
 
-    <link name="Right_Link2_Hip_1">
+    <link name="right_link2_hip_1">
         <inertial>
             <origin xyz="-4.4009e-02 -1.7e-05 -7.2733e-02" rpy="0 0 0"/>
             <mass   value="1.263991"/>
@@ -244,19 +244,19 @@
         <visual>
             <origin rpy="0 0 0" xyz="-0.0445 0.162205 0.100849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_link2_hip_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin rpy="0 0 0" xyz="-0.0445 0.162205 0.100849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_link2_hip_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
 
-    <link name="Right_Thigh_1">
+    <link name="right_thigh_1">
         <inertial>
             <origin xyz="-2.9e-05 0.013844 -0.165473" rpy="0 0 0"/>
             <mass value="1.851928"/>
@@ -270,19 +270,19 @@
         <visual>
             <origin rpy="0 0 0" xyz="0.0 0.162205 0.221349"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_thigh_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin rpy="0 0 0" xyz="0.0 0.162205 0.221349"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_thigh_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
 
-    <link name="Right_Shank_1">
+    <link name="right_shank_1">
         <inertial>
             <!-- Center-of-mass in *world* coordinates (mm → m) -->
             <origin xyz="0.009336 0.013239 -0.163037" rpy="0 0 0"/>
@@ -302,19 +302,19 @@
         <visual>
             <origin rpy="0 0 0" xyz="0.0 0.179205 0.424849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Shank_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_shank_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin rpy="0 0 0" xyz="0.0 0.179205 0.424849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Shank_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_shank_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
 
-    <link name="Right_Ankle_Roll_1">
+    <link name="right_ankle_roll_1">
         <inertial>
             <!--  COM(World)  :  –1.001e-08 mm , –162.205 mm , –759.849 mm  -->
             <origin xyz="-0.019 0 0" rpy="0 0 0"/>
@@ -329,19 +329,19 @@
         <visual>
             <origin rpy="0 0 0" xyz="-0.019 0.162205 0.759849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_ankle_roll_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin rpy="0 0 0" xyz="-0.019 0.162205 0.759849"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_ankle_roll_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
 
-    <link name="Right_Foot_1">
+    <link name="right_Foot_1">
         <inertial>
             <origin xyz="0.032399565575572636 -0.014993048986541774 -0.03195045853114886" rpy="0 0 0"/>
             <mass value="0.322074"/>
@@ -351,100 +351,104 @@
         <visual>
             <origin xyz="0.0 0.147205 0.759849" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_Foot_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
             <material name="silver"/>
         </visual>
         <collision>
             <origin xyz="0.0 0.147205 0.759849" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="${mesh_dir}/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="${mesh_dir}/right_Foot_1.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </collision>
     </link>
 
     <!-- 왼쪽 다리 -->
-    <joint name="left_hip_pitch" type="continuous">
+    <joint name="left_hip_pitch" type="revolute">
         <origin rpy="0 0 0" xyz="0.0 0.089761 -0.081437"/>
         <parent link="base_link"/>
-<<<<<<< HEAD
         <child link="left_hip_pitch_1"/>
-=======
-        <child link="Left_Hip_Pitch_1"/>
->>>>>>> d0ef5ffc2175bfb6a6953953f175936d8aef17ac
-        <axis xyz="-0.0 -0.965926 0.258819"/>
+        <axis xyz="-0.0 0.965926 -0.258819"/>
+        <limit lower="-1.5708" upper="1.5708"/>
     </joint>
-        <joint name="left_hip_roll" type="continuous">
+        <joint name="left_hip_roll" type="revolute">
         <origin rpy="0 0 0" xyz="0.0445 0.072444 -0.019412"/>
         <parent link="left_hip_pitch_1"/>
-        <child link="Left_Link2_Hip_1"/>
+        <child link="left_link2_hip_1"/>
         <axis xyz="1.0 0.0 -0.0"/>
+        <limit lower="-0.7854" upper="1.0472"/>
     </joint>
-        <joint name="left_hip_yaw" type="continuous">
+        <joint name="left_hip_yaw" type="revolute">
         <origin rpy="0 0 0" xyz="-0.0445 0.0 -0.1205"/>
-        <parent link="Left_Link2_Hip_1"/>
-        <child link="Left_Thigh_1"/>
-        <axis xyz="-0.0 0.0 -1.0"/>
+        <parent link="left_link2_hip_1"/>
+        <child link="left_thigh_1"/>
+        <axis xyz="-0.0 0.0 1.0"/>
+        <limit lower="-0.7854" upper="0.7854"/>
     </joint>
-        <joint name="left_knee" type="continuous">
+        <joint name="left_knee" type="revolute">
         <origin rpy="0 0 0" xyz="0.0 0.017 -0.2035"/>
-        <parent link="Left_Thigh_1"/>
-        <child link="Left_Shank_1"/>
+        <parent link="left_thigh_1"/>
+        <child link="left_shank_1"/>
         <axis xyz="-0.0 1.0 0.0"/>
+        <limit lower="-0.1745" upper="2.0944"/>
     </joint>
-        <joint name="left_ankle_roll" type="continuous">
+        <joint name="left_ankle_roll" type="revolute">
         <origin rpy="0 0 0" xyz="0.019 -0.017 -0.335"/>
-        <parent link="Left_Shank_1"/>
+        <parent link="left_shank_1"/>
         <child link="left_ankle_roll_1"/>
         <axis xyz="-1.0 -0.0 0.0"/>
+        <limit lower="-0.5236" upper="0.5236"/>
     </joint>
-        <joint name="left_ankle_pitch" type="continuous">
+        <joint name="left_ankle_pitch" type="revolute">
         <origin xyz="-0.019 -0.015 0.0" rpy="0 0 0"/>
         <parent link="left_ankle_roll_1"/>
-        <child link="Left_Foot_1"/>
+        <child link="left_foot_1"/>
         <axis xyz="-0.0 1.0 -0.0"/>
+        <limit lower="-0.5236" upper="0.5236"/>
     </joint>
 
-    <!-- 오른쪽 다리 --> 
-    <joint name="right_hip_pitch" type="continuous">
+    <!-- 오른쪽 다리 -->
+    <joint name="right_hip_pitch" type="revolute">
         <origin rpy="0 0 0" xyz="0.0 -0.089761 -0.081437"/>
         <parent link="base_link"/>
-<<<<<<< HEAD
         <child link="right_hip_pitch_1"/>
-=======
-        <child link="Right_Hip_Pitch_1"/>
->>>>>>> d0ef5ffc2175bfb6a6953953f175936d8aef17ac
-        <axis xyz="0.0 -0.965926 -0.258819"/>
+        <axis xyz="0.0 0.965926 0.258819"/>
+        <limit lower="-1.5708" upper="1.5708"/>
     </joint>
-        <joint name="right_hip_roll" type="continuous">
+        <joint name="right_hip_roll" type="revolute">
         <origin rpy="0 0 0" xyz="0.0445 -0.072444 -0.019412"/>
         <parent link="right_hip_pitch_1"/>
-        <child link="Right_Link2_Hip_1"/>
+        <child link="right_link2_hip_1"/>
         <axis xyz="1.0 0.0 0.0"/>
+        <limit lower="-0.7854" upper="1.0472"/>
     </joint>
-        <joint name="right_hip_yaw" type="continuous">
+        <joint name="right_hip_yaw" type="revolute">
         <origin rpy="0 0 0" xyz="-0.0445 0.0 -0.1205"/>
-        <parent link="Right_Link2_Hip_1"/>
-        <child link="Right_Thigh_1"/>
-        <axis xyz="0.0 0.0 -1.0"/>
+        <parent link="right_link2_hip_1"/>
+        <child link="right_thigh_1"/>
+        <axis xyz="0.0 0.0 1.0"/>
+        <limit lower="-0.7854" upper="0.7854"/>
     </joint>
-    <joint name="right_knee" type="continuous">
+    <joint name="right_knee" type="revolute">
         <origin rpy="0 0 0" xyz="0.0 -0.017 -0.2035"/>
-        <parent link="Right_Thigh_1"/>
-        <child link="Right_Shank_1"/>
+        <parent link="right_thigh_1"/>
+        <child link="right_shank_1"/>
         <axis xyz="0.0 1.0 0.0"/>
+        <limit lower="-0.1745" upper="2.0944"/>
     </joint>
-    <joint name="right_ankle_roll" type="continuous">
+    <joint name="right_ankle_roll" type="revolute">
         <origin rpy="0 0 0" xyz="0.019 0.017 -0.335"/>
-        <parent link="Right_Shank_1"/>
-        <child link="Right_Ankle_Roll_1"/>
+        <parent link="right_shank_1"/>
+        <child link="right_ankle_roll_1"/>
         <axis xyz="-1.0 -0.0 -0.0"/>
+        <limit lower="-0.5236" upper="0.5236"/>
     </joint>
-    <joint name="right_ankle_pitch" type="continuous">
+    <joint name="right_ankle_pitch" type="revolute">
         <origin xyz="-0.019 0.015 0.0" rpy="0 0 0"/>
-        <parent link="Right_Ankle_Roll_1"/>
-        <child link="Right_Foot_1"/>
+        <parent link="right_ankle_roll_1"/>
+        <child link="right_foot_1"/>
         <axis xyz="-0.0 1.0 -0.0"/>
+        <limit lower="-0.5236" upper="0.5236"/>
     </joint>
 
 
@@ -561,7 +565,21 @@
             <state_interface name="position"/>
             <state_interface name="velocity"/>
         </joint>
-        
+
+        <sensor name="imu_sensor">
+            <state_interface name="orientation.x"/>
+            <state_interface name="orientation.y"/>
+            <state_interface name="orientation.z"/>
+            <state_interface name="orientation.w"/>
+            <state_interface name="angular_velocity.x"/>
+            <state_interface name="angular_velocity.y"/>
+            <state_interface name="angular_velocity.z"/>
+            <state_interface name="linear_acceleration.x"/>
+            <state_interface name="linear_acceleration.y"/>
+            <state_interface name="linear_acceleration.z"/>
+            <param name="topic_name">/imu</param>
+        </sensor>
+
     </ros2_control>
 
 </robot>

@@ -8,8 +8,8 @@ import xacro
 def generate_launch_description():
 
     pkg_path = get_package_share_directory('humanoid_hardware')
-    mujoco_ros2_control_demos_path = os.path.join(
-        get_package_share_directory('mujoco_ros2_control_demos'))
+    # mujoco_ros2_control_demos_path = os.path.join(
+    #     get_package_share_directory('mujoco_ros2_control_demos'))
     
     xacro_file = os.path.join(pkg_path, 'urdf', 'humanoid.urdf.xacro')
     robot_description_config = xacro.process_file(xacro_file)
@@ -17,23 +17,23 @@ def generate_launch_description():
 
     controller_config = os.path.join(pkg_path, 'config', 'humanoid_controllers.yaml')
 
-    node_mujoco_ros2_mimic = Node(
-        package='robot_state_visualization',
-        executable='robot_state_visualization_node',
-        output='screen',
-        parameters=[
-            {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Fixed_Base.xml')}
-        ]
-    ) # mujoco mimic node
+    # node_mujoco_ros2_mimic = Node(
+    #     package='robot_state_visualization',
+    #     executable='robot_state_visualization_node',
+    #     output='screen',
+    #     parameters=[
+    #         {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Fixed_Base.xml')}
+    #     ]
+    # ) # mujoco mimic node
 
-    node_control_action = Node(
-            package='control_actions',
-            executable='control_actions_server_node',
-            output='screen',
-            parameters=[
-                {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Fixed_Base.xml')}
-            ]
-        ) # control actions server node
+    # node_control_action = Node(
+    #         package='control_actions',
+    #         executable='control_actions_server_node',
+    #         output='screen',
+    #         parameters=[
+    #             {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Fixed_Base.xml')}
+    #         ]
+    #     ) # control actions server node
 
 
     robot_state_publisher_node = Node(
@@ -62,11 +62,18 @@ def generate_launch_description():
         arguments=['joint_trajectory_controller', '--controller-manager', '/controller_manager'],
     )
 
+    imu_sensor_broadcaster_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['imu_sensor_broadcaster', '--controller-manager', '/controller_manager'],
+    )
+
     return LaunchDescription([
-        node_mujoco_ros2_mimic,
-        node_control_action,
+        # node_mujoco_ros2_mimic,
+        # node_control_action,
         robot_state_publisher_node,
         controller_manager_node,
         joint_state_broadcaster_spawner,
-        joint_trajectory_controller_spawner
+        joint_trajectory_controller_spawner,
+        imu_sensor_broadcaster_spawner
     ])

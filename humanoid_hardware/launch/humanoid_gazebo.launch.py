@@ -1,7 +1,7 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable, RegisterEventHandler
+from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable, RegisterEventHandler, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.event_handlers import OnProcessExit
@@ -29,13 +29,16 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={
-            'gz_args': f'-r {world_path}'
-        }.items(),
+        launch_arguments={'gz_args': f'-r {world_path}'}.items(),
     )
 
     xacro_file = os.path.join(pkg_path, 'urdf', 'humanoid.gazebo.xacro')
-    robot_description_config = xacro.process_file(xacro_file)
+    controllers_yaml = os.path.join(pkg_path, 'config', 'humanoid_controllers_gz.yaml')
+
+    robot_description_config = xacro.process_file(
+        xacro_file,
+        mappings={'controllers_yaml': controllers_yaml}
+    )
     robot_description = {'robot_description': robot_description_config.toxml()}
 
     robot_state_publisher_node = Node(
@@ -48,7 +51,10 @@ def generate_launch_description():
     spawn_entity_node = Node(
         package='ros_gz_sim',
         executable='create',
-        arguments=['-topic', 'robot_description', '-entity', 'humanoid'],
+        arguments=['-topic', 'robot_description',
+                   '-entity', 'humanoid',
+                   '-x', '0.0', '-y', '0.0', '-z', '0.81',
+                   '-R', '0.0', '-P', '0.0', '-Y', '0.0'],
         output='screen',
     )
 
@@ -58,8 +64,8 @@ def generate_launch_description():
         arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
         output='screen',
     )
-    
-    effort_cmd_spawner = Node(
+
+    effort_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
         arguments=['effort_cmd', '--controller-manager', '/controller_manager'],
@@ -70,6 +76,7 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=['imu_sensor_broadcaster', '--controller-manager', '/controller_manager'],
+        output='screen',
     )
 
     spawn_then_spawn_controllers = RegisterEventHandler(
@@ -77,7 +84,7 @@ def generate_launch_description():
             target_action=spawn_entity_node,
             on_exit=[
                 joint_state_broadcaster_spawner,
-                effort_cmd_spawner,
+                effort_controller_spawner,
                 imu_sensor_broadcaster_spawner,
             ],
         )

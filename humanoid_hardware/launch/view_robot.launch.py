@@ -7,7 +7,7 @@ import xacro
 def generate_launch_description():
     pkg_path = get_package_share_directory('humanoid_hardware')
 
-    xacro_file = os.path.join(pkg_path, 'urdf', 'humanoid.urdf.xacro')
+    xacro_file = os.path.join(pkg_path, 'urdf', 'humanoid.gazebo.xacro')
     robot_description_config = xacro.process_file(xacro_file)
     robot_description = {'robot_description': robot_description_config.toxml()}
 

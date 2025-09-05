@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100
+    update_rate: 500
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
@@ -13,18 +13,18 @@ controller_manager:
 effort_cmd:
   ros__parameters:
     joints:
-      - Left_Hip_Pitch
-      - Left_Hip_Roll
-      - Left_Hip_Yaw
-      - Left_Knee
-      - Left_Ankle_Roll
-      - Left_Ankle_Pitch
-      - Right_Hip_Pitch
-      - Right_Hip_Roll
-      - Right_Hip_Yaw
-      - Right_Knee
-      - Right_Ankle_Roll
-      - Right_Ankle_Pitch
+      - left_hip_pitch
+      - left_hip_roll
+      - left_hip_yaw
+      - left_knee
+      - left_ankle_roll
+      - left_ankle_pitch
+      - right_hip_pitch
+      - right_hip_roll
+      - right_hip_yaw
+      - right_knee
+      - right_ankle_roll
+      - right_ankle_pitch
 
     interface_name: "effort"
 

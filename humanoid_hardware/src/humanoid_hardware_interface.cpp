@@ -77,23 +77,23 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_init(
     idx_L_ankle_pitch = find_index("left_ankle_pitch");
     idx_R_ankle_roll  = find_index("right_ankle_roll");
     idx_R_ankle_pitch = find_index("right_ankle_pitch");
-    
-    // for (const auto & sensor : info_.sensors) 
-    // {
-    //     if (sensor.name == "imu_sensor") 
-    //     {
-    //         imu_sensor_name_ = sensor.name;
-    //         has_imu_ = true;
-    //         break;
-    //     }
-    // }
 
-    // if (has_imu_) 
-    // {
-    //     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"),
-    //             "IMU sensor '%s' detected.", imu_sensor_name_.c_str());
-    // }
 
+    for (const auto & sensor : info_.sensors)
+    {
+        if (sensor.name == "imu_sensor")
+        {
+            imu_sensor_name_ = sensor.name;
+            if (sensor.parameters.count("topic_name")) {
+                imu_topic_name_ = sensor.parameters.at("topic_name");
+            }
+            RCLCPP_INFO(
+                rclcpp::get_logger("HumanoidHardwareInterface"),
+                "IMU sensor '%s' detected. Subscribing to topic '%s'",
+                imu_sensor_name_.c_str(), imu_topic_name_.c_str());
+            break;
+        }
+    }
 
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Initialization successful.");
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -119,6 +119,31 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_configure(
             rclcpp::get_logger("HumanoidHardwareInterface"),
             "Failed to create UDP communication objects: %s", e.what());
         return hardware_interface::CallbackReturn::ERROR;
+    }
+
+    if (!imu_sensor_name_.empty())
+    {
+        imu_node_ = std::make_shared<rclcpp::Node>("imu_subscriber_node");
+        auto imu_callback = [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
+            // Lock the mutex to safely write to the shared imu_ struct
+            const std::lock_guard<std::mutex> lock(this->imu_mutex_);
+            this->imu_.qx = msg->orientation.x;
+            this->imu_.qy = msg->orientation.y;
+            this->imu_.qz = msg->orientation.z;
+            this->imu_.qw = msg->orientation.w;
+            this->imu_.wx = msg->angular_velocity.x;
+            this->imu_.wy = msg->angular_velocity.y;
+            this->imu_.wz = msg->angular_velocity.z;
+            this->imu_.ax = msg->linear_acceleration.x;
+            this->imu_.ay = msg->linear_acceleration.y;
+            this->imu_.az = msg->linear_acceleration.z;
+        };
+        imu_subscriber_ = imu_node_->create_subscription<sensor_msgs::msg::Imu>(
+            imu_topic_name_, rclcpp::SystemDefaultsQoS(), imu_callback);
+
+        imu_node_thread_ = std::thread([this]() {
+            rclcpp::spin(this->imu_node_);
+        });
     }
 
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Configuration successful.");
@@ -162,7 +187,19 @@ hardware_interface::CallbackReturn HumanoidHardwareInterface::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Deactivating...");
-    // UDP 소켓 등 리소스 정리
+
+    if (!imu_sensor_name_.empty())
+    {
+        if (rclcpp::ok()) {
+            rclcpp::shutdown();
+        }
+        if (imu_node_thread_.joinable()) {
+            imu_node_thread_.join();
+        }
+        imu_subscriber_.reset();
+        imu_node_.reset();
+    }
+
     udp_rpi1_comm_.reset();
     udp_rpi2_comm_.reset();
     RCLCPP_INFO(rclcpp::get_logger("HumanoidHardwareInterface"), "Deactivation successful.");
@@ -174,27 +211,27 @@ std::vector<hardware_interface::StateInterface> HumanoidHardwareInterface::expor
     std::vector<hardware_interface::StateInterface> state_interfaces;
     for (uint i = 0; i < info_.joints.size(); i++)
     {
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_positions_[i]));
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-        info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_velocities_[i]));
+        state_interfaces.emplace_back(hardware_interface::StateInterface(
+            info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_positions_[i]));
+        state_interfaces.emplace_back(hardware_interface::StateInterface(
+            info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_velocities_[i]));
     }
 
-    // if (has_imu_) 
-    // {
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.x", &imu_.qx);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.y", &imu_.qy);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.z", &imu_.qz);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "orientation.w", &imu_.qw);
+    if (!imu_sensor_name_.empty())
+    {
+        state_interfaces.emplace_back(imu_sensor_name_, "orientation.x", &hw_imu_qx_);
+        state_interfaces.emplace_back(imu_sensor_name_, "orientation.y", &hw_imu_qy_);
+        state_interfaces.emplace_back(imu_sensor_name_, "orientation.z", &hw_imu_qz_);
+        state_interfaces.emplace_back(imu_sensor_name_, "orientation.w", &hw_imu_qw_);
 
-    //     state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.x", &imu_.wx);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.y", &imu_.wy);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.z", &imu_.wz);
+        state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.x", &hw_imu_wx_);
+        state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.y", &hw_imu_wy_);
+        state_interfaces.emplace_back(imu_sensor_name_, "angular_velocity.z", &hw_imu_wz_);
 
-    //     state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.x", &imu_.ax);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.y", &imu_.ay);
-    //     state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.z", &imu_.az);
-    // }
+        state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.x", &hw_imu_ax_);
+        state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.y", &hw_imu_ay_);
+        state_interfaces.emplace_back(imu_sensor_name_, "linear_acceleration.z", &hw_imu_az_);
+    }
 
     return state_interfaces;
 }
@@ -280,6 +317,21 @@ hardware_interface::return_type HumanoidHardwareInterface::read(
             hw_velocities_[idx_R_ankle_roll ] = rpd[0];
             hw_velocities_[idx_R_ankle_pitch] = rpd[1];
         }
+    }
+
+    if (!imu_sensor_name_.empty())
+    {
+        const std::lock_guard<std::mutex> lock(imu_mutex_);
+        hw_imu_qx_ = imu_.qx;
+        hw_imu_qy_ = imu_.qy;
+        hw_imu_qz_ = imu_.qz;
+        hw_imu_qw_ = imu_.qw;
+        hw_imu_wx_ = imu_.wx;
+        hw_imu_wy_ = imu_.wy;
+        hw_imu_wz_ = imu_.wz;
+        hw_imu_ax_ = imu_.ax;
+        hw_imu_ay_ = imu_.ay;
+        hw_imu_az_ = imu_.az;
     }
 
     return hardware_interface::return_type::OK;
