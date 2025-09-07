@@ -14,6 +14,7 @@ class TrajectoryPublisherNode(Node):
     def __init__(self):
         super().__init__('trajectory_100hz_tester')
 
+        # 질문에 주신 관절 리스트
         self.joint_names: List[str] = [
             'Left_Hip_Pitch',
             'Left_Hip_Roll',

@@ -5,9 +5,13 @@
 #include <string>
 #include <vector>
 
+#include <thread>
+#include <mutex>
+
 #include "hardware_interface/system_interface.hpp"
 #include "humanoid_hardware/udp_communication.h"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/imu.hpp"
 
 namespace humanoid_hardware
 {
@@ -53,8 +57,16 @@ class HumanoidHardwareInterface : public hardware_interface::SystemInterface
         std::vector<uint16_t> motor_ids_rpi1_;
         std::vector<uint16_t> motor_ids_rpi2_;
 
+        std::shared_ptr<rclcpp::Node> imu_node_;
+        rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_subscriber_;
+        std::thread imu_node_thread_;
+        std::mutex imu_mutex_;
+
         std::string imu_sensor_name_; 
-        bool has_imu_{false};
+        std::string imu_topic_name_ = "/imu";
+        double hw_imu_qx_ = 0.0, hw_imu_qy_ = 0.0, hw_imu_qz_ = 0.0, hw_imu_qw_ = 1.0;
+        double hw_imu_wx_ = 0.0, hw_imu_wy_ = 0.0, hw_imu_wz_ = 0.0;
+        double hw_imu_ax_ = 0.0, hw_imu_ay_ = 0.0, hw_imu_az_ = 0.0;        
         ImuData imu_;
 
         int idx_L_ankle_roll  = -1;

@@ -3,8 +3,8 @@
   <world name="default">
     <!-- 물리 시간 -->
     <physics name="default_physics" type="ignored">
-      <max_step_size>0.001</max_step_size>
-      <real_time_update_rate>1000</real_time_update_rate>
+      <max_step_size>0.002</max_step_size>
+      <real_time_update_rate>500</real_time_update_rate>
     </physics>
 
     <light name="sun" type="directional">
@@ -38,8 +38,11 @@
             </contact>
             <friction>
               <ode>
-                <mu>1.0</mu>
-                <mu2>1.0</mu2>
+                <mu>10000</mu>
+                <mu2>10000</mu2>
+                <fdir1>0 0 0</fdir1>
+                <slip1>0</slip1>
+                <slip2>0</slip2>
               </ode>
             </friction>
           </surface>
