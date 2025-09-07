@@ -1,3 +1,4 @@
+#include <robot_state_visualization/standing_balance_control.hpp> //included from control_actions package
 #include "mujoco/mujoco.h"
 #include "rclcpp/rclcpp.hpp"
 #include "robot_state_visualization/mujoco_rendering.hpp"
@@ -7,11 +8,13 @@
 #include <string>
 #include <vector>
 #include <Eigen/Dense>
+
+
 // MuJoCo data structures
 mjModel *mj_model = nullptr;
 mjData *mj_data = nullptr;
 std::unordered_map<std::string, int> joint_qpos_index; // (joint_name, qpos_index)
-
+std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::Imu>> filtered_acceleration_publisher;
 // Real-time control parameters
 const double SIMULATION_RATE = 1000.0;  // Hz 
 const double RENDERING_RATE = 60.0;    // Hz
@@ -21,14 +24,28 @@ const double SIMULATION_DT = 1.0 / SIMULATION_RATE;
 const double RENDERING_DT = 1.0 / RENDERING_RATE;
 
 // Vector3d represent CoM position
-mjtNum com[3];
+Eigen::Vector3d com;
 //Vector2d represent ZMP position
-mjtNum zmp_position[3];
+Eigen::Vector3d zmp_position;
 //vector3d represent acceleration
 Eigen::Vector3d acceleration;
 
+using namespace control_actions;
+StandingBalanceController standing_balance_controller(250);
+
 void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
+    // filt acceleration data and publish it
+  Eigen::VectorXd filtered_acceleration = standing_balance_controller.kalman_filt(acceleration);
+  sensor_msgs::msg::Imu filtered_acc_msg;
+  filtered_acc_msg.linear_acceleration.x = filtered_acceleration[0];
+  filtered_acc_msg.linear_acceleration.y = filtered_acceleration[1];
+  filtered_acc_msg.linear_acceleration.z = filtered_acceleration[2];
+    if (filtered_acceleration_publisher) {
+    filtered_acceleration_publisher->publish(filtered_acc_msg);
+  }
+
+  // set torso orientation in mujoco
   // Get torso free joint id
   int body_id = mj_name2id(mj_model, mjOBJ_BODY, "Link0_Torso");
   if (body_id < 0) return;
@@ -58,28 +75,40 @@ void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
 void visualize_com()
 {
   // visulize CoM position  
-  mju_copy3 (com, mj_data->subtree_com); //index = 0 -> com of the whole model
+  // mju_copy3 (com, mj_data->subtree_com); //index = 0 -> com of the whole model
+  for (int i = 0; i < 3; ++i) {
+    com[i] = mj_data->subtree_com[i]; // 
+}
   int site_id = mj_name2id(mj_model, mjOBJ_SITE, "com");    
 
   if (site_id >= 0)
   {
     // Set site position = CoM
-    mju_copy3(mj_data->site_xpos + 3 * site_id, com);
+    mju_copy3(mj_data->site_xpos + 3 * site_id, com.data());
   }
 }
 
 void visualize_zmp ()
 {
-  zmp_position[0] = com[0] - (com[2]/9.81) * acceleration[0];
-  zmp_position[1] = com[1] - (com[2]/9.81) * acceleration[1];
-  zmp_position[2] = 0.0; // on the ground
+  // // zmp_position[0] = com[0] - (com[2]/9.81) * acceleration[0];// acceleration measured in m/s2
+  // // zmp_position[1] = com[1] - (com[2]/9.81) * acceleration[1];// acceleration measured in m/s2
+
+  // zmp_position[0] = com[0] - (com[2]) * acceleration[0];// acceleration measured in g
+  // zmp_position[1] = com[1] - (com[2]) * acceleration[1];// acceleration measured in g
+  // zmp_position[2] = 0.0; // on the ground
+
+  // To debug standing controller's zmp calculation
+
+
+  
+  zmp_position = standing_balance_controller.compute_zmp(com, acceleration);
 
   // set posiiton to <site name="ZMP_est" pos="0 0 0" size="0.02" rgba="0 1 0 1"/>
   int site_id = mj_name2id(mj_model, mjOBJ_SITE, "ZMP_est");
   if (site_id >= 0)
   {
     // Set site position = zmp position
-    mju_copy3(mj_data->site_xpos + 3 * site_id, zmp_position);
+    mju_copy3(mj_data->site_xpos + 3 * site_id, zmp_position.data());
   }
 }
 // JointState callback: copy positions into MuJoCo
@@ -115,7 +144,8 @@ int main(int argc, const char **argv)
     "robot_state_visualization_node",
     rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
 
-  //std::shared_ptr<rclcpp::Node> node_ptr = & node;
+  filtered_acceleration_publisher = node->create_publisher<sensor_msgs::msg::Imu>(
+    "/filtered_acceleration", 10);
 
   RCLCPP_INFO_STREAM(node->get_logger(), "Initializing mujoco_ros2_control node...");
   auto model_path = node->get_parameter("mujoco_model_path").as_string();
@@ -182,7 +212,7 @@ int main(int argc, const char **argv)
   // create a subscription to subscribe to /imu
   auto subscription_imu = node->create_subscription<sensor_msgs::msg::Imu>(
       "/imu_sensor_broadcaster/imu", 10, imu_callback );
-
+  
   while (rclcpp::ok() && !rendering->is_close_flag_raised())
   //while (!rendering->is_close_flag_raised())
   {
@@ -201,7 +231,7 @@ int main(int argc, const char **argv)
     if (elapsed_rendering >= RENDERING_DT)
     {
       visualize_com();
-      visualize_zmp ();
+      visualize_zmp();
       rendering->update();
       last_rendering_time = current_time;
     }

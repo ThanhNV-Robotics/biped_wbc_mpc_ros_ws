@@ -44,6 +44,23 @@ namespace control_actions
             std::bind(&ControlActionServer::standing_balance_handle_goal, this, _1, _2),
             std::bind(&ControlActionServer::standing_balance_handle_cancel, this, _1),
             std::bind(&ControlActionServer::standing_balance_handle_accepted, this, _1));
+
+        // init standing balancing controller
+        // Retrieve control frequency from controller manager
+        try
+        {
+            // Create a temporary node to query the parameter
+            auto temp_node = std::make_shared<rclcpp::Node>("temp_control_actions_node");
+            control_frequency_ = temp_node->get_parameter("/controller_manager/update_rate").as_int();
+            RCLCPP_INFO(this->get_logger(), "Retrieved control frequency from controller manager: %d Hz", control_frequency_);
+        }
+        catch (const std::exception &e)
+        {
+            RCLCPP_WARN(this->get_logger(), "Failed to retrieve control frequency from controller manager: %s. Using default 250 Hz.", e.what());
+            control_frequency_ = 250;  // Default value
+        }
+        // Initialize standing balance controller with the retrieved control frequency
+        standing_controller_.set_control_frequency(control_frequency_);
     }
 
     void ControlActionServer::set_mujoco_model(mjModel *mj_model)

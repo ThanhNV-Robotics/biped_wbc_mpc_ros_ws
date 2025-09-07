@@ -14,6 +14,8 @@
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include <sensor_msgs/msg/joint_state.hpp>
 
+#include <control_actions/standing_balance_control.hpp>
+
 namespace control_actions
 {
     class ControlActionServer : public rclcpp::Node
@@ -36,10 +38,18 @@ namespace control_actions
             void set_joint_names (std::vector<std::string> joint_names) {joint_names_ = joint_names; return;};        
             std::unordered_map<std::string, double> get_current_joint_positions(std::vector<std::string> joint_names);
             std::vector<std::string> get_joint_names() const { return joint_names_; }
+            bool is_standing_control_enabled() const { return standing_control_enable_; }
+            void enable_standing_control() { standing_control_enable_ = true; }
+            void disable_standing_control() { standing_control_enable_ = false; }
 
         private:
             // share attributes for all actions
             mjModel *mj_model_; // to read the robot configuration
+            
+            int control_frequency_;  // Control frequency retrieved from controller manager
+            StandingBalanceController standing_controller_ = StandingBalanceController(250); // init a standing balance controller           
+            bool standing_control_enable_ = false; // 
+
             std::unordered_map<std::string, double> current_joint_positions_ ; // (joint_name, position)
             rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
             std::vector<std::string> joint_names_; // list of joint names in the mujoco model

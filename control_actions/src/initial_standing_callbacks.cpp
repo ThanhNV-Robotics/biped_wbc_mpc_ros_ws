@@ -80,24 +80,28 @@ namespace control_actions
                 }
                 else
                 {
-                    // Assume current_joint_angle has at least 12 elements
-                    std::vector<double> left_leg_current_joint_angles(current_joint_angle.begin(), current_joint_angle.begin() + 6);
-                    std::vector<double> right_leg_current_joint_angles(current_joint_angle.end() - 6, current_joint_angle.end());
+                    // create VectorXd current_joint_angle from std::vector<double> current_joint_angle;
+                    Eigen::VectorXd current_joint_angle_eigen_vector = Eigen::Map<Eigen::VectorXd>(current_joint_angle.data(), current_joint_angle.size());
+
+                    
+                    // Extract to Eigen::VectorXd left_leg_current_joint_angles and right leg
+                    Eigen::VectorXd left_leg_current_joint_angles = current_joint_angle_eigen_vector.head(6);
+                    Eigen::VectorXd right_leg_current_joint_angles = current_joint_angle_eigen_vector.tail(6);
 
                     // init foot position and orientation
-                    Vector3d p_foot(0.0, 0.0, -hip_height); // foot position w.r.t the hip
-                    Matrix3d R_foot = Matrix3d::Identity(); // foot orientation, parallel to the ground
+                    Eigen::Vector3d p_foot(0.0, 0.0, -hip_height); // foot position w.r.t the hip
+                    Eigen::Matrix3d R_foot = Matrix3d::Identity(); // foot orientation, parallel to the ground
 
                     // Compute Inverse Kinematics
-                    std::vector<double> left_leg_target_joint_angles = control_actions::InvHip2Foot(R_foot, p_foot, left_leg_current_joint_angles, false);  // left leg
-                    std::vector<double> right_leg_target_joint_angles = control_actions::InvHip2Foot(R_foot, p_foot, right_leg_current_joint_angles, true); // right leg
+                    Eigen::VectorXd left_leg_target_joint_angles = control_actions::InvHip2Foot(R_foot, p_foot, left_leg_current_joint_angles, false);  // left leg
+                    Eigen::VectorXd right_leg_target_joint_angles = control_actions::InvHip2Foot(R_foot, p_foot, right_leg_current_joint_angles, true); // right leg
 
                     // Stack left and right leg joint angles into one vector, left leg first
-                    std::vector<double> target_joint_angles;
-                    target_joint_angles.insert(target_joint_angles.end(),
-                                               left_leg_target_joint_angles.begin(), left_leg_target_joint_angles.end());
-                    target_joint_angles.insert(target_joint_angles.end(),
-                                               right_leg_target_joint_angles.begin(), right_leg_target_joint_angles.end());
+                    VectorXd target_joint_angles;
+                    target_joint_angles.resize(left_leg_target_joint_angles.size() +
+                           right_leg_target_joint_angles.size()); // must resize to a proper length first
+                           
+                    target_joint_angles << left_leg_target_joint_angles, right_leg_target_joint_angles;
 
                     // create publishing message to joint trajectory command
                     // created target_joint_map

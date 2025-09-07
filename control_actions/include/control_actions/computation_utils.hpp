@@ -5,6 +5,9 @@
 #include <vector>
 #include <unsupported/Eigen/MatrixFunctions>
 
+#ifndef CONTROL_ACTIONS_COMPUTATION_UTILS_HPP_
+#define CONTROL_ACTIONS_COMPUTATION_UTILS_HPP_
+
 namespace control_actions
 {
     using namespace Eigen;
@@ -19,10 +22,10 @@ namespace control_actions
     // Helper: check if value is NaN or Inf
     inline bool isInvalid(double x);
     // Inverse kinematics from hip to foot
-    std::vector<double> InvHip2Foot(
+    Eigen::VectorXd InvHip2Foot(
         const Matrix3d &R,
         const Vector3d &p,
-        const std::vector<double> &current_joint_angle,
+        const VectorXd &current_joint_angle,
         bool isRight);
     void c2d(const Eigen::MatrixXd &A_c,
              const Eigen::MatrixXd &B_c,
@@ -54,6 +57,8 @@ namespace control_actions
             void update(const Eigen::VectorXd &y);
             Eigen::VectorXd get_state();
 
+            Eigen::VectorXd kalman_filt (Eigen::VectorXd input_measurement);
+
         private:
             Eigen::MatrixXd A, B, C, P, R, Q;
             Eigen::MatrixXd P0; // initial P.
@@ -63,3 +68,4 @@ namespace control_actions
             Eigen::VectorXd x_hat; // estimated state.
     }; // class Kalman Filter
 } // namespace control_actions
+#endif  // CONTROL_ACTIONS_COMPUTATION_UTILS_HPP_

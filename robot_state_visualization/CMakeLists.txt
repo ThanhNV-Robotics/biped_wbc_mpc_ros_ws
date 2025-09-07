@@ -34,6 +34,7 @@ pkg_check_modules(GLFW REQUIRED glfw3)
 find_path(MUJOCO_INCLUDE_DIR mujoco/mujoco.h)
 find_library(MUJOCO_LIB mujoco)
 
+
 # Include directories
 include_directories(
   include
@@ -44,14 +45,16 @@ include_directories(
 
 # Library from rendering + cameras
 add_library(robot_state_visualization_lib
-  # src/mujoco_cameras.cpp
   src/mujoco_rendering.cpp
+  src/standing_balance_control.cpp
+  src/computation_utils.cpp
 )
 
-ament_target_dependencies(robot_state_visualization_lib
-  rclcpp
-  sensor_msgs
-)
+# ament_target_dependencies(robot_state_visualization_lib
+#   rclcpp
+#   sensor_msgs
+#   control_actions
+# )
 
 target_link_libraries(robot_state_visualization_lib
   ${MUJOCO_LIB}
@@ -62,8 +65,11 @@ target_link_libraries(robot_state_visualization_lib
 add_executable(robot_state_visualization_node
   src/robot_state_visualization_node.cpp
 )
-
 ament_target_dependencies(robot_state_visualization_node
+  rclcpp
+  sensor_msgs
+)
+ament_target_dependencies(robot_state_visualization_lib
   rclcpp
   sensor_msgs
 )

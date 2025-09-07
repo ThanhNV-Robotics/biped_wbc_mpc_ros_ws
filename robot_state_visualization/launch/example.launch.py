@@ -15,7 +15,7 @@ def generate_launch_description():
         executable='robot_state_visualization_node',
         output='screen',
         parameters=[
-            {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot.xml')}
+            {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Mimic.xml')}
         ]
     ) # mujoco simulator node
 
