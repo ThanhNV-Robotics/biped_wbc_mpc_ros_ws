@@ -223,7 +223,7 @@ namespace control_actions
     {
         Eigen::VectorXd prediction = H * predict();
         update(input_measurement);
-        return input_measurement; // same as python: predicted measurement, not state
+        return prediction; // same as python: predicted measurement, not state
     }
 }
 

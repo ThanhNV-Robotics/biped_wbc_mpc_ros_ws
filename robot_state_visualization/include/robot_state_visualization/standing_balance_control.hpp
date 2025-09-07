@@ -71,10 +71,10 @@ namespace control_actions
         const Eigen::MatrixXd F_kalman_ = Eigen::MatrixXd::Identity(3, 3);  // State transition matrix (identity for acceleration filter)
         const Eigen::MatrixXd B_kalman_ = Eigen::MatrixXd::Zero(3, 1);  // Measurement matrix (identity)
         const Eigen::MatrixXd H_kalman_ = Eigen::MatrixXd::Identity(3, 3);
-        const Eigen::MatrixXd Q_kalman_ =  0.5*Eigen::MatrixXd::Identity(3, 3);
+        const Eigen::MatrixXd Q_kalman_ =  1.5*Eigen::MatrixXd::Identity(3, 3);
 
         // tuning matrix of Kalman Filter
-        const Eigen::MatrixXd R_kalman_ = 5.25 * Eigen::MatrixXd::Identity(3, 3);   // Measurement noise covariance
+        const Eigen::MatrixXd R_kalman_ = 2.5 * Eigen::MatrixXd::Identity(3, 3);   // Measurement noise covariance
         const Eigen::MatrixXd P_kalman_ = Eigen::MatrixXd::Identity(3, 3);  // Process noise covariance
         const Eigen::VectorXd x0_kalman_ = Eigen::VectorXd::Zero(3,1); // initial state
 

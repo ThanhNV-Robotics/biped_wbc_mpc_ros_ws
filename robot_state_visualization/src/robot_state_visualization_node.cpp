@@ -35,15 +35,7 @@ StandingBalanceController standing_balance_controller(250);
 
 void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
-    // filt acceleration data and publish it
-  Eigen::VectorXd filtered_acceleration = standing_balance_controller.kalman_filt(acceleration);
-  sensor_msgs::msg::Imu filtered_acc_msg;
-  filtered_acc_msg.linear_acceleration.x = filtered_acceleration[0];
-  filtered_acc_msg.linear_acceleration.y = filtered_acceleration[1];
-  filtered_acc_msg.linear_acceleration.z = filtered_acceleration[2];
-    if (filtered_acceleration_publisher) {
-    filtered_acceleration_publisher->publish(filtered_acc_msg);
-  }
+  
 
   // set torso orientation in mujoco
   // Get torso free joint id
@@ -70,6 +62,16 @@ void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   acceleration[0] = msg->linear_acceleration.x;
   acceleration[1] = msg->linear_acceleration.y;
   acceleration[2] = msg->linear_acceleration.z;
+
+  // filt acceleration data and publish it
+  Eigen::VectorXd filtered_acceleration = standing_balance_controller.kalman_filt(acceleration);
+  sensor_msgs::msg::Imu filtered_acc_msg;
+  filtered_acc_msg.linear_acceleration.x = filtered_acceleration[0];
+  filtered_acc_msg.linear_acceleration.y = filtered_acceleration[1];
+  filtered_acc_msg.linear_acceleration.z = filtered_acceleration[2];
+    if (filtered_acceleration_publisher) {
+    filtered_acceleration_publisher->publish(filtered_acc_msg);
+  }
 }
 
 void visualize_com()
