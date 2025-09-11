@@ -44,7 +44,14 @@ namespace control_actions
             std::bind(&ControlActionServer::standing_balance_handle_goal, this, _1, _2),
             std::bind(&ControlActionServer::standing_balance_handle_cancel, this, _1),
             std::bind(&ControlActionServer::standing_balance_handle_accepted, this, _1));
-
+        // create homing action server
+        this->act_serv_homing_ = rclcpp_action::create_server<HomingAction>(
+            this,
+            "homing",
+            std::bind(&ControlActionServer::homing_handle_goal, this, _1, _2),
+            std::bind(&ControlActionServer::homing_handle_cancel, this, _1),
+            std::bind(&ControlActionServer::homing_handle_accepted, this, _1));
+            
         // init standing balancing controller
         // Retrieve control frequency from controller manager
         try

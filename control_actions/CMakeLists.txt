@@ -38,6 +38,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveOneJoint.action"
   "action/InitialStanding.action"
   "action/StandingBalance.action"
+  "action/Homing.action"
 )
 
 # Build the action server library
@@ -48,6 +49,7 @@ add_library(action_server SHARED
   src/computation_utils.cpp
   src/standing_balance_callbacks.cpp
   src/standing_balance_control.cpp
+  src/homing_action_callbacks.cpp
 )
 target_include_directories(action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

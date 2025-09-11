@@ -2,6 +2,7 @@
 #include "control_actions/action/move_one_joint.hpp"
 #include "control_actions/action/initial_standing.hpp"
 #include "control_actions/action/standing_balance.hpp"
+#include "control_actions/action/homing.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -30,6 +31,9 @@ namespace control_actions
             // For StandingBalance action
             using StandingBalanceAction = control_actions::action::StandingBalance;
             using GoalHandleStandingBalance = rclcpp_action::ServerGoalHandle<StandingBalanceAction>;
+            //For Homing action
+            using HomingAction = control_actions::action::Homing;
+            using GoalHandleHoming = rclcpp_action::ServerGoalHandle<HomingAction>;
 
             CONTROL_ACTIONS_CPP_PUBLIC
             explicit ControlActionServer(const rclcpp::NodeOptions &options = rclcpp::NodeOptions()); //constructor
@@ -75,6 +79,13 @@ namespace control_actions
             rclcpp_action::CancelResponse standing_balance_handle_cancel(const std::shared_ptr<GoalHandleStandingBalance> goal_handle);
             void standing_balance_handle_accepted(const std::shared_ptr<GoalHandleStandingBalance> goal_handle);
             void standing_balance_execute (const std::shared_ptr<GoalHandleStandingBalance> goal_handle);
+
+            // for homing action
+            rclcpp_action::Server<HomingAction>::SharedPtr act_serv_homing_;
+            rclcpp_action::GoalResponse homing_handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const HomingAction::Goal> goal);
+            rclcpp_action::CancelResponse homing_handle_cancel(const std::shared_ptr<GoalHandleHoming> goal_handle);
+            void homing_handle_accepted(const std::shared_ptr<GoalHandleHoming> goal_handle);
+            void homing_execute (const std::shared_ptr<GoalHandleHoming> goal_handle);
 
     };
 } // namespace control_actions_cpp
