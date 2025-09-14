@@ -1,0 +1,8 @@
+action/Homing.action
+action/Homing.idl
+action/InitialStanding.action
+action/InitialStanding.idl
+action/MoveOneJoint.action
+action/MoveOneJoint.idl
+action/StandingBalance.action
+action/StandingBalance.idl

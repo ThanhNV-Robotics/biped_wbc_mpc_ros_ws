@@ -1,0 +1,4 @@
+source;share/control_actions/environment/ament_prefix_path.sh
+source;share/control_actions/environment/library_path.sh
+source;share/control_actions/environment/path.sh
+source;share/control_actions/environment/pythonpath.sh

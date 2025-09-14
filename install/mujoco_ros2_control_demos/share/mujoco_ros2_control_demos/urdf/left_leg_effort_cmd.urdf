@@ -1,0 +1,291 @@
+<?xml version="1.0" ?>
+<robot name="left_leg">
+  <mujoco>
+    <compiler meshdir="meshes/" balanceinertia="true" discardvisual="false"/>
+  </mujoco>
+  <material name="silver">
+    <color rgba="0.700 0.700 0.700 1.000"/>
+  </material>
+
+<link name="world"/>
+
+  <link name="Left_Hip_Pitch_1">
+    <inertial>
+      <origin xyz="5.535e-03 5.735e-02 -1.4768e-02" rpy="0 0 0"/>
+      <mass   value="1.764294"/>
+      <inertia
+              ixx="0.003317"
+              ixy="-0.0001465"
+              ixz="4.49051e-05"
+              iyy="0.002368"
+              iyz="0.0003016"
+              izz="0.003408"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.0 -0.089761 0.081437"/>
+      <geometry>
+        <mesh filename="../meshes/Left_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+  </link>
+  <link name="Left_Link2_Hip_1">
+    <inertial>
+      <origin xyz="-0.044636 -1.6e-05 -0.073241" rpy="0 0 0"/>
+      <mass   value="1.291801"/>
+      <inertia
+          ixx="0.002359"
+          ixy="9.43829e-07"
+          ixz="-9.2706e-07"
+          iyy="0.003152"
+          iyz="-3.42947e-06"
+          izz="0.001975"/>
+    </inertial>
+
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.0445 -0.162205 0.100849"/>
+      <geometry>
+        <mesh filename="../meshes/Left_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+  </link>
+  <link name="Left_Thigh_1">
+    <inertial>
+      <!-- CoM 위치: -0.314 mm, 148.871 mm, -387.384 mm  →  m 단위 -->
+      <origin xyz="-0.000314 -0.013334 -0.166035" rpy="0 0 0"/>
+
+      <!-- 질량: 1867.391 g → kg -->
+      <mass value="1.867391"/>
+
+      <!-- 관성 모멘트: (g·mm²)  →  kg·m²  (×10⁻⁹) -->
+      <inertia ixx="0.01165"
+              ixy="2.6779e-05"
+              ixz="-3.2964e-05"
+              iyy="0.01208"
+              iyz="-9.808e-04"
+              izz="0.002085"/>
+    </inertial>
+
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.162205 0.221349"/>
+      <geometry>
+        <mesh filename="../meshes/Left_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+  </link>
+  <link name="Left_Shank_1">
+    <inertial>
+      <origin xyz="0.009700 -0.013414 -0.163789" rpy="0 0 0"/>
+      <mass   value="1.894225"/>
+      <inertia ixx="0.016810"
+               ixy="0.000031714"
+               ixz="0.000844700"
+               iyy="0.016630"
+               iyz="-0.000889700"
+               izz="0.001510"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.0 -0.179205 0.424849"/>
+      <geometry>
+        <mesh filename="../meshes/Left_Shank_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+  </link>
+  <link name="Left_Ankle_Roll_1">
+    <inertial>
+      <origin xyz="-0.019 0 0" rpy="0 0 0"/>
+      <mass value="0.040313"/>
+      <inertia ixx="3.498104000e-06"
+              ixy="1.000000000e-12"
+              ixz="-1.165000000e-16"
+              iyy="5.125014000e-06"
+              iyz="0.000000000e+00"
+              izz="7.009009000e-06"/>
+    </inertial>
+
+    <visual>
+      <origin rpy="0 0 0" xyz="-0.019 -0.162205 0.759849"/>
+      <geometry>
+        <mesh filename="../meshes/Left_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+  </link>
+  <link name="Left_Foot_1">
+    <inertial>
+      <origin xyz="0.032253955762776725 0.015102247849545392 -0.03191414365676737" rpy="0 0 0"/>
+      <mass value="0.343229"/>
+      <inertia ixx="1.546000e-04" iyy="8.770000e-04" izz="9.434000e-04"
+         ixy="-9.970000e-09" iyz="4.036000e-08" ixz="5.023091e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.0 -0.147205 0.759849" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/Left_Foot_1.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+
+  </link>
+
+  <!-- 왼쪽 다리 -->
+  <joint name="left_hip_pitch" type="continuous">
+    <origin rpy="0 0 0" xyz="0.0 0.089761 -0.081437"/>
+    <parent link="world"/>
+    <child link="Left_Hip_Pitch_1"/>
+    <axis xyz="-0.0 0.965926 -0.258819"/>
+    <limit
+      lower="-1.05"        
+      upper="1.05"
+      effort="48"
+      velocity="20"   />
+  </joint>
+  <joint name="left_hip_roll" type="continuous">
+    <origin rpy="0 0 0" xyz="0.0445 0.072444 -0.019412"/>
+    <parent link="Left_Hip_Pitch_1"/>
+    <child link="Left_Link2_Hip_1"/>
+    <axis xyz="1.0 0.0 -0.0"/>
+    <limit
+      lower="-0.35"
+      upper="0.8"
+      effort="48"
+      velocity="20" />
+  </joint>
+  <joint name="left_hip_yaw" type="continuous">
+    <origin rpy="0 0 0" xyz="-0.0445 0.0 -0.1205"/>
+    <parent link="Left_Link2_Hip_1"/>
+    <child link="Left_Thigh_1"/>
+    <axis xyz="-0.0 0.0 -1.0"/>
+    <limit
+      lower="-0.8"
+      upper="0.8"
+      effort="18"
+      velocity="20" />
+  </joint>
+    <joint name="left_knee" type="continuous">
+    <origin rpy="0 0 0" xyz="0.0 0.017 -0.2035"/>
+    <parent link="Left_Thigh_1"/>
+    <child link="Left_Shank_1"/>
+    <axis xyz="-0.0 1.0 0.0"/>
+    <limit
+      lower="0"
+      upper="2.09"
+      effort="48"
+      velocity="20" />
+  </joint>
+  <joint name="left_ankle_roll" type="continuous">
+    <origin rpy="0 0 0" xyz="0.019 -0.017 -0.335"/>
+    <parent link="Left_Shank_1"/>
+    <child link="Left_Ankle_Roll_1"/>
+    <axis xyz="-1.0 -0.0 0.0"/>
+    <limit
+      lower="-0.34"
+      upper="0.34"
+      effort="18"
+      velocity="20"/>
+  </joint>
+  <joint name="left_ankle_pitch" type="continuous">
+    <origin xyz="-0.019 -0.015 0.0" rpy="0 0 0"/>
+    <parent link="Left_Ankle_Roll_1"/>
+    <child link="Left_Foot_1"/>
+    <axis xyz="-0.0 1.0 -0.0"/>
+    <limit
+      lower="-0.34"
+      upper="0.34"
+      effort="18"
+      velocity="20" />
+  </joint>
+  
+  <ros2_control name="MujocoSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros2_control/MujocoSystem</plugin>
+    </hardware>
+
+       <joint name="left_hip_pitch">
+        <command_interface name="effort">
+          <param name="min">-48</param>
+          <param name="max">48</param>
+        </command_interface>
+
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+
+      <joint name="left_hip_roll">
+        <command_interface name="effort">
+          <param name="min">-48</param>
+          <param name="max">48</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+
+      <joint name="left_hip_yaw">
+        <command_interface name="effort">
+          <param name="min">-18</param>
+          <param name="max">18</param>
+        </command_interface>
+
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+
+      <joint name="left_knee">
+        <command_interface name="effort">
+          <param name="min">-48</param>
+          <param name="max">48</param>
+        </command_interface>
+
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+
+      <joint name="left_ankle_roll">
+        <command_interface name="effort">
+          <param name="min">-18</param>
+          <param name="max">18</param>
+        </command_interface>
+
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+
+      <joint name="left_ankle_pitch">
+        <command_interface name="effort">
+          <param name="min">-18</param>
+          <param name="max">18</param>
+        </command_interface>
+        
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+
+  </ros2_control>
+  
+</robot>

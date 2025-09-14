@@ -1,0 +1,32 @@
+// generated from rosidl_adapter/resource/action.idl.em
+// with input from control_actions/action/MoveOneJoint.action
+// generated code does not contain a copyright notice
+
+
+module control_actions {
+  module action {
+    @verbatim (language="comment", text=
+      "Request/Goal")
+    struct MoveOneJoint_Goal {
+      string joint_name;
+
+      double target_position;
+
+      double duration;
+    };
+    @verbatim (language="comment", text=
+      "Result")
+    struct MoveOneJoint_Result {
+      string joint_name;
+
+      double final_position;
+    };
+    @verbatim (language="comment", text=
+      "Feedback")
+    struct MoveOneJoint_Feedback {
+      string joint_name;
+
+      double feedback_position;
+    };
+  };
+};

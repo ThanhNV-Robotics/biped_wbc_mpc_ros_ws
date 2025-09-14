@@ -1,0 +1,19 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 500  # Hz
+
+    joint_position_controller:
+      type: position_controllers/JointGroupPositionController
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+joint_position_controller:
+  ros__parameters:
+    joints: # only joint names are required
+      - left_hip_pitch
+      - left_hip_roll
+      - left_hip_yaw
+      - left_knee
+      - left_ankle_roll
+      - left_ankle_pitch   
