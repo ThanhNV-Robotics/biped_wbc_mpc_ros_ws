@@ -1,0 +1,9 @@
+<library path="control_actions">
+  <class name="control_actions::StandingBalanceController"
+         type="control_actions::StandingBalanceController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Standing Balance Controller for bipedal robot.
+    </description>
+  </class>
+</library>

@@ -18,6 +18,7 @@ def generate_launch_description():
     doc = xacro.parse(open(xacro_file))
     xacro.process_doc(doc)
     robot_description = {'robot_description': doc.toxml()}# convert to xml
+    
     # define the controller yaml config file
     controller_config_file = os.path.join(mujoco_ros2_control_demos_path, 'config', 'bipedal_robot_position_trajectory_cotroller.yaml')
 

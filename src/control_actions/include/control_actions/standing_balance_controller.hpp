@@ -30,6 +30,7 @@ namespace control_actions
 
 
             StandingBalanceController(uint16_t control_frequency);
+            StandingBalanceController(); // default constructor
 
             void set_control_frequency (uint16_t control_frequency)
             {
@@ -87,11 +88,15 @@ namespace control_actions
             Eigen::VectorXd joint_positions_; // all joint positions, left leg + right leg
             Eigen::VectorXd left_leg_current_joint_angles_; // left leg joint angles
             Eigen::VectorXd right_leg_current_joint_angles_; // right leg joint angles
+            Eigen::Vector3d filtered_acceleration_; // filtered acceleration using kalman filter
+            Eigen::Vector3d com_position_; // com position in the base_link frame, x, y, z
 
             // IMU subscriber
             rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_subscriber_;
             // joint_state subscriber:
             rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_subscriber_;
+            // publisher for kalman filter output
+            rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr kalman_filter_publisher_;
 
             // Controller parameters
             const double Tzmp = 0.01; // sec, time const of the ZMP feedback
