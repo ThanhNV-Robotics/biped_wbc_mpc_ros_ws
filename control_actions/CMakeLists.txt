@@ -15,6 +15,7 @@ find_package(trajectory_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(controller_interface REQUIRED)
+find_package(realtime_tools REQUIRED)
 
 # Find mujoco lib
 find_package(mujoco QUIET) 
@@ -50,6 +51,7 @@ add_library(action_server SHARED
   src/computation_utils.cpp
   src/homing_action_callbacks.cpp
   src/standing_balance_controller.cpp
+  src/r6bot_controller.cpp
 )
 target_include_directories(action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -67,7 +69,8 @@ ament_target_dependencies(action_server
   rclcpp_components
   trajectory_msgs
   sensor_msgs
-   controller_interface
+  controller_interface
+  realtime_tools
 )
 add_dependencies(action_server ${PROJECT_NAME}__cpp)
 
@@ -107,6 +110,16 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
+# Install config files
+install(DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
+)
+
+# Install launch files  
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
+
 # Testing and linters
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -114,5 +127,9 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
+
+# Export the plugin description file
+pluginlib_export_plugin_description_file(controller_interface standing_balance_controller.xml)
+# pluginlib_export_plugin_description_file(controller_interface ros2_control_demo_example_7.xml)
 
 ament_package()

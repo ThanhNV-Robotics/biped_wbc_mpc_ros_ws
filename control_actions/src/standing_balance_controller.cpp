@@ -101,21 +101,21 @@ namespace control_actions
 
     controller_interface::CallbackReturn StandingBalanceController::on_activate(const rclcpp_lifecycle::State &previous_state)
     {
-        // clear out vectors in case of restart
-        joint_position_command_interface_.clear();
-        joint_position_state_interface_.clear();
+        // // clear out vectors in case of restart
+        // joint_position_command_interface_.clear();
+        // joint_position_state_interface_.clear();
 
-        // assign command interfaces
-        for (auto &interface : command_interfaces_)
-        {
-            command_interface_map_[interface.get_interface_name()]->push_back(interface);
-        }
+        // // assign command interfaces
+        // for (auto &interface : command_interfaces_)
+        // {
+        //     command_interface_map_[interface.get_interface_name()]->push_back(interface);
+        // }
 
-        // assign state interfaces
-        for (auto &interface : state_interfaces_)
-        {
-            state_interface_map_[interface.get_interface_name()]->push_back(interface);
-        }
+        // // assign state interfaces
+        // for (auto &interface : state_interfaces_)
+        // {
+        //     state_interface_map_[interface.get_interface_name()]->push_back(interface);
+        // }
 
         return CallbackReturn::SUCCESS;
     }

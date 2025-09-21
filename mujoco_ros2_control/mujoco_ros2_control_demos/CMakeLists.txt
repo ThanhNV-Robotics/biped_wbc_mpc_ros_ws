@@ -34,36 +34,4 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
-add_executable(example_position examples/example_position.cpp)
-ament_target_dependencies(example_position ${THIS_PACKAGE_DEPENDS})
-
-add_executable(example_velocity examples/example_velocity.cpp)
-ament_target_dependencies(example_velocity ${THIS_PACKAGE_DEPENDS})
-
-add_executable(example_effort examples/example_effort.cpp)
-ament_target_dependencies(example_effort ${THIS_PACKAGE_DEPENDS})
-
-add_executable(example_diff_drive examples/example_diff_drive.cpp)
-ament_target_dependencies(example_diff_drive ${THIS_PACKAGE_DEPENDS})
-
-add_executable(example_tricycle_drive examples/example_tricycle_drive.cpp)
-ament_target_dependencies(example_tricycle_drive ${THIS_PACKAGE_DEPENDS})
-
-add_executable(example_gripper examples/example_gripper.cpp)
-ament_target_dependencies(example_gripper ${THIS_PACKAGE_DEPENDS})
-
-add_executable(example_camera examples/example_camera.cpp)
-ament_target_dependencies(example_camera ${THIS_PACKAGE_DEPENDS})
-
-install(TARGETS
-    example_position
-    example_velocity
-    example_effort
-    example_diff_drive
-    example_tricycle_drive
-    example_gripper
-    example_camera
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 ament_package()

@@ -1,0 +1,22 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 250  # Hz
+
+
+r6bot_controller:
+  ros__parameters:
+    type: ros2_control_demo_example_7/RobotController
+    joints:
+      - left_hip_pitch
+      - left_hip_roll
+      - left_hip_yaw
+      - left_knee
+      - left_ankle_roll
+      - left_ankle_pitch 
+
+    command_interfaces:
+      - position
+
+    state_interfaces:
+      - position
+      - velocity
