@@ -12,11 +12,14 @@
 #include <string>
 #include <vector>
 
+#include "mujoco/mujoco.h" // for some kinematics computation (CoM...)
+
 namespace control_actions
 {
     class StandingBalanceController : public controller_interface::ControllerInterface
     {
         public:
+            std::string get_robot_description(); // return mujoco xml model
             // those 3 methods must be implemented
             controller_interface::InterfaceConfiguration command_interface_configuration() const override;
             controller_interface::InterfaceConfiguration state_interface_configuration() const override;
@@ -59,9 +62,14 @@ namespace control_actions
             double get_zc() const { return zc; }
 
         protected:
+            // std::string robot_description_; // to store robot description in xml format (mujoco xml file)
+            mjModel *mj_model_; // to read the robot configuration
+            mjData *mj_data_;   // to update the robot state, used to compute CoM position from joint positions
+
             std::vector<std::string> joint_names_; // this shoulde be declared in the yaml config file
             std::vector<std::string> command_interface_types_; // this shoulde be declared in the yaml config file
             std::vector<std::string> state_interface_types_; // this shoulde be declared in the yaml config file
+            std::string mujoco_xml_model_path_; // path to the mujoco XML model file
 
             // command and state interface handles
             std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>>
@@ -133,17 +141,18 @@ namespace control_actions
             ).finished();
 
             // Q and R matrices of kalman filter
-            // Kalman filter matrices
-            const Eigen::MatrixXd A_kalman_ = Eigen::MatrixXd::Identity(3, 3);  // State transition matrix (identity for acceleration filter)
-            const Eigen::MatrixXd B_kalman_ = Eigen::MatrixXd::Zero(3, 1);  // Measurement matrix (identity)
-            const Eigen::MatrixXd C_kalman_ = Eigen::MatrixXd::Identity(3, 3);
-            const Eigen::MatrixXd P_kalman_ =  Eigen::MatrixXd::Identity(3, 3);
+        // Kalman filter matrices
+        const Eigen::MatrixXd F_kalman_ = Eigen::MatrixXd::Identity(3, 3);  // State transition matrix (identity for acceleration filter)
+        const Eigen::MatrixXd B_kalman_ = Eigen::MatrixXd::Zero(3, 1);  // Measurement matrix (identity)
+        const Eigen::MatrixXd H_kalman_ = Eigen::MatrixXd::Identity(3, 3);
+        const Eigen::MatrixXd Q_kalman_ =  0.05*Eigen::MatrixXd::Identity(3, 3);
 
-            // tuning matrix of Kalman Filter
-            const Eigen::MatrixXd R_kalman_ = 2.5 * Eigen::MatrixXd::Identity(3, 3);   // Measurement noise covariance
-            const Eigen::MatrixXd Q_kalman_ = 0.02 * Eigen::MatrixXd::Identity(3, 3);  // Process noise covariance
-            
-            KalmanFilter kalman_filter_ = KalmanFilter(A_kalman_, B_kalman_, C_kalman_, P_kalman_, R_kalman_, Q_kalman_); // init an Kalman filter if needed
+        // tuning matrix of Kalman Filter
+        const Eigen::MatrixXd R_kalman_ = 2.5 * Eigen::MatrixXd::Identity(3, 3);   // Measurement noise covariance
+        const Eigen::MatrixXd P_kalman_ = Eigen::MatrixXd::Identity(3, 3);  // Process noise covariance
+        const Eigen::VectorXd x0_kalman_ = Eigen::VectorXd::Zero(3,1); // initial state
+
+        KalmanFilter kalman_filter_ = KalmanFilter(F_kalman_, H_kalman_, B_kalman_, Q_kalman_,  R_kalman_, P_kalman_, x0_kalman_); // init an Kalman filter if needed
     };
 } // namespace control_actions
 #endif // STANDING_BALANCE_CONTROL_HPP_

@@ -42,30 +42,26 @@ namespace control_actions
 
         public:
             KalmanFilter(
-                const Eigen::MatrixXd &A, // System dynamics.
+                const Eigen::MatrixXd &F, // System dynamics.
                 const Eigen::MatrixXd &B, // Control.
-                const Eigen::MatrixXd &C, // Output.
-                const Eigen::MatrixXd &P, // Estimate error covariance.
+                const Eigen::MatrixXd &H, // Output.
+                const Eigen::MatrixXd &Q, // Estimate error covariance.
                 const Eigen::MatrixXd &R, // Measurement noise covariance.
-                const Eigen::MatrixXd &Q  // Process noise covariance.
+                const Eigen::MatrixXd &P,  // Process noise covariance.
+                const Eigen::VectorXd &x0  // Process noise covariance.
             );
             ~KalmanFilter();
 
-            void init();
-            void init(const Eigen::VectorXd &x);
-            void predict(const Eigen::VectorXd &u);
-            void update(const Eigen::VectorXd &y);
-            Eigen::VectorXd get_state();
 
-            Eigen::VectorXd kalman_filt (Eigen::VectorXd input_measurement);
+            VectorXd predict();//u = 0
+            void update(const Eigen::VectorXd &y);
+            Eigen::VectorXd kalman_filt (Eigen::VectorXd input_measurement);            
 
         private:
-            Eigen::MatrixXd A, B, C, P, R, Q;
-            Eigen::MatrixXd P0; // initial P.
-            Eigen::MatrixXd K;  // kalman gain.
+            Eigen::MatrixXd F, B, H, Q, R, P;
             Eigen::MatrixXd I;  // unit matrix.
 
-            Eigen::VectorXd x_hat; // estimated state.
+            Eigen::VectorXd x; // estimated state.
     }; // class Kalman Filter
 } // namespace control_actions
 #endif  // CONTROL_ACTIONS_COMPUTATION_UTILS_HPP_

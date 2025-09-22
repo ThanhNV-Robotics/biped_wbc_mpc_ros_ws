@@ -36,6 +36,7 @@ standing_balance_controller:
     state_interfaces:
       - position
       - velocity
+    mujoco_xml_model_path: "$(find mujoco_ros2_control_demos)/mujoco_models/Bipedal_Robot.xml"
 joint_trajectory_controller:
   ros__parameters:
     joints: # only joint names are required

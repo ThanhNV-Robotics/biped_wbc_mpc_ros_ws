@@ -7,12 +7,12 @@
 #include <vector>
 
 #include "sensor_msgs/msg/imu.hpp"
+#include "std_msgs/msg/string.hpp"
 
 #include "rclcpp/qos.hpp"
 #include "rclcpp/time.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
-
 
 using config_type = controller_interface::interface_configuration_type;
 
@@ -21,6 +21,40 @@ namespace control_actions
     // default constructor
     StandingBalanceController::StandingBalanceController() : controller_interface::ControllerInterface() {}
 
+    std::string StandingBalanceController::get_robot_description()
+    {
+        // Getting robot description from parameter first. If not set trying from topic
+        std::string robot_description;
+
+        auto node = std::make_shared<rclcpp::Node>(
+            "robot_description_node",
+            rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
+
+        if (node->has_parameter("robot_description"))
+        {
+            robot_description = node->get_parameter("robot_description").as_string();
+            return robot_description;
+        }
+
+        RCLCPP_INFO(node->get_logger(), "Failed to get robot_description from parameter. Will listen on the ~/robot_description topic...");
+
+        auto robot_description_sub = node->create_subscription<std_msgs::msg::String>(
+            "robot_description", rclcpp::QoS(1).transient_local(),
+            [&](const std_msgs::msg::String::SharedPtr msg)
+            {
+                if (!msg->data.empty() && robot_description.empty())
+                    robot_description = msg->data;
+            });
+
+        while (robot_description.empty() && rclcpp::ok())
+        {
+            rclcpp::spin_some(node);
+            RCLCPP_INFO(node->get_logger(), "Waiting for robot description message");
+            rclcpp::sleep_for(std::chrono::milliseconds(500));
+        }
+
+        return robot_description;
+    }
     controller_interface::CallbackReturn StandingBalanceController::on_init()
     {
         // get controller's update_rate from the controller manager
@@ -32,6 +66,7 @@ namespace control_actions
             RCLCPP_ERROR(get_node()->get_logger(), "Invalid control frequency: %d", control_frequency_);
             return CallbackReturn::FAILURE;
         }
+
         // init the controller with a specified control frequency
         StandingBalanceController::set_control_frequency(control_frequency_);
         RCLCPP_INFO(get_node()->get_logger(), "StandingBalanceController will run at %d Hz", control_frequency_);
@@ -43,6 +78,37 @@ namespace control_actions
             auto_declare<std::vector<std::string>>("command_interfaces", command_interface_types_); // set command interface type from the config yaml file
         state_interface_types_ =
             auto_declare<std::vector<std::string>>("state_interfaces", state_interface_types_); // set state interface type from the config yaml file
+
+        // get mujoco xml model from the parameter
+        std::shared_ptr<rclcpp::Node> node = rclcpp::Node::make_shared(
+            "standing_balance_controller_node",
+            rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
+        RCLCPP_INFO_STREAM(node->get_logger(), "Initializing mujoco_ros2_control node...");
+        auto model_path = node->get_parameter("mujoco_model_path").as_string();
+        // Get file name from model_path
+        std::string file_name_str = model_path.substr(model_path.find_last_of("/\\") + 1);
+        const char *file_name = file_name_str.c_str();
+        RCLCPP_INFO_STREAM(node->get_logger(), "File name: " << file_name);
+        // load and compile model
+        char error[1000] = "Could not load binary model";
+        if (
+            std::strlen(model_path.c_str()) > 4 &&
+            !std::strcmp(model_path.c_str() + std::strlen(model_path.c_str()) - 4, ".mjb"))
+        {
+            mj_model_ = mj_loadModel(model_path.c_str(), 0);
+        }
+        else
+        {
+            mj_model_ = mj_loadXML(model_path.c_str(), 0, error, 1000);
+        }
+        if (!mj_model_)
+        {
+            mju_error("Load model error: %s", error);
+        }
+
+        RCLCPP_INFO_STREAM(node->get_logger(), "Mujoco model has been successfully loaded !");
+        // make data
+        mj_data_ = mj_makeData(mj_model_);
 
         // init size of joint_positions_ according to the number of joint names
         if (joint_names_.size() != 12) // we expect 12 joints for the biped robot, otherwise error
@@ -95,28 +161,13 @@ namespace control_actions
         // for testing, init a publisher to publish kalman filter output
         kalman_filter_publisher_ = get_node()->create_publisher<sensor_msgs::msg::Imu>(
             "/controller_kalman_filter_output", rclcpp::QoS(10));
-        
-        return CallbackReturn::SUCCESS;        
+
+        return CallbackReturn::SUCCESS;
     }
 
     controller_interface::CallbackReturn StandingBalanceController::on_activate(const rclcpp_lifecycle::State &previous_state)
     {
-        // // clear out vectors in case of restart
-        // joint_position_command_interface_.clear();
-        // joint_position_state_interface_.clear();
-
-        // // assign command interfaces
-        // for (auto &interface : command_interfaces_)
-        // {
-        //     command_interface_map_[interface.get_interface_name()]->push_back(interface);
-        // }
-
-        // // assign state interfaces
-        // for (auto &interface : state_interfaces_)
-        // {
-        //     state_interface_map_[interface.get_interface_name()]->push_back(interface);
-        // }
-
+        // currently do nothing
         return CallbackReturn::SUCCESS;
     }
 

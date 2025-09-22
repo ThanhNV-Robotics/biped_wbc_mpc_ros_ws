@@ -164,65 +164,65 @@ namespace control_actions
 
     // Implementation of Kalman Filter
     KalmanFilter::KalmanFilter(
-        const Eigen::MatrixXd& _A, // System dynamics.
-        const Eigen::MatrixXd& _B, // Control.
-        const Eigen::MatrixXd& _C, // Output.
-        const Eigen::MatrixXd& _P, // Estimate error covariance.
-        const Eigen::MatrixXd& _R, // Measurement noise covariance.
-        const Eigen::MatrixXd& _Q  // Process noise covariance.
+        const Eigen::MatrixXd &F,                     // State transition matrix
+        const Eigen::MatrixXd &H,                     // Measurement matrix
+        const Eigen::MatrixXd &B = Eigen::MatrixXd(), // Control matrix
+        const Eigen::MatrixXd &Q = Eigen::MatrixXd(), // Process noise covariance
+        const Eigen::MatrixXd &R = Eigen::MatrixXd(), // Measurement noise covariance
+        const Eigen::MatrixXd &P = Eigen::MatrixXd(), // Estimate error covariance
+        const Eigen::VectorXd &x0 = Eigen::VectorXd() // Initial state estimate
     )
-    : A(_A)
-    , B(_B)
-    , C(_C)
-    , P(_P)
-    , P0(_P)
-    , R(_R)
-    , Q(_Q)
-    , I(A.rows(), A.rows())
-    , x_hat(A.rows())
     {
-    I.setIdentity();
+        if (F.size() == 0 || H.size() == 0)
+        {
+            throw std::invalid_argument("Set proper system dynamics.");
+        }
+
+        int n = F.cols();
+        int m = H.rows();
+
+        this->F = F;
+        this->H = H;
+
+        this->B = (B.size() == 0) ? Eigen::MatrixXd::Zero(n, 1) : B;
+        this->Q = (Q.size() == 0) ? Eigen::MatrixXd::Identity(n, n) : Q;
+        this->R = (R.size() == 0) ? Eigen::MatrixXd::Identity(m, m) : R;
+        this->P = (P.size() == 0) ? Eigen::MatrixXd::Identity(n, n) : P;
+        this->x = (x0.size() == 0) ? Eigen::VectorXd::Zero(n) : x0;
+
+        I = Eigen::MatrixXd::Identity(n, n);
     }
 
-    KalmanFilter::~KalmanFilter() {
-
-    }
-
-    void KalmanFilter::init() {
-
-    P = P0;
-    x_hat.setZero();
-    }
-
-    void KalmanFilter::init(const Eigen::VectorXd& x) {
-
-    init();
-    x_hat = x;
-    }
-
-    void KalmanFilter::predict(const Eigen::VectorXd& u) {
-
-    x_hat = A * x_hat + B * u;
-    P = A*P*A.transpose() + Q;
-    }
-
-    void KalmanFilter::update(const Eigen::VectorXd& y) {
-
-        K = P*C.transpose()*(C*P*C.transpose() + R).inverse();
-        x_hat += K * (y - C*x_hat);
-        P = (I - K*C)*P;
-    }
-
-    Eigen::VectorXd KalmanFilter::get_state() { 
-    return x_hat; 
-    }
-
-    Eigen::VectorXd KalmanFilter::kalman_filt (Eigen::VectorXd input_measurement)
+    KalmanFilter::~KalmanFilter()
     {
-        // prediction
-        Eigen::VectorXd prediction = A * x_hat;
+    }
+
+    Eigen::VectorXd KalmanFilter::predict()
+    {
+        x = F * x;
+        P = F * P * F.transpose() + Q;
+        return x;
+    }
+
+    void KalmanFilter::update(const Eigen::VectorXd &z)
+    {
+
+        Eigen::VectorXd y = z - H * x;                           // Innovation
+        Eigen::MatrixXd S = R + H * P * H.transpose();           // Innovation covariance
+        Eigen::MatrixXd K = P * H.transpose() * S.inverse();     // Kalman gain
+
+        x = x + K * y;
+
+        // Joseph form for numerical stability
+        Eigen::MatrixXd I_KH = I - K * H;
+        P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
+    }
+
+    Eigen::VectorXd KalmanFilter::kalman_filt(Eigen::VectorXd input_measurement)
+    {
+        Eigen::VectorXd prediction = H * predict();
         update(input_measurement);
-        return prediction;
+        return prediction; // same as python: predicted measurement, not state
     }
 }
 
