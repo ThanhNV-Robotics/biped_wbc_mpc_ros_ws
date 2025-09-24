@@ -1,6 +1,6 @@
 #ifndef STANDING_BALANCE_CONTROL_HPP_
 #define STANDING_BALANCE_CONTROL_HPP_
-
+#pragma once
 #include "computation_utils.hpp"
 #include <Eigen/Dense>
 #include "controller_interface/controller_interface.hpp"
@@ -19,7 +19,7 @@ namespace control_actions
     class StandingBalanceController : public controller_interface::ControllerInterface
     {
         public:
-            std::string get_robot_description(); // return mujoco xml model
+            
             // those 3 methods must be implemented
             controller_interface::InterfaceConfiguration command_interface_configuration() const override;
             controller_interface::InterfaceConfiguration state_interface_configuration() const override;
@@ -57,7 +57,8 @@ namespace control_actions
                 Bdis_ = Mexp.block(0, n, n, m);
             }
             Eigen::VectorXd compute_balancing_motion (double zmp_x, double zmp_y, VectorXd joint_fb_angles);
-            Eigen::Vector3d  compute_zmp (Vector3d com_pos, Vector3d acceleration);
+            Eigen::Vector3d compute_com (VectorXd joint_fb_angles);
+            Eigen::Vector3d compute_zmp (Vector3d com_pos, Vector3d acceleration);
             Eigen::VectorXd kalman_filt (VectorXd measurement);
             double get_zc() const { return zc; }
 
@@ -97,14 +98,14 @@ namespace control_actions
             Eigen::VectorXd left_leg_current_joint_angles_; // left leg joint angles
             Eigen::VectorXd right_leg_current_joint_angles_; // right leg joint angles
             Eigen::Vector3d filtered_acceleration_; // filtered acceleration using kalman filter
-            Eigen::Vector3d com_position_; // com position in the base_link frame, x, y, z
+            Eigen::Vector3d com_position_ = Eigen::Vector3d::Zero(); // com position
 
             // IMU subscriber
             rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_subscriber_;
             // joint_state subscriber:
             rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_subscriber_;
             // publisher for kalman filter output
-            rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr kalman_filter_publisher_;
+            rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr state_publisher_;
 
             // Controller parameters
             const double Tzmp = 0.01; // sec, time const of the ZMP feedback

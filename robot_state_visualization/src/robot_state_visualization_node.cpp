@@ -29,6 +29,7 @@ Eigen::Vector3d com;
 Eigen::Vector3d zmp_position;
 //vector3d represent acceleration
 Eigen::Vector3d acceleration;
+Eigen::Vector3d filtered_acceleration;
 
 using namespace control_actions;
 StandingBalanceController standing_balance_controller(250);
@@ -64,12 +65,12 @@ void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   acceleration[2] = msg->linear_acceleration.z;
 
   // filt acceleration data and publish it
-  Eigen::VectorXd filtered_acceleration = standing_balance_controller.kalman_filt(acceleration);
+  filtered_acceleration = standing_balance_controller.kalman_filt(acceleration);
   sensor_msgs::msg::Imu filtered_acc_msg;
   filtered_acc_msg.linear_acceleration.x = filtered_acceleration[0];
   filtered_acc_msg.linear_acceleration.y = filtered_acceleration[1];
   filtered_acc_msg.linear_acceleration.z = filtered_acceleration[2];
-    if (filtered_acceleration_publisher) {
+  if (filtered_acceleration_publisher) {
     filtered_acceleration_publisher->publish(filtered_acc_msg);
   }
 }
@@ -103,7 +104,7 @@ void visualize_zmp ()
 
 
   
-  zmp_position = standing_balance_controller.compute_zmp(com, acceleration);
+  zmp_position = standing_balance_controller.compute_zmp(com, filtered_acceleration);
 
   // set posiiton to <site name="ZMP_est" pos="0 0 0" size="0.02" rgba="0 1 0 1"/>
   int site_id = mj_name2id(mj_model, mjOBJ_SITE, "ZMP_est");

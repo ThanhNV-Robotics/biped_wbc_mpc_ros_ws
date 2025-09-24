@@ -16,6 +16,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(controller_interface REQUIRED)
 find_package(realtime_tools REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 # Find mujoco lib
 find_package(mujoco QUIET) 
@@ -71,6 +72,7 @@ ament_target_dependencies(action_server
   sensor_msgs
   controller_interface
   realtime_tools
+  ament_index_cpp
 )
 add_dependencies(action_server ${PROJECT_NAME}__cpp)
 

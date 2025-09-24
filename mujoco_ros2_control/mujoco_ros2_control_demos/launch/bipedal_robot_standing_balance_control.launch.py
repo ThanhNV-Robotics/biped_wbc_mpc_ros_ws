@@ -53,12 +53,13 @@ def generate_launch_description():
             {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot.xml')}
         ]
     ) 
-
+    # standing balance controller node
+    # remark: use the Bipedal_Robot_Mimic.xml, with a fixed torso, to compute some kinematic values only
     node_standing_balance_controller = Node(
             package="controller_manager",
             executable="ros2_control_node",
             parameters=[standing_balance_controller_cfg_file, 
-                        {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot.xml')}
+                        {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Mimic.xml')}
                         ],
             output="screen",
         )
@@ -164,6 +165,6 @@ def generate_launch_description():
         node_robot_state_publisher,
         node_standing_balance_controller,
         # standing_balance_controller_spawner,
-        # node_mujoco_ros2_mimic,
+        node_mujoco_ros2_mimic,
         node_control_action
     ])
