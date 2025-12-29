@@ -5,6 +5,7 @@ from launch.actions import ExecuteProcess, RegisterEventHandler
 from launch.event_handlers import OnProcessStart, OnProcessExit
 from launch_ros.actions import Node
 import xacro
+from ament_index_python.packages import get_package_prefix
 
 def generate_launch_description():
     print("hello")
@@ -42,14 +43,14 @@ def generate_launch_description():
             ]
         ) # control actions server node
     
-    node_mujoco_ros2_mimic = Node(
-        package='robot_state_visualization',
-        executable='robot_state_visualization_node',
-        output='screen',
-        parameters=[
-            {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Mimic.xml')}
-        ]
-    ) # mujoco mimic node
+    # node_mujoco_ros2_mimic = Node(
+    #     package='robot_state_visualization',
+    #     executable='robot_state_visualization_node',
+    #     output='screen',
+    #     parameters=[
+    #         {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Mimic.xml')}
+    #     ]
+    # ) # mujoco mimic node
     
     node_robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -75,6 +76,16 @@ def generate_launch_description():
              'imu_sensor_broadcaster'],
         output='screen'
     )
+
+    # RViz2 node for visualization
+    rviz_config_file = os.path.join(mujoco_ros2_control_demos_path, 'rviz', 'bipedal_robot.rviz')
+    node_rviz2 = Node(
+        package='rviz2',
+        executable='rviz2',
+        output='screen',
+        arguments=['-d', rviz_config_file] if os.path.exists(rviz_config_file) else []
+    ) # RViz2 visualization node
+
     return LaunchDescription([
         RegisterEventHandler(
             event_handler=OnProcessStart(
@@ -96,6 +107,7 @@ def generate_launch_description():
         ),
         node_mujoco_ros2_control,
         node_robot_state_publisher,
+        node_rviz2,
         # node_mujoco_ros2_mimic,
         node_control_action
     ])

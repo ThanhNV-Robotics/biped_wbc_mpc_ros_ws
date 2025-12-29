@@ -21,7 +21,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>  
@@ -56,7 +56,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0 -0.089761 0.081437"/>
       <geometry>
-        <mesh filename="../meshes/Left_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Left_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -78,7 +78,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0445 -0.162205 0.100849"/>
       <geometry>
-        <mesh filename="../meshes/Left_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Left_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -104,7 +104,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 -0.162205 0.221349"/>
       <geometry>
-        <mesh filename="../meshes/Left_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Left_Thigh_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -124,7 +124,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 -0.179205 0.424849"/>
       <geometry>
-        <mesh filename="../meshes/Left_Shank_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Left_Shank_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -145,7 +145,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.019 -0.162205 0.759849"/>
       <geometry>
-        <mesh filename="../meshes/Left_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Left_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -161,7 +161,7 @@
     <visual>
       <origin xyz="0.0 -0.147205 0.759849" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/Left_Foot_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Left_Foot_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -184,7 +184,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0 0.089761 0.081437"/>
       <geometry>
-        <mesh filename="../meshes/Right_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Right_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -205,7 +205,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0445 0.162205 0.100849"/>
       <geometry>
-        <mesh filename="../meshes/Right_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Right_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -226,7 +226,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.162205 0.221349"/>
       <geometry>
-        <mesh filename="../meshes/Right_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Right_Thigh_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -252,7 +252,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.179205 0.424849"/>
       <geometry>
-        <mesh filename="../meshes/Right_Shank_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Right_Shank_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -273,7 +273,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.019 0.162205 0.759849"/>
       <geometry>
-        <mesh filename="../meshes/Right_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Right_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -290,14 +290,14 @@
     <visual>
       <origin xyz="0.0 0.147205 0.759849" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0.0 0.147205 0.759849" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/urdf/meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -462,6 +462,7 @@
         <command_interface name="position_pid"/> <!--define command interface, to use pid controller, need to include _pid in the name-->
         <state_interface name="position"/> <!--require position interface/feedback-->
         <state_interface name="velocity"/> <!--require velocity interface/feedback-->
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_hip_roll">       
         <param name="min">-0.35</param>
@@ -474,6 +475,7 @@
         <command_interface name="position_pid"/>       
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_hip_yaw">        
         <param name="min">-0.8</param>
@@ -486,6 +488,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_knee">        
         <param name="min">0</param>
@@ -498,6 +501,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_ankle_roll">
         <param name="min">-0.34</param>
@@ -510,6 +514,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_ankle_pitch">        
         <param name="min">-0.34</param>
@@ -522,6 +527,7 @@
         <command_interface name="position_pid"/>        
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
 
 
@@ -536,6 +542,7 @@
         <command_interface name="position_pid"/> <!--define command interface, to use pid controller, need to include _pid in the name-->
         <state_interface name="position"/> <!--require position interface/feedback-->
         <state_interface name="velocity"/> <!--require velocity interface/feedback-->
+        <state_interface name="effort"/>
       </joint>
       <joint name="right_hip_roll">       
         <param name="min">-0.35</param>
@@ -548,6 +555,7 @@
         <command_interface name="position_pid"/>       
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="right_hip_yaw">        
         <param name="min">-0.8</param>
@@ -560,6 +568,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="right_knee">      
         <param name="min">0</param>
@@ -572,6 +581,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="right_ankle_roll">
         <param name="min">-0.34</param>
@@ -584,6 +594,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="right_ankle_pitch">        
         <param name="min">-0.34</param>
@@ -596,6 +607,7 @@
         <command_interface name="position_pid"/>        
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
     <sensor name="torso_imu">
       <state_interface name="orientation.x"/>

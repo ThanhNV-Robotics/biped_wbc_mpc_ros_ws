@@ -21,7 +21,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -42,7 +42,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0 -0.089761 0.081437"/>
       <geometry>
-        <mesh filename="../meshes/Left_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Left_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -64,7 +64,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0445 -0.162205 0.100849"/>
       <geometry>
-        <mesh filename="../meshes/Left_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Left_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -90,7 +90,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 -0.162205 0.221349"/>
       <geometry>
-        <mesh filename="../meshes/Left_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Left_Thigh_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -110,7 +110,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 -0.179205 0.424849"/>
       <geometry>
-        <mesh filename="../meshes/Left_Shank_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Left_Shank_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -131,7 +131,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.019 -0.162205 0.759849"/>
       <geometry>
-        <mesh filename="../meshes/Left_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Left_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -147,7 +147,7 @@
     <visual>
       <origin xyz="0.0 -0.147205 0.759849" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/Left_Foot_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Left_Foot_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -170,7 +170,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0 0.089761 0.081437"/>
       <geometry>
-        <mesh filename="../meshes/Right_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Right_Hip_Pitch_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -191,7 +191,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.0445 0.162205 0.100849"/>
       <geometry>
-        <mesh filename="../meshes/Right_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Right_Link2_Hip_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -212,7 +212,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.162205 0.221349"/>
       <geometry>
-        <mesh filename="../meshes/Right_Thigh_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Right_Thigh_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -238,7 +238,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.179205 0.424849"/>
       <geometry>
-        <mesh filename="../meshes/Right_Shank_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Right_Shank_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -259,7 +259,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="-0.019 0.162205 0.759849"/>
       <geometry>
-        <mesh filename="../meshes/Right_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Right_Ankle_Roll_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
@@ -276,14 +276,14 @@
     <visual>
       <origin xyz="0.0 0.147205 0.759849" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0.0 0.147205 0.759849" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="../meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://mujoco_ros2_control_demos/meshes/Right_Foot_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
