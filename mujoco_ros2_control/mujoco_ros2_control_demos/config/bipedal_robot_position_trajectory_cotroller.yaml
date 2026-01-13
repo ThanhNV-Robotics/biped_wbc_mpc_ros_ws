@@ -31,7 +31,7 @@ joint_trajectory_controller:
     state_interfaces:
       - position
       - velocity
-      - effort   
+      # - effort   
 imu_sensor_broadcaster:
   ros__parameters:
     sensor_name: torso_imu
