@@ -56,7 +56,15 @@ namespace control_actions
             "homing",
             std::bind(&ControlActionServer::homing_handle_goal, this, _1, _2),
             std::bind(&ControlActionServer::homing_handle_cancel, this, _1),
-            std::bind(&ControlActionServer::homing_handle_accepted, this, _1));            
+            std::bind(&ControlActionServer::homing_handle_accepted, this, _1));
+
+        // create left_leg_test_trajectory action server
+        this->act_serv_left_leg_test_trajectory_ = rclcpp_action::create_server<LeftLegTestTrajectoryAction>(
+            this,
+            "left_leg_test_trajectory",
+            std::bind(&ControlActionServer::left_leg_test_trajectory_handle_goal, this, _1, _2),
+            std::bind(&ControlActionServer::left_leg_test_trajectory_handle_cancel, this, _1),
+            std::bind(&ControlActionServer::left_leg_test_trajectory_handle_accepted, this, _1));            
     }
 
     void ControlActionServer::set_mujoco_model(mjModel *mj_model)

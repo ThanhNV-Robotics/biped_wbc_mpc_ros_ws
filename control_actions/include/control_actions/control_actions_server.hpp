@@ -3,6 +3,8 @@
 #include "control_actions/action/initial_standing.hpp"
 #include "control_actions/action/standing_balance.hpp"
 #include "control_actions/action/homing.hpp"
+#include "control_actions/action/left_leg_test_trajectory.hpp"
+
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -33,6 +35,9 @@ namespace control_actions
             //For Homing action
             using HomingAction = control_actions::action::Homing;
             using GoalHandleHoming = rclcpp_action::ServerGoalHandle<HomingAction>;
+            //For LeftLegTestTrajectory action
+            using LeftLegTestTrajectoryAction = control_actions::action::LeftLegTestTrajectory;
+            using GoalHandleLeftLegTestTrajectory = rclcpp_action::ServerGoalHandle<LeftLegTestTrajectoryAction>;
 
             CONTROL_ACTIONS_CPP_PUBLIC
             explicit ControlActionServer(const rclcpp::NodeOptions &options = rclcpp::NodeOptions()); //constructor
@@ -81,6 +86,13 @@ namespace control_actions
             rclcpp_action::CancelResponse homing_handle_cancel(const std::shared_ptr<GoalHandleHoming> goal_handle);
             void homing_handle_accepted(const std::shared_ptr<GoalHandleHoming> goal_handle);
             void homing_execute (const std::shared_ptr<GoalHandleHoming> goal_handle);
+
+            // for left_leg_test_trajectory action
+            rclcpp_action::Server<LeftLegTestTrajectoryAction>::SharedPtr act_serv_left_leg_test_trajectory_;
+            rclcpp_action::GoalResponse left_leg_test_trajectory_handle_goal(const rclcpp_action::GoalUUID &uuid, std::shared_ptr<const LeftLegTestTrajectoryAction::Goal> goal);
+            rclcpp_action::CancelResponse left_leg_test_trajectory_handle_cancel(const std::shared_ptr<GoalHandleLeftLegTestTrajectory> goal_handle);
+            void left_leg_test_trajectory_handle_accepted(const std::shared_ptr<GoalHandleLeftLegTestTrajectory> goal_handle);
+            void left_leg_test_trajectory_execute (const std::shared_ptr<GoalHandleLeftLegTestTrajectory> goal_handle);
 
     };
 } // namespace control_actions_cpp

@@ -42,6 +42,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/InitialStanding.action"
   "action/StandingBalance.action"
   "action/Homing.action"
+  "action/LeftLegTestTrajectory.action"
 )
 
 # Build the action server library
@@ -52,7 +53,7 @@ add_library(action_server SHARED
   src/computation_utils.cpp
   src/homing_action_callbacks.cpp
   src/standing_balance_controller.cpp
-  src/r6bot_controller.cpp
+  src/left_leg_test_trajectory_call_backs.cpp
 )
 target_include_directories(action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

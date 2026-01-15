@@ -21,7 +21,7 @@ def generate_launch_description():
     robot_description = {'robot_description': doc.toxml()}# convert to xml
     
     # define the controller yaml config file
-    controller_config_file = os.path.join(mujoco_ros2_control_demos_path, 'config', 'bipedal_robot_position_trajectory_cotroller.yaml')
+    controller_config_file = os.path.join(mujoco_ros2_control_demos_path, 'config', 'bipedal_robot_position_trajectory_controller.yaml')
 
     node_mujoco_ros2_control = Node(
         package='mujoco_ros2_control',
@@ -105,8 +105,8 @@ def generate_launch_description():
                 on_exit=[load_joint_position_controller],
             )
         ),
-        # node_mujoco_ros2_control,
-        # node_robot_state_publisher,
+        node_mujoco_ros2_control,
+        node_robot_state_publisher,
         # node_rviz2,
         # node_mujoco_ros2_mimic,
         node_control_action
