@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 500  # Hz
+    update_rate: 250  # Hz
 
     joint_trajectory_controller: #controller name
       type: joint_trajectory_controller/JointTrajectoryController # controller type 
@@ -22,4 +22,5 @@ joint_trajectory_controller:
       - position
     state_interfaces:
       - position
-      - velocity    
+      - velocity
+      # - effort

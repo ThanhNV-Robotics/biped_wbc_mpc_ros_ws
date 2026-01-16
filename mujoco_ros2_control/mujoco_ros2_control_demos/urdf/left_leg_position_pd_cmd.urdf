@@ -219,6 +219,7 @@
         <command_interface name="position_pid"/> <!--define command interface, to use pid controller, need to include _pid in the name-->
         <state_interface name="position"/> <!--require position interface/feedback-->
         <state_interface name="velocity"/> <!--require velocity interface/feedback-->
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_hip_roll">       
         <param name="min">-0.35</param>
@@ -231,6 +232,7 @@
         <command_interface name="position_pid"/>       
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_hip_yaw">        
         <param name="min">-0.8</param>
@@ -243,6 +245,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_knee">        
         <param name="min">0</param>
@@ -255,6 +258,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_ankle_roll">
         <param name="min">-0.34</param>
@@ -267,6 +271,7 @@
         <command_interface name="position_pid"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
       <joint name="left_ankle_pitch">        
         <param name="min">-0.34</param>
@@ -279,6 +284,7 @@
         <command_interface name="position_pid"/>        
         <state_interface name="position"/>
         <state_interface name="velocity"/>
+        <state_interface name="effort"/>
       </joint>
   </ros2_control>
   

@@ -59,7 +59,13 @@ namespace control_actions
             "left_hip_yaw",
             "left_knee",
             "left_ankle_roll",
-            "left_ankle_pitch"
+            "left_ankle_pitch",
+            "right_hip_pitch",
+            "right_hip_roll", 
+            "right_hip_yaw",
+            "right_knee",
+            "right_ankle_roll",
+            "right_ankle_pitch"
         };
 
         // Joint limits and parameters based on URDF
@@ -81,58 +87,72 @@ namespace control_actions
         double dt = 0.004; // 250Hz trajectory points to match controller frequency
         int num_points = static_cast<int>(duration / dt);
         
+        // Low-pass filter parameters
+        double cutoff_frequency = 3.0; // Hz - reduce this (try 2.0-3.0) for smoother motion
+        double sample_rate = 1.0 / dt; // 250 Hz
+        double alpha = (2.0 * M_PI * dt * cutoff_frequency) / (2.0 * M_PI * dt * cutoff_frequency + 1.0);
+        std::vector<double> filtered_positions(12, 0.0); // Store previous filtered values
+        
         joint_trajectory_msg.points.resize(num_points);
         
         for (int i = 0; i < num_points; ++i) {
             double t = i * dt;
             trajectory_msgs::msg::JointTrajectoryPoint point;
-            point.positions.resize(6);
-            point.velocities.resize(6);
-            point.accelerations.resize(6);
+            point.positions.resize(12);
+            // point.velocities.resize(12);
+            // point.accelerations.resize(12);
             
-            for (size_t j = 0; j < 6; ++j) {
+            for (size_t j = 0; j < 12; ++j) {
+                if (j >= 6) {
+                    // Right leg joints remain at zero position
+                    point.positions[j] = 0.0;
+                    continue;
+                }
                 double lower_limit = joint_limits[j].first;
                 double upper_limit = joint_limits[j].second;
                 double mid_point = (lower_limit + upper_limit) / 2.0;
                 double amplitude = 0.8 * (upper_limit - lower_limit) / 2.0;
                 
+                double raw_position = 0.0;
+                
                 if (t <= init_duration) {
                     // Smooth initialization phase using 5th order polynomial
                     double s = t / init_duration;
                     double smooth_factor = 6 * std::pow(s, 5) - 15 * std::pow(s, 4) + 10 * std::pow(s, 3);
-                    point.positions[j] = smooth_factor * mid_point;
-                    point.velocities[j] = (30 * std::pow(t, 4) / std::pow(init_duration, 5) - 
-                                         60 * std::pow(t, 3) / std::pow(init_duration, 4) + 
-                                         30 * std::pow(t, 2) / std::pow(init_duration, 3)) * mid_point;
-                    point.accelerations[j] = (120 * std::pow(t, 3) / std::pow(init_duration, 5) - 
-                                            180 * std::pow(t, 2) / std::pow(init_duration, 4) + 
-                                            60 * t / std::pow(init_duration, 3)) * mid_point;
+                    raw_position = smooth_factor * mid_point;
+                    // point.velocities[j] = (30 * std::pow(t, 4) / std::pow(init_duration, 5) - 
+                    //                      60 * std::pow(t, 3) / std::pow(init_duration, 4) + 
+                    //                      30 * std::pow(t, 2) / std::pow(init_duration, 3)) * mid_point;
+                    // point.accelerations[j] = (120 * std::pow(t, 3) / std::pow(init_duration, 5) - 
+                                            // 180 * std::pow(t, 2) / std::pow(init_duration, 4) + 
+                                            // 60 * t / std::pow(init_duration, 3)) * mid_point;
                 } else if (t <= duration) {
                     // Sinusoidal trajectory phase
                     double phase_time = t - init_duration;
                     double omega = 2.0 * M_PI * frequencies[j];
                     
-                    point.positions[j] = mid_point + amplitude * std::sin(omega * phase_time);
-                    point.velocities[j] = amplitude * omega * std::cos(omega * phase_time);
-                    point.accelerations[j] = -amplitude * omega * omega * std::sin(omega * phase_time);
+                    raw_position = mid_point + amplitude * std::sin(omega * phase_time);
+                    // point.velocities[j] = amplitude * omega * std::cos(omega * phase_time);
+                    // point.accelerations[j] = -amplitude * omega * omega * std::sin(omega * phase_time);
                 } else {
                     // Hold final position
-                    point.positions[j] = mid_point;
-                    point.velocities[j] = 0.0;
-                    point.accelerations[j] = 0.0;
+                    raw_position = mid_point;
+                    // point.velocities[j] = 0.0;
+                    // point.accelerations[j] = 0.0;
                 }
+                
+                // Apply first-order low-pass filter
+                filtered_positions[j] = alpha * raw_position + (1.0 - alpha) * filtered_positions[j];
+                point.positions[j] = filtered_positions[j];
             }
             
             point.time_from_start = rclcpp::Duration::from_seconds(t);
             joint_trajectory_msg.points[i] = point;
         }
         
-        // Set header
-        joint_trajectory_msg.header.stamp = this->get_clock()->now();
-        joint_trajectory_msg.header.frame_id = "base_link";
-        
         // Publish trajectory
         joint_trajectory_pub->publish(joint_trajectory_msg);
+        RCLCPP_INFO(this->get_logger(), "Trajectory published successfully");
         
         // Wait for trajectory execution and provide feedback
         rclcpp::Rate loop_rate(10); // 10 Hz feedback rate

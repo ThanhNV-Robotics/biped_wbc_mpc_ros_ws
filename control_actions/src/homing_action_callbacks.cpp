@@ -59,7 +59,7 @@ namespace control_actions
         joint_trajectory_pub->publish(joint_trajectory_msg);
 
         // Check if goal is done
-        if (rclcpp::ok())
+        if (rclcpp::ok() && !goal_handle->is_canceling())
         {
             auto result = std::make_shared<HomingAction::Result>();
             goal_handle->succeed(result);
