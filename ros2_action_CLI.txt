@@ -1,0 +1,30 @@
+# Perform left_leg_test_trajectory running
+
+ros2 action send_goal   /left_leg_test_trajectory   control_actions/action/LeftLegTestTrajectory   "{duration: 15.0}"   --feedback
+
+
+# Perform homing action
+
+ros2 action send_goal \
+  /homing \
+  control_actions/action/Homing \
+  "{duration: 5.0}"
+
+
+# Perform initial standing action
+
+ros2 action send_goal \
+  /initial_standing \
+  control_actions/action/InitialStanding \
+  "{hip_height: 0.35, duration: 5.0}" \
+  --feedback
+
+# Move one joint
+
+ros2 action send_goal \
+  /move_one_joint \
+  control_actions/action/MoveOneJoint \
+  "{joint_name: 'left_hip_pitch', target_position: 0.5, duration: 3.0}" \
+  --feedback
+
+

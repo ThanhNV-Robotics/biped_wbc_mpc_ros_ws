@@ -1,0 +1,9 @@
+<library path="humanoid_hardware">
+  <class name="humanoid_hardware/HumanoidHardwareInterface"
+         type="humanoid_hardware::HumanoidHardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Hardware interface for the humanoid robot using ros2_control.
+    </description>
+  </class>
+</library>
