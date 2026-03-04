@@ -70,25 +70,25 @@ namespace control_actions
 
         // Joint limits and parameters based on URDF
         std::vector<std::pair<double, double>> joint_limits = {
-            {-1.4, 1.4},    // left_hip_pitch
+            {-1.04, 0},    // left_hip_pitch
             {-0.262, 1.05}, // left_hip_roll
             {-0.698, 0.698}, // left_hip_yaw
-            {0.0, 2.09},    // left_knee
-            {-0.5, 0.5},    // left_ankle_roll
-            {-0.5, 0.5}     // left_ankle_pitch
+            {0.0, 1.3},    // left_knee
+            {-0.35, 0.35},    // left_ankle_roll
+            {-0.5, 0.35}     // left_ankle_pitch
         };
 
         // Trajectory frequencies for each joint (Hz)
-        std::vector<double> frequencies = {0.35, 0.25, 0.3, 0.35, 0.35, 0.45};
+        std::vector<double> frequencies = {0.25, 0.275, 0.3, 0.35, 0.35, 0.45};
         
         // Generate trajectory points
-        double init_duration = 2.0; // seconds for initialization
+        double init_duration = 2.5; // seconds for initialization
         double trajectory_duration = duration - init_duration;
         double dt = 0.004; // 250Hz trajectory points to match controller frequency
         int num_points = static_cast<int>(duration / dt);
         
         // Low-pass filter parameters
-        double cutoff_frequency = 3.0; // Hz - reduce this (try 2.0-3.0) for smoother motion
+        double cutoff_frequency = 2.0; // Hz - reduce this (try 2.0-3.0) for smoother motion
         double sample_rate = 1.0 / dt; // 250 Hz
         double alpha = (2.0 * M_PI * dt * cutoff_frequency) / (2.0 * M_PI * dt * cutoff_frequency + 1.0);
         std::vector<double> filtered_positions(12, 0.0); // Store previous filtered values
