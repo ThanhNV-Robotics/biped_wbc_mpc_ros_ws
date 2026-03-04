@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(mujoco_ros2_control_demos)
+project(biped_robot_run)
 
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)

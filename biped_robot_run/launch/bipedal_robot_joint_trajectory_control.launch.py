@@ -9,10 +9,10 @@ from ament_index_python.packages import get_package_prefix
 
 def generate_launch_description():
     print("hello")
-    mujoco_ros2_control_demos_path = os.path.join(
-        get_package_share_directory('mujoco_ros2_control_demos'))
+    biped_robot_run_path = os.path.join(
+        get_package_share_directory('biped_robot_run'))
 
-    xacro_file = os.path.join(mujoco_ros2_control_demos_path,
+    xacro_file = os.path.join(biped_robot_run_path,
                               'urdf',
                               'bipedal_robot_main_simu.urdf') # read urdf file
 
@@ -21,7 +21,7 @@ def generate_launch_description():
     robot_description = {'robot_description': doc.toxml()}# convert to xml
     
     # define the controller yaml config file
-    controller_config_file = os.path.join(mujoco_ros2_control_demos_path, 'config', 'bipedal_robot_position_trajectory_controller.yaml')
+    controller_config_file = os.path.join(biped_robot_run_path, 'config', 'bipedal_robot_position_trajectory_controller.yaml')
 
     node_mujoco_ros2_control = Node(
         package='mujoco_ros2_control',
@@ -30,7 +30,7 @@ def generate_launch_description():
         parameters=[
             robot_description,
             controller_config_file,
-            {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot.xml')}
+            {'mujoco_model_path':os.path.join(biped_robot_run_path, 'mujoco_models', 'Bipedal_Robot.xml')}
         ]
     ) # mujoco simulator node
 
@@ -39,7 +39,7 @@ def generate_launch_description():
             executable='control_actions_server_node',
             output='screen',
             parameters=[
-                {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot.xml')}
+                {'mujoco_model_path':os.path.join(biped_robot_run_path, 'mujoco_models', 'Bipedal_Robot.xml')}
             ]
         ) # control actions server node
     
@@ -48,7 +48,7 @@ def generate_launch_description():
     #     executable='robot_state_visualization_node',
     #     output='screen',
     #     parameters=[
-    #         {'mujoco_model_path':os.path.join(mujoco_ros2_control_demos_path, 'mujoco_models', 'Bipedal_Robot_Mimic.xml')}
+    #         {'mujoco_model_path':os.path.join(biped_robot_run_path, 'mujoco_models', 'Bipedal_Robot_Mimic.xml')}
     #     ]
     # ) # mujoco mimic node
     
@@ -78,7 +78,7 @@ def generate_launch_description():
     )
 
     # RViz2 node for visualization
-    rviz_config_file = os.path.join(mujoco_ros2_control_demos_path, 'rviz', 'bipedal_robot.rviz')
+    rviz_config_file = os.path.join(biped_robot_run_path, 'rviz', 'bipedal_robot.rviz')
     node_rviz2 = Node(
         package='rviz2',
         executable='rviz2',
@@ -106,7 +106,7 @@ def generate_launch_description():
             )
         ),
         node_mujoco_ros2_control,
-        node_robot_state_publisher,
+        node_robot_state_publisher
         # node_rviz2,
         # node_mujoco_ros2_mimic,
         node_control_action

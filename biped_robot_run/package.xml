@@ -3,15 +3,15 @@
    href="http://download.ros.org/schema/package_format3.xsd"
    schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
- <name>mujoco_ros2_control_demos</name>
+ <name>biped_robot_run</name>
  <version>0.1.0</version>
- <description>mujoco_ros2_control_demos</description>
+ <description>Biped robot run package</description>
 
- <maintainer email="sangteak601@gmail.com">Sangtaek Lee</maintainer>
+ <maintainer email="thanhnguyenvan0596@gmail.com">Van Thanh Nguyen</maintainer>
 
  <license>MIT</license>
 
- <author>Sangtaek Lee</author>
+ <author>Van Thanh Nguyen</author>
 
  <buildtool_depend>ament_cmake</buildtool_depend>
 
