@@ -83,7 +83,7 @@ if __name__ == "__main__":
 # ──────────────────────────────────────────────────────────────────────
 #   Load xml mujoco model
 # ──────────────────────────────────────────────────────────────────────
-    mujoco_xml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mjcf", "Right_Ankle_Closed_Chain.xml")
+    mujoco_xml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mjcf", "Right_Ankle_Closed_Chain.xml")
     mj_model = mujoco.MjModel.from_xml_path(mujoco_xml_path)
     mj_data = mujoco.MjData(mj_model)
     time_step = mj_model.opt.timestep     
@@ -112,14 +112,16 @@ if __name__ == "__main__":
     theta_6_vel = 0
     theta_m5_mujo_vel = 0
     theta_m5_jaco_vel = 0
+
+    theta_m6_mujo_vel = 0
     theta_m6_jaco_vel = 0
 # ──────────────────────────────────────────────────────────────────────
 #   start simulation
 # ──────────────────────────────────────────────────────────────────────
     viewer = launch_passive(mj_model, mj_data)
     mj_model.opt.disableflags |= mujoco.mjtDisableBit.mjDSBL_GRAVITY  # Disable gravity for passive viewer
-    while viewer.is_running():
-    #while mj_data.time <= 6:
+    #while viewer.is_running():
+    while mj_data.time <= 20:
         mujoco.mj_step(mj_model, mj_data) 
         simu_time = mj_data.time # simulation time 
         # ──────────────────────────────────────────────────────────────────────
@@ -164,7 +166,7 @@ if __name__ == "__main__":
         viewer.sync()
         
         # save data for plotting
-        data_point = np.hstack([t_control, theta_m5_mujo_vel, theta_m5_jaco_vel, theta_5_vel, theta_6_vel])
+        data_point = np.hstack([t_control, theta_m5_mujo_vel, theta_m5_jaco_vel, theta_m6_mujo_vel, theta_m6_jaco_vel, theta_5_vel, theta_6_vel])
         save_data.append(data_point)
 
     viewer.close()
