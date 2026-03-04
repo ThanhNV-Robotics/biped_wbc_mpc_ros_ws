@@ -1,7 +1,11 @@
 # Biped Robot Software
-## Init submodules
+
+## Init Submodules
+
+```bash
 cd biped_wb_mpc
 git submodule update --init --recursive
+```
 
 ## Packages
 
@@ -12,4 +16,4 @@ Package to simulate a dummy robot.
 Package to run some simple actions.
 
 ### 3. humanoid_hardware
-To set up hardware interface for real robot.
+Package to set up hardware interface for real robot.
