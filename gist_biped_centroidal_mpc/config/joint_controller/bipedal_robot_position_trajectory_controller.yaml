@@ -1,0 +1,38 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 500  # Hz
+    use_robot_description_topic: false
+
+    joint_trajectory_controller: #controller name
+      type: joint_trajectory_controller/JointTrajectoryController # controller type 
+
+    joint_state_broadcaster: #The broadcaster reads all state interfaces and reports them on /joint_states and /dynamic_joint_states.
+      type: joint_state_broadcaster/JointStateBroadcaster #Broadcasters are not real controllers, and therefore take no commands.
+    
+    imu_sensor_broadcaster:
+          type: imu_sensor_broadcaster/IMUSensorBroadcaster
+joint_trajectory_controller:
+  ros__parameters:
+    joints: # only joint names are required
+      - left_hip_pitch_joint
+      - left_hip_roll_joint
+      - left_hip_yaw_joint
+      - left_knee_pitch_joint
+      - left_ankle_roll_joint
+      - left_ankle_pitch_joint   
+      - right_hip_pitch_joint
+      - right_hip_roll_joint
+      - right_hip_yaw_joint
+      - right_knee_pitch_joint
+      - right_ankle_roll_joint
+      - right_ankle_pitch_joint
+    command_interfaces: # must define - changed to match URDF
+      - position_pid
+    state_interfaces:
+      - position
+      - velocity
+      # - effort   
+# imu_sensor_broadcaster:
+#   ros__parameters:
+#     sensor_name: torso_imu
+#     frame_id: torso_imu
