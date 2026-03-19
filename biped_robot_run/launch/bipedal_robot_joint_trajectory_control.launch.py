@@ -106,8 +106,8 @@ def generate_launch_description():
             )
         ),
         node_mujoco_ros2_control,
-        node_robot_state_publisher
+        node_robot_state_publisher,
         # node_rviz2,
         # node_mujoco_ros2_mimic,
-        node_control_action
+        # node_control_action
     ])
