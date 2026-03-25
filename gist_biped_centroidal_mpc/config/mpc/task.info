@@ -1,3 +1,10 @@
+; ============================================================================
+; CONFIGURATION: MPC LOOP DISABLED - SWING TRAJECTORY CONTROL ONLY
+; - mpcDesiredFrequency reduced to 1 Hz (minimal optimization)
+; - Solver threads reduced to 1
+; - Swing trajectory planning remains active (see swing_trajectory_config)
+; ============================================================================
+
 centroidalModelType             0      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
   
 interface
@@ -73,16 +80,16 @@ swing_trajectory_config
 ; multiple_shooting settings
 multiple_shooting
 {
-  nThreads                              4
+  nThreads                              1  ; REDUCED FOR MINIMAL MPC
   dt                                    0.02
-  sqpIteration                          1
+  sqpIteration                          1  ; MINIMAL ITERATIONS
   deltaTol                              1e-4
   g_max                                 1e-2
   g_min                                 1e-6
   inequalityConstraintMu                0.1
   inequalityConstraintDelta             5.0
   projectStateInputEqualityConstraints  true
-  printSolverStatistics                 true
+  printSolverStatistics                 false  ; DISABLED
   printSolverStatus                     false
   printLinesearch                       false
   useFeedbackPolicy                     false
@@ -109,7 +116,7 @@ mpc
 
   debugPrint                      false
 
-  mpcDesiredFrequency             80  ; [Hz]
+  mpcDesiredFrequency             1  ; [Hz] - REDUCED TO DISABLE ACTIVE MPC LOOP
   mrtDesiredFrequency             100 ; [Hz]
 }
 
@@ -152,21 +159,21 @@ Q
   scaling 1e+0
 
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
-  (0,0)   8.0     ; h_com_x / robotMass
-  (1,1)   8.0     ; h_com_y / robotMass
-  (2,2)   15.0     ; h_com_z / robotMass
-  (3,3)   15.0      ; L_x / robotMass
-  (4,4)   15.0      ; L_y / robotMass
-  (5,5)   4.0      ; L_z / robotMass
+  (0,0)   0.0     ; h_com_x / robotMass
+  (1,1)   0.0     ; h_com_y / robotMass
+  (2,2)   0.0     ; h_com_z / robotMass
+  (3,3)   0.0      ; L_x / robotMass
+  (4,4)   0.0      ; L_y / robotMass
+  (5,5)   0.0      ; L_z / robotMass
 
   ;; Base Pose: [position, orientation] ;;
   (6,6)   0.0    ; p_base_x
   (7,7)   0.0    ; p_base_y
-  (8,8)   15.0    ; p_base_z
+  (8,8)   0.0    ; p_base_z
   ; euler angles for base to world rotation
   (9,9)   0.0    ; theta_base_z
-  (10,10) 5.0    ; theta_base_y
-  (11,11) 5.0    ; theta_base_x
+  (10,10) 0.0    ; theta_base_y
+  (11,11) 0.0    ; theta_base_x
 
   ;; Joint Positions (12 DOF - legs only) ;;
   (12,12) 0.02     ;    left_hip_pitch_joint

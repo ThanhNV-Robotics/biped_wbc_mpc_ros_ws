@@ -97,7 +97,7 @@ def generate_launch_description():
 #             on_start=[TimerAction(period=2.0, actions=[load_joint_state_broadcaster])]
 #         )
 #     ))
-    # cfg.ld.add_action(cfg.mpc_sim)
+    cfg.ld.add_action(cfg.mpc_sim)
     cfg.ld.add_action(cfg.robot_state_publisher_node)
     cfg.ld.add_action(cfg.terminal_robot_state_publisher_node)
     cfg.ld.add_action(cfg.target_robot_state_publisher_node)
