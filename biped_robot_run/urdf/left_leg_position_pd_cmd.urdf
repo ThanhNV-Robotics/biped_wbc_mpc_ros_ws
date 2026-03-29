@@ -204,7 +204,7 @@
       velocity="20" />
   </joint>
   
-  <ros2_control name="MujocoSystem" type="system">
+  <ros2_control name="MujocoSystem" type="mujoco_ros2_control/MujocoSystem">
     <hardware>
       <plugin>mujoco_ros2_control/MujocoSystem</plugin> <!--inlcude mujoco driver/interface-->
     </hardware>

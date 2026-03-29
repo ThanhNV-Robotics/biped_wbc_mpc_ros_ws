@@ -448,7 +448,7 @@
     velocity = "100"/>
   </joint>
   
-  <ros2_control name="MujocoSystem" type="system">
+  <ros2_control name="MujocoSystem" type="mujoco_ros2_control/MujocoSystem">
     <hardware>
       <plugin>mujoco_ros2_control/MujocoSystem</plugin>
     </hardware>
@@ -610,7 +610,7 @@
         <state_interface name="velocity"/>
         <state_interface name="effort"/>
       </joint>
-    <sensor name="torso_imu">
+    <!-- <sensor name="torso_imu">
       <state_interface name="orientation.x"/>
       <state_interface name="orientation.y"/>
       <state_interface name="orientation.z"/>
@@ -621,7 +621,7 @@
       <state_interface name="angular_velocity.x"/>
       <state_interface name="angular_velocity.y"/>
       <state_interface name="angular_velocity.z"/>
-    </sensor>
+    </sensor> -->
   </ros2_control>
   
 </robot>

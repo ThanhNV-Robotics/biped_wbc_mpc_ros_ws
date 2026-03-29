@@ -9,6 +9,7 @@ endif ()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(humanoid_centroidal_mpc_ros2 REQUIRED)
@@ -86,6 +87,8 @@ install(DIRECTORY config
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
+
+ament_python_install_package(${PROJECT_NAME})
 
 ament_export_dependencies(${dependencies})
 ament_package()

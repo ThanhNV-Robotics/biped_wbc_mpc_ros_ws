@@ -23,9 +23,9 @@ https://github.com/google-deepmind/mujoco/releases
 Then we need to configure environment variable for mujoco directory:
 
 ```bash
-export MUJOCO_DIR=/PATH/TO/MUJOCO/mujoco-3.x.x
+export MUJOCO_DIR=/biped_wbc_mpc_ws/src/biped_wbc_mpc/mujoco-3.5.0
 ```
-where /PATH/TO/MUJOCO/mujoco-3.x.x is the directory to the downloaded MuJoCo. The original source for mujoco_ros2_control is given in the link below:
+The MuJoCo 3.5.0 directory is located in the workspace root. The original source for mujoco_ros2_control is given in the link below:
 
 https://github.com/moveit/mujoco_ros2_control
 

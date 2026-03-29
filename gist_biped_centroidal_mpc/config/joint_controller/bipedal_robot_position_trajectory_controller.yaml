@@ -26,8 +26,9 @@ joint_trajectory_controller:
       - right_knee_pitch_joint
       - right_ankle_roll_joint
       - right_ankle_pitch_joint
-    command_interfaces: # must define - changed to match URDF
-      - position_pid
+    interface_name: position # must define
+    command_interfaces: # must define
+      - position
     state_interfaces:
       - position
       - velocity

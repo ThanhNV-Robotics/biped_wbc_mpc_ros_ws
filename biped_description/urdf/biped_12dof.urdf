@@ -1,5 +1,12 @@
 <?xml version="1.0" ?>
-<robot name="Biped Robot 12dof" version="1.0">
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="Biped Robot 12dof" version="1.0">
+
+  <!-- Whether or not to use PID control -->
+  <xacro:arg name="use_pid" default="false"/>
+  <xacro:arg name="headless" default="false"/>
+  <xacro:arg name="use_mjcf_from_topic" default="false"/>
+  <xacro:arg name="use_transmissions" default="false"/>
+
  <mujoco>
 <compiler meshdir="meshes" discardvisual="false" fusestatic="false" />
 </mujoco>
@@ -296,180 +303,225 @@
     </visual>
   </link>
 
-<ros2_control name="MujocoSystem" type="system">
+  <!-- ROS2 Control Configuration -->
+  <ros2_control name="MujocoSystem" type="system">
     <hardware>
-      <plugin>mujoco_ros2_control/MujocoSystem</plugin>
+      <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
+
+      <!-- Conditional mujoco_model parameter based on use_pid -->
+      <xacro:if value="$(arg use_pid)">
+        <param name="pids_config_file">$(find biped_description)/config/joint_pd_gain.yaml</param>
+      </xacro:if>
+
+      <xacro:unless value="$(arg use_mjcf_from_topic)">
+        <param name="mujoco_model">$(find biped_description)/mjcf/biped_robot_12dof.xml</param>
+      </xacro:unless>
+
+      <!-- Uncomment this to use the keyframe from shown file as the starting configuration. -->
+      <!-- <param name="override_start_position_file">$(find mujoco_ros2_control_demos)/config/start_positions.xml</param> -->
+
+      <!-- Override the slowdown settings in the Simulate App and run at 3x speed -->
+      <param name="sim_speed_factor">1.0</param>
+
+      <!-- Uncomment to start the simulation at a specific keyframe defined in the MJCF -->
+      <!-- <param name="initial_keyframe">start_90</param> -->
+
+      <!-- If set to true, will not launch the Simulate App window -->
+      <param name="headless">$(arg headless)</param>
+
     </hardware>
-      <joint name="left_hip_pitch_joint">
-        <param name="min">-1.05</param> <!--joint position limit-->
-        <param name="max">1.05</param> <!--joint position limit-->
-        <param name="position_kp">650.0</param> <!--define kp gain of the pid controller-->
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/> <!--define command interface, to use pid controller, need to include _pid in the name-->
-        <state_interface name="position"/> <!--require position interface/feedback-->
-        <state_interface name="velocity"/> <!--require velocity interface/feedback-->
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="left_hip_roll_joint">       
-        <param name="min">-0.35</param>
-        <param name="max">0.8</param>
-        <param name="position_kp">600.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>
-        <command_interface name="position_pid"/>       
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="left_hip_yaw_joint">        
-        <param name="min">-0.8</param>
-        <param name="max">0.8</param>
-        <param name="position_kp">150.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="left_knee_pitch_joint">        
-        <param name="min">0</param>
-        <param name="max">2.09</param>
-        <param name="position_kp">350.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="left_ankle_roll_joint">
-        <param name="min">-0.34</param>
-        <param name="max">0.34</param>
-        <param name="position_kp">250.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="left_ankle_pitch_joint">        
-        <param name="min">-0.34</param>
-        <param name="max">0.34</param>
-        <param name="position_kp">250.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>
-        <command_interface name="position_pid"/>        
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
+    <joint name="left_hip_pitch_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
 
+      <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
 
-      <joint name="right_hip_pitch_joint">
-        <param name="min">-1.05</param> <!--joint position limit-->
-        <param name="max">1.05</param> <!--joint position limit-->
-        <param name="position_kp">650.0</param> <!--define kp gain of the pid controller-->
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/> <!--define command interface, to use pid controller, need to include _pid in the name-->
-        <state_interface name="position"/> <!--require position interface/feedback-->
-        <state_interface name="velocity"/> <!--require velocity interface/feedback-->
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="right_hip_roll_joint">       
-        <param name="min">-0.35</param>
-        <param name="max">0.8</param>
-        <param name="position_kp">600.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>
-        <command_interface name="position_pid"/>       
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="right_hip_yaw_joint">        
-        <param name="min">-0.8</param>
-        <param name="max">0.8</param>
-        <param name="position_kp">150.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="right_knee_pitch_joint">      
-        <param name="min">0</param>
-        <param name="max">2.09</param>
-        <param name="position_kp">350.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="right_ankle_roll_joint">
-        <param name="min">-0.34</param>
-        <param name="max">0.34</param>
-        <param name="position_kp">250.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>       
-        <command_interface name="position_pid"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-      <joint name="right_ankle_pitch_joint">        
-        <param name="min">-0.34</param>
-        <param name="max">0.34</param>
-        <param name="position_kp">250.0</param>
-        <param name="position_ki">0.0</param>
-        <param name="position_kd">1.5</param>
-        <param name="position_i_max">50.0</param>
-        <param name="position_i_min">-50.0</param>
-        <command_interface name="position_pid"/>        
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
-        <state_interface name="effort"/>
-      </joint>
-    <sensor name="torso_imu">
-      <state_interface name="orientation.x"/>
-      <state_interface name="orientation.y"/>
-      <state_interface name="orientation.z"/>
-      <state_interface name="orientation.w"/>
-      <state_interface name="linear_acceleration.x"/>
-      <state_interface name="linear_acceleration.y"/>
-      <state_interface name="linear_acceleration.z"/>
-      <state_interface name="angular_velocity.x"/>
-      <state_interface name="angular_velocity.y"/>
-      <state_interface name="angular_velocity.z"/>
-    </sensor>
+    <joint name="left_hip_roll_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="left_hip_yaw_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="left_knee_pitch_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="left_ankle_roll_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="left_ankle_pitch_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="right_hip_pitch_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="right_hip_roll_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="right_hip_yaw_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="right_knee_pitch_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="right_ankle_roll_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
+    <joint name="right_ankle_pitch_joint">
+      <command_interface name="position"/>
+      <xacro:if value="$(arg use_pid)">
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+      </xacro:if>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+
+       <!-- Effort and torque are semantically different but map to the same underlying data. -->
+      <state_interface name="effort"/>
+      <state_interface name="torque"/>
+    </joint>
+
   </ros2_control>
 
 </robot>
