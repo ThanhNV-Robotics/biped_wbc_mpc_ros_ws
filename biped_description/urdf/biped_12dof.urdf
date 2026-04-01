@@ -522,6 +522,24 @@
       <state_interface name="torque"/>
     </joint>
 
+    <!-- IMU Sensor -->
+    <sensor name="torso_imu">
+      <param name="mujoco_type">imu</param>
+      <!-- The mujoco_sensor_name is the prefix for the sensors in MJCF (torso_quat, torso_accel, torso_gyro) -->
+      <param name="mujoco_sensor_name">torso</param>
+      <!-- Suffixes default to _quat, _gyro, _accel which match our MJCF sensors -->
+      <state_interface name="orientation.x"/>
+      <state_interface name="orientation.y"/>
+      <state_interface name="orientation.z"/>
+      <state_interface name="orientation.w"/>
+      <state_interface name="angular_velocity.x"/>
+      <state_interface name="angular_velocity.y"/>
+      <state_interface name="angular_velocity.z"/>
+      <state_interface name="linear_acceleration.x"/>
+      <state_interface name="linear_acceleration.y"/>
+      <state_interface name="linear_acceleration.z"/>
+    </sensor>
+
   </ros2_control>
 
 </robot>
