@@ -5,8 +5,6 @@ namespace control_actions
     ControlActionServer::ControlActionServer(const rclcpp::NodeOptions &options)
         : Node("control_action_server", options)
     {
-        this->declare_parameter<std::string>("mujoco_model_path", "");
-
         // create a subscription to read joint states
         joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
             "/joint_states", 10,
@@ -64,14 +62,9 @@ namespace control_actions
             "left_leg_test_trajectory",
             std::bind(&ControlActionServer::left_leg_test_trajectory_handle_goal, this, _1, _2),
             std::bind(&ControlActionServer::left_leg_test_trajectory_handle_cancel, this, _1),
-            std::bind(&ControlActionServer::left_leg_test_trajectory_handle_accepted, this, _1));            
+            std::bind(&ControlActionServer::left_leg_test_trajectory_handle_accepted, this, _1));
     }
 
-    void ControlActionServer::set_mujoco_model(mjModel *mj_model)
-    {
-        mj_model_ = mj_model;
-        return;
-    }
     void ControlActionServer::set_joint_limits(std::unordered_map<std::string, std::pair<double, double>> joint_limits)
     {
         joint_limits_ = joint_limits;

@@ -77,6 +77,16 @@ def launch_setup(context, *args, **kwargs):
             )
         )
 
+    # Control actions server
+    nodes.append(
+        Node(
+            package="control_actions",
+            executable="control_actions_server_node",
+            output="both",
+            parameters=[robot_description, {"use_sim_time": True}],
+        )
+    )
+
     return nodes
 
 

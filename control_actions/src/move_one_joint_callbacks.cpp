@@ -34,10 +34,12 @@ namespace control_actions
         auto result = std::make_shared<MoveOneJointAction::Result>();
 
         // validate the joint name
-        int joint_id = mj_name2id(mj_model_, mjOBJ_JOINT, goal->joint_name.c_str());
-        if (joint_id == -1) // invalid input joint name
+        auto joint_names = this->get_joint_names();
+        bool joint_found = std::find(joint_names.begin(), joint_names.end(), goal->joint_name) != joint_names.end();
+        
+        if (!joint_found) // invalid input joint name
         {
-            RCLCPP_ERROR(this->get_logger(), "Invalid joint name: %s", goal->joint_name);
+            RCLCPP_ERROR(this->get_logger(), "Invalid joint name: %s", goal->joint_name.c_str());
             result->joint_name = goal->joint_name;
             result->final_position = NAN;
             return;

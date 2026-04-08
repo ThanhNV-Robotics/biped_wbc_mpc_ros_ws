@@ -17,23 +17,28 @@ find_package(Eigen3 REQUIRED)
 find_package(controller_interface REQUIRED)
 find_package(realtime_tools REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(urdf REQUIRED)
 
-# Find mujoco lib
+# Find mujoco lib (optional, only needed for some controllers)
 find_package(mujoco QUIET) 
 if(mujoco_FOUND)
   message(STATUS "Mujoco build from source has been found")
   set(MUJOCO_LIB mujoco::mujoco)
   set(MUJOCO_INCLUDE_DIR ${MUJOCO_INCLUDE_DIR})
+  set(HAVE_MUJOCO TRUE)
 elseif(DEFINED ENV{MUJOCO_DIR})
   message(STATUS "Mujoco build from source has not been found. Attempting to find the binary in $ENV{MUJOCO_DIR} instead.")
   find_library(MUJOCO_LIB mujoco HINTS $ENV{MUJOCO_DIR}/lib)
   if(NOT MUJOCO_LIB)
-    message(FATAL_ERROR "Failed to find binary in $ENV{MUJOCO_DIR}")
+    message(WARNING "Failed to find binary in $ENV{MUJOCO_DIR}")
+    set(HAVE_MUJOCO FALSE)
+  else()
+    set(MUJOCO_INCLUDE_DIR $ENV{MUJOCO_DIR}/include)
+    set(HAVE_MUJOCO TRUE)
   endif()
-  set(MUJOCO_INCLUDE_DIR $ENV{MUJOCO_DIR}/include)
 else()
-  message(FATAL_ERROR "Failed to find mujoco with find_package.
-  Either build and install mujoco from source or set the MUJOCO_DIR environment variable to tell CMake where to find the binary install. ")
+  message(WARNING "Mujoco not found - some controllers may not be available")
+  set(HAVE_MUJOCO FALSE)
 endif()
 
 # Action interface generation
@@ -52,14 +57,12 @@ add_library(action_server SHARED
   src/initial_standing_callbacks.cpp
   src/computation_utils.cpp
   src/homing_action_callbacks.cpp
-  src/standing_balance_controller.cpp
   src/left_leg_test_trajectory_call_backs.cpp
 )
 target_include_directories(action_server PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp>
   $<INSTALL_INTERFACE:include>
-  ${MUJOCO_INCLUDE_DIR}
   ${EIGEN3_INCLUDE_DIRS} 
 )
 target_compile_definitions(action_server
@@ -74,21 +77,28 @@ ament_target_dependencies(action_server
   controller_interface
   realtime_tools
   ament_index_cpp
+  urdf
 )
+target_link_libraries(action_server 
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(action_server "${cpp_typesupport_target}")
 add_dependencies(action_server ${PROJECT_NAME}__cpp)
 
 # Build the standalone executable node
 add_executable(control_actions_server_node src/control_actions_server_node.cpp)
 target_link_libraries(control_actions_server_node
   action_server
-  ${MUJOCO_LIB}
   ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
+ament_target_dependencies(control_actions_server_node
+  urdf
 )
 
 target_include_directories(control_actions_server_node PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp>
-  ${MUJOCO_INCLUDE_DIR}
   ${EIGEN3_INCLUDE_DIRS} 
 )
 add_dependencies(control_actions_server_node ${PROJECT_NAME}__cpp)
@@ -130,9 +140,5 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
-
-# Export the plugin description file
-pluginlib_export_plugin_description_file(controller_interface standing_balance_controller.xml)
-# pluginlib_export_plugin_description_file(controller_interface ros2_control_demo_example_7.xml)
 
 ament_package()

@@ -5,18 +5,17 @@
 #include "control_actions/action/homing.hpp"
 #include "control_actions/action/left_leg_test_trajectory.hpp"
 
-
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 #include "control_actions/visity_control.h"
-#include "mujoco/mujoco.h"
 #include <memory>
 #include <thread>
 #include <unordered_map>
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <urdf/model.h>
 
 namespace control_actions
 {
@@ -41,7 +40,6 @@ namespace control_actions
 
             CONTROL_ACTIONS_CPP_PUBLIC
             explicit ControlActionServer(const rclcpp::NodeOptions &options = rclcpp::NodeOptions()); //constructor
-            void set_mujoco_model (mjModel *mj_model);
             void set_joint_limits (std::unordered_map<std::string, std::pair<double, double>> joint_limits);
             void set_joint_names (std::vector<std::string> joint_names) {joint_names_ = joint_names; return;};        
             std::unordered_map<std::string, double> get_current_joint_positions(std::vector<std::string> joint_names);
@@ -52,8 +50,6 @@ namespace control_actions
 
         private:
             // share attributes for all actions
-            mjModel *mj_model_; // to read the robot configuration
-            
             int control_frequency_;  // Control frequency retrieved from controller manager
             // StandingBalanceController standing_controller_ = StandingBalanceController(250); // init a standing balance controller, 250Hz default     
             bool standing_control_enable_ = false; // 

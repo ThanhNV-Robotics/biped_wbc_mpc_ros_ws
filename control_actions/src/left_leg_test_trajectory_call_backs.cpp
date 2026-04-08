@@ -54,18 +54,18 @@ namespace control_actions
         trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
         // specify left leg joint names
         joint_trajectory_msg.joint_names = {
-            "left_hip_pitch",
-            "left_hip_roll", 
-            "left_hip_yaw",
-            "left_knee",
-            "left_ankle_roll",
-            "left_ankle_pitch",
-            "right_hip_pitch",
-            "right_hip_roll", 
-            "right_hip_yaw",
-            "right_knee",
-            "right_ankle_roll",
-            "right_ankle_pitch"
+            "left_hip_pitch_joint",
+            "left_hip_roll_joint", 
+            "left_hip_yaw_joint",
+            "left_knee_pitch_joint",
+            "left_ankle_roll_joint",
+            "left_ankle_pitch_joint",
+            "right_hip_pitch_joint",
+            "right_hip_roll_joint", 
+            "right_hip_yaw_joint",
+            "right_knee_pitch_joint",
+            "right_ankle_roll_joint",
+            "right_ankle_pitch_joint"
         };
 
         // Joint limits and parameters based on URDF

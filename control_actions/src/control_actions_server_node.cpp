@@ -1,64 +1,81 @@
 #include <control_actions/control_actions_server.hpp>
 #include <rclcpp/rclcpp.hpp>
-
-mjModel *mj_model; // to read the robot configuration
+#include <urdf/model.h>
 
 int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
     auto control_action_server_node = std::make_shared<control_actions::ControlActionServer>();
 
-    //check input parameters, shoulde include a path to mujoco model
-    if (control_action_server_node->get_parameter("mujoco_model_path").as_string().empty())
+    // Get robot_description parameter
+    std::string robot_description;
+    if (!control_action_server_node->get_parameter("robot_description", robot_description))
     {
-        RCLCPP_ERROR(control_action_server_node->get_logger(), "mujoco_model_path parameter is not set");
-        return 1;
-    }
-    auto model_path = control_action_server_node->get_parameter("mujoco_model_path").as_string();
-    // load and compile the mujoco model
-    char error[1000] = "Could not load binary model";
-    if (
-        std::strlen(model_path.c_str()) > 4 &&
-        !std::strcmp(model_path.c_str() + std::strlen(model_path.c_str()) - 4, ".mjb"))
-    {
-        mj_model = mj_loadModel(model_path.c_str(), 0);
-    }
-    else
-    {
-        mj_model = mj_loadXML(model_path.c_str(), 0, error, 1000);
-    }
-    // check if the model is loaded successfully
-    if (!mj_model)
-    {
-        RCLCPP_ERROR(control_action_server_node->get_logger(), "Control Action Server: Could not load mujoco model: %s", error);
-        return 1;
-    }
-    RCLCPP_INFO_STREAM(control_action_server_node->get_logger(), " Control Action Server: successfully loaded !");
-    // load mj_model to node class
-    control_action_server_node->set_mujoco_model(mj_model);
-    // read joint limits from the mujoco model
-    std::unordered_map<std::string, std::pair<double, double>> joint_limits;
-    for (int j = 0; j < mj_model->njnt; j++) // loop over all joints
-    {
-        std::string jname = mj_model->names + mj_model->name_jntadr[j];
-        double lower_limit = mj_model->jnt_range[2 * j];
-        double upper_limit = mj_model->jnt_range[2 * j + 1];
-        joint_limits[jname] = std::make_pair(lower_limit, upper_limit);
-    }
-
-    // set joint limits to the node class
-    control_action_server_node->set_joint_limits(joint_limits);
-
-    // set joint names
-    std::vector<std::string> joint_names;
-    for (int j = 0; j < mj_model->njnt; j++) // loop over all joints
-    {
-        std::string jname = mj_model->names + mj_model->name_jntadr[j];
-        if (jname != "root") // do not include root joint
+        RCLCPP_WARN(control_action_server_node->get_logger(), "robot_description parameter not found, trying to get from /robot_description topic...");
+        
+        // Try to wait for robot_description on global parameter server
+        auto parameters_client = std::make_shared<rclcpp::SyncParametersClient>(control_action_server_node, "/robot_state_publisher");
+        if (parameters_client->wait_for_service(std::chrono::seconds(5)))
         {
-            joint_names.push_back(jname);
-        }        
+            auto params = parameters_client->get_parameters({"robot_description"});
+            if (!params.empty() && params[0].get_type() == rclcpp::ParameterType::PARAMETER_STRING)
+            {
+                robot_description = params[0].as_string();
+            }
+        }
+        
+        if (robot_description.empty())
+        {
+            RCLCPP_ERROR(control_action_server_node->get_logger(), "Could not get robot_description parameter");
+            return 1;
+        }
     }
+
+    // Parse URDF
+    urdf::Model robot_model;
+    if (!robot_model.initString(robot_description))
+    {
+        RCLCPP_ERROR(control_action_server_node->get_logger(), "Failed to parse URDF");
+        return 1;
+    }
+
+    RCLCPP_INFO(control_action_server_node->get_logger(), "Successfully parsed URDF model: %s", robot_model.getName().c_str());
+
+    // Extract joint information from URDF
+    std::unordered_map<std::string, std::pair<double, double>> joint_limits;
+    std::vector<std::string> joint_names;
+
+    for (const auto& joint_pair : robot_model.joints_)
+    {
+        const auto& joint = joint_pair.second;
+        
+        // Only process revolute and continuous joints, skip fixed and root joints
+        if ((joint->type == urdf::Joint::REVOLUTE || joint->type == urdf::Joint::CONTINUOUS) &&
+            joint->name != "root")
+        {
+            joint_names.push_back(joint->name);
+            
+            if (joint->limits)
+            {
+                double lower = joint->limits->lower;
+                double upper = joint->limits->upper;
+                joint_limits[joint->name] = std::make_pair(lower, upper);
+                RCLCPP_DEBUG(control_action_server_node->get_logger(), 
+                    "Joint %s: limits [%f, %f]", joint->name.c_str(), lower, upper);
+            }
+            else
+            {
+                // For continuous joints without limits, use a large range
+                joint_limits[joint->name] = std::make_pair(-3.14159, 3.14159);
+            }
+        }
+    }
+
+    RCLCPP_INFO(control_action_server_node->get_logger(), 
+        "Loaded %zu joints from URDF", joint_names.size());
+
+    // Set joint information in the node
+    control_action_server_node->set_joint_limits(joint_limits);
     control_action_server_node->set_joint_names(joint_names);
 
     rclcpp::spin(control_action_server_node);
