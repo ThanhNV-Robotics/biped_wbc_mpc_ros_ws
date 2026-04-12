@@ -12,14 +12,10 @@ find_package(pluginlib REQUIRED)
 find_package(std_msgs REQUIRED)
 
 # Attempt to link MuJoCo via the vendor package, if available
-find_package(mujoco_vendor QUIET)
-if(mujoco_vendor_FOUND)
-  set(MUJOCO_LIB mujoco::mujoco)
-  set(MUJOCO_INCLUDE_DIR ${mujoco_vendor_INCLUDE_DIRS})
-else()
-  # Fallback to system MuJoCo or other methods if needed
-  message(FATAL_ERROR "mujoco_vendor not found!")
-endif()
+find_package(mujoco_vendor REQUIRED)
+# mujoco_vendor exports libraries via mujoco_vendor_LIBRARIES
+set(MUJOCO_LIB ${mujoco_vendor_LIBRARIES})
+set(MUJOCO_INCLUDE_DIR ${mujoco_vendor_INCLUDE_DIRS})
 
 
 # Build the heartbeat publisher plugin

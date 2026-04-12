@@ -27,7 +27,8 @@ find_package(TinyXML2 REQUIRED)
 
 # Link MuJoCo via the vendor package
 find_package(mujoco_vendor REQUIRED)
-set(MUJOCO_LIB mujoco::mujoco)
+# mujoco_vendor exports libraries via mujoco_vendor_LIBRARIES
+set(MUJOCO_LIB ${mujoco_vendor_LIBRARIES})
 
 # The vendor package may be installed in different locations depending on if it
 # was installed with apt vs pixi. So resolve the install root and use that to
@@ -91,11 +92,36 @@ set(MUJOCO_SILENCE_COMPILER_WARNINGS
 # actually link against it as normal symbols are not available. If that is the case, we must
 # compile the application from source. For the conda installed version, we can link directly
 # against the package. We create a `mujoco_simulate` library in both cases.
+set(MUJOCO_SIMULATE_AVAILABLE FALSE)
+set(MUJOCO_VERSION "3.3.4")  # Must match the version in mujoco_vendor
 find_library(mujoco_simulate_lib
   NAMES simulate
   PATHS "${MUJOCO_ROOT}/lib"
   NO_DEFAULT_PATH
 )
+
+# If simulate source files are not found, fetch them from MuJoCo repository
+if(NOT EXISTS "${MUJOCO_SIMULATE_DIR}/simulate.cc")
+  message(STATUS "Simulate source files not found, fetching from MuJoCo repository")
+  include(FetchContent)
+  FetchContent_Declare(
+    mujoco_source
+    GIT_REPOSITORY https://github.com/google-deepmind/mujoco.git
+    GIT_TAG ${MUJOCO_VERSION}
+    GIT_SHALLOW TRUE
+  )
+  FetchContent_GetProperties(mujoco_source)
+  if(NOT mujoco_source_POPULATED)
+    FetchContent_Populate(mujoco_source)
+    set(MUJOCO_SIMULATE_DIR "${mujoco_source_SOURCE_DIR}/simulate")
+    # Install simulate headers to the install directory
+    install(DIRECTORY "${MUJOCO_SIMULATE_DIR}/"
+            DESTINATION include/simulate
+            FILES_MATCHING PATTERN "*.h")
+    set(MUJOCO_INSTALL_SIMULATE_DIR "include/simulate")
+  endif()
+endif()
+
 if(mujoco_simulate_lib AND NOT EXISTS "${MUJOCO_SIMULATE_DIR}/simulate.cc")
   # Conda installed package does not have source, so link against the library directly
   message(STATUS "Linking against the mujoco simulate application directly")
@@ -105,7 +131,9 @@ if(mujoco_simulate_lib AND NOT EXISTS "${MUJOCO_SIMULATE_DIR}/simulate.cc")
   )
   target_include_directories(mujoco_simulate INTERFACE ${MUJOCO_SIMULATE_DIR} ${MUJOCO_INCLUDE_DIR})
   target_link_libraries(mujoco_simulate INTERFACE ${MUJOCO_LIB} glfw)
-else()
+  set(MUJOCO_SIMULATE_AVAILABLE TRUE)
+elseif(EXISTS "${MUJOCO_SIMULATE_DIR}/simulate.cc")
+  # Simulate source files are available, compile from source
   message(STATUS "No linkable simulate application available, compiling from source")
   add_library(platform_ui_adapter OBJECT)
   set_target_properties(platform_ui_adapter PROPERTIES
@@ -116,7 +144,12 @@ else()
     PRIVATE ${MUJOCO_SIMULATE_DIR}/glfw_adapter.h ${MUJOCO_SIMULATE_DIR}/glfw_dispatch.h ${MUJOCO_SIMULATE_DIR}/platform_ui_adapter.h
     PRIVATE ${MUJOCO_SIMULATE_DIR}/glfw_adapter.cc ${MUJOCO_SIMULATE_DIR}/glfw_dispatch.cc ${MUJOCO_SIMULATE_DIR}/platform_ui_adapter.cc
   )
-  target_include_directories(platform_ui_adapter PUBLIC ${MUJOCO_SIMULATE_DIR} ${MUJOCO_INCLUDE_DIR})
+  target_include_directories(platform_ui_adapter PUBLIC
+    $<BUILD_INTERFACE:${MUJOCO_SIMULATE_DIR}>
+    $<BUILD_INTERFACE:${MUJOCO_INCLUDE_DIR}>
+    $<INSTALL_INTERFACE:${MUJOCO_INSTALL_SIMULATE_DIR}>
+    $<INSTALL_INTERFACE:${MUJOCO_INSTALL_INCLUDE_DIR}>
+  )
   target_link_libraries(platform_ui_adapter PRIVATE ${MUJOCO_LIB} glfw)
   target_compile_options(platform_ui_adapter PRIVATE ${MUJOCO_SILENCE_COMPILER_WARNINGS})
   add_library(mujoco::platform_ui_adapter ALIAS platform_ui_adapter)
@@ -130,7 +163,12 @@ else()
     PRIVATE ${MUJOCO_SIMULATE_DIR}/simulate.h
     PRIVATE ${MUJOCO_SIMULATE_DIR}/simulate.cc ${MUJOCO_SIMULATE_DIR}/array_safety.h
   )
-  target_include_directories(mujoco_simulate PUBLIC ${MUJOCO_SIMULATE_DIR} ${MUJOCO_INCLUDE_DIR})
+  target_include_directories(mujoco_simulate PUBLIC
+    $<BUILD_INTERFACE:${MUJOCO_SIMULATE_DIR}>
+    $<BUILD_INTERFACE:${MUJOCO_INCLUDE_DIR}>
+    $<INSTALL_INTERFACE:${MUJOCO_INSTALL_SIMULATE_DIR}>
+    $<INSTALL_INTERFACE:${MUJOCO_INSTALL_INCLUDE_DIR}>
+  )
   target_link_libraries(mujoco_simulate PRIVATE lodepng mujoco::platform_ui_adapter ${MUJOCO_LIB})
   target_compile_options(mujoco_simulate PRIVATE ${MUJOCO_SILENCE_COMPILER_WARNINGS})
 
@@ -141,6 +179,10 @@ else()
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
   )
+  set(MUJOCO_SIMULATE_AVAILABLE TRUE)
+else()
+  # This should not happen now that we fetch the source if needed
+  message(FATAL_ERROR "MuJoCo simulate library and source files not found after attempting to fetch from repository.")
 endif()
 
 # MuJoCo ROS 2 control system interface (this package)
@@ -197,11 +239,14 @@ target_include_directories(mujoco_ros2_control PUBLIC
   $<TARGET_PROPERTY:transmission_interface::transmission_interface,INTERFACE_INCLUDE_DIRECTORIES>
   $<TARGET_PROPERTY:mujoco_ros2_control_plugins::mujoco_ros2_control_plugins,INTERFACE_INCLUDE_DIRECTORIES>
 )
-# Mark MuJoCo source as system to avoid compiler warnings
-target_include_directories(mujoco_ros2_control SYSTEM PUBLIC
-  $<BUILD_INTERFACE:${MUJOCO_INCLUDE_DIR}>
-  $<BUILD_INTERFACE:${MUJOCO_SIMULATE_DIR}>
+# Mark MuJoCo and simulate sources as SYSTEM PRIVATE to suppress compiler warnings
+# (PRIVATE because build paths can't be exported in INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(mujoco_ros2_control SYSTEM PRIVATE
+  ${MUJOCO_INCLUDE_DIR}
+  ${MUJOCO_SIMULATE_DIR}
 )
+# Suppress warnings from MuJoCo headers when compiling this target
+target_compile_options(mujoco_ros2_control PRIVATE ${MUJOCO_SILENCE_COMPILER_WARNINGS})
 
 # Note: mujoco::mujoco is an IMPORTED target owned by mujoco_vendor and cannot be
 # co-installed here. Downstream packages must find_package(mujoco_vendor) directly,
