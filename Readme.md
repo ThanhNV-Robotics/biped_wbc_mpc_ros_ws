@@ -10,7 +10,7 @@ git submodule update --init --recursive
 
 This is the core source code for us to develope controllers for our robots. The main target is to utilize this source code and implement on our robot
 
-Remember to
+Remember to use python 3.12 to compile catkin pkg
 
 ### 3. control_actions
 Package to run some simple actions (move one joint, initial standing, etc)
