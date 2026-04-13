@@ -14,8 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-!humanoid_wb_mpc/lib/
 lib64/
 parts/
 sdist/
