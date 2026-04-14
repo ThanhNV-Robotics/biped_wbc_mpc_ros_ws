@@ -1099,11 +1099,11 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   // Disable the rangefinder flag at startup so that we don't get the yellow lines.
   // We can still turn this on manually if desired.
   sim_->opt.flags[mjVIS_RANGEFINDER] = false;
-  // Turn off site rendering so that the visualization is more realistic.
-  // These can still be turned on in the visualizer.
+  // Enable site rendering for group 0 (where sensors like IMU are typically placed)
+  // Turn off other site groups so that the visualization is more realistic.
   for (int i = 0; i < mjNGROUP; i++)
   {
-    sim_->opt.sitegroup[i] = 0;
+    sim_->opt.sitegroup[i] = (i == 0) ? 1 : 0;  // Enable group 0, disable others
   }
 
 #if !ROS_DISTRO_HUMBLE
@@ -1618,8 +1618,24 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     }
     else if (actuator.is_position_pid_control_enabled)
     {
-      const double error = actuator.position_interface.command_ - mj_data_->qpos[actuator.mj_pos_adr];
-      mj_data_control_->ctrl[actuator.mj_actuator_id] = pid_compute_command(actuator.pos_pid, error, period);
+      // Impedance Control Mode: τ = Kp*(q_target - q) + Kd*(qd_target - qd) + τ_feedforward
+      // This matches real motor driver behavior for mobile/legged robots
+      const double position_error = actuator.position_interface.command_ - mj_data_->qpos[actuator.mj_pos_adr];
+      const double velocity_error = actuator.velocity_interface.command_ - mj_data_->qvel[actuator.mj_vel_adr];
+      
+      // Get PID gains (Kp and Kd)
+#if ROS_DISTRO_HUMBLE
+      const auto gains = actuator.pos_pid->getGains();
+#else
+      const auto gains = actuator.pos_pid->get_gains();
+#endif
+      
+      // Impedance control law: position feedback + velocity feedback + feedforward
+      const double torque = gains.p_gain_ * position_error + 
+                           gains.d_gain_ * velocity_error + 
+                           actuator.effort_interface.command_;
+      
+      mj_data_control_->ctrl[actuator.mj_actuator_id] = torque;
     }
     else if (actuator.is_velocity_control_enabled)
     {

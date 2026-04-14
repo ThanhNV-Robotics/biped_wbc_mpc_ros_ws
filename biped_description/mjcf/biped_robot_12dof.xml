@@ -86,17 +86,17 @@
 
         <light cutoff="1000" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1" castshadow="false" />
         <!--   Projection of the Pelvis Ceter on the Ground -->
-        <site name="ZMP_est" pos="0 0 0" size="0.02" rgba="0 1 0 1"/>
+        <!-- <site name="ZMP_est" pos="0 0 0" size="0.02" rgba="0 1 0 1"/>
         <site name="ZMP_ref" pos="0 0 0" size="0.02" rgba="1 0 0 1"/>
-        <site name="COM_ref" pos="0 0 0" size="0.02" rgba="0 0 1 1"/>
+        <site name="COM_ref" pos="0 0 0" size="0.02" rgba="0 0 1 1"/> -->
 
         <!--   Link0_Torso -->
         <body name="link0_torso" pos="0 0 0.81" euler="0 0 0">
             <geom type="mesh" class="visual" mesh="link0_torso" />
-            <joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false"/>
+            <!-- <joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false"/> -->
             <inertial pos="0.022E-3 0.011E-3 -9.359E-3" mass="5.721" fullinertia="1.338E-1 1.019E-1 6.278E-2 -7542.256E-9 8599.288E-9 8566.243E-9"/>
             <camera name="track" pos="1 0 1.5" xyaxes="0.78 -0.63 0 0.27 0.33 0.9"/>
-            <site name="torso_imu" type = "box" pos="0.0 0 0.1" euler="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1"/>
+            <site name="torso_imu" type = "box" pos="0.02 0 0.02" euler="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1"/>
 
             <!--   Left leg kinematic chain  -->
             <body name="left_hip_pitch_link" pos="0 162.205E-3 -100.849E-3" euler="90 90 75"> 
@@ -128,7 +128,7 @@
                                                     <joint type="hinge" name="left_ankle_pitch_joint" axis="0 0 1" pos="0 0 0" range="-80 80" class = "AK606_actuator"/>
                                                     <geom name = "Left_Foot" type="mesh" class="visual" mesh="left_ankle_pitch_link" />
                                                     <inertial pos="30.483E-3 -29.106E-3 0" mass="343.229E-3" fullinertia="9.434E-4 1.546E-4 8.770E-4 50230.908E-9 -40.36E-9 9.97E-9" />
-                                                    <site name="Left_Force_Torque_Sensor" type = "box" pos="30E-3 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/>
+                                                    <!-- <site name="Left_Force_Torque_Sensor" type = "box" pos="30E-3 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/> -->
                                                 </body>
                                          </body>
                                 </body>
@@ -165,7 +165,7 @@
                                             <joint type="hinge" name="right_ankle_pitch_joint" axis="0 0 1" pos="0 0 0" range="-80 80" class = "AK606_actuator"/>
                                             <geom type="mesh" name = "Right_Foot" class="visual" mesh="right_ankle_pitch_link" />
                                             <inertial pos="30.483E-3 -29.106E-3 0" mass="343.229E-3" fullinertia="9.434E-4 1.546E-4 8.770E-4 50230.908E-9 -40.36E-9 9.97E-9" />
-                                            <site name="Right_Force_Torque_Sensor" type = "box" pos="30E-3 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/>
+                                            <!-- <site name="Right_Force_Torque_Sensor" type = "box" pos="30E-3 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/> -->
                                         </body>
                                     </body>
                                 </body>
