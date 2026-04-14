@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
-COPY biped_wb_mpc/dependencies.txt /tmp/dependencies.txt
+COPY humanoid_wb_mpc/dependencies.txt /tmp/dependencies.txt
 
 RUN apt-get update && \
     envsubst < /tmp/dependencies.txt | xargs apt-get install -y --no-install-recommends && \

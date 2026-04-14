@@ -11,12 +11,14 @@
 <compiler meshdir="meshes" discardvisual="false" fusestatic="false" />
 </mujoco>
 
-  <link name="world"/>
-  <joint name="link0_torso_joint" type="floating">
+  <!-- [CAUTION] Floating base joint commented out - centroidal MPC adds it internally -->
+  <!-- <link name="world"/>
+  <joint name="floating_base_joint" type="floating">
     <origin xyz="0.0 0.0 0.86" rpy="0.0 0.0 0.0"/>
     <parent link="world"/>
     <child link="link0_torso"/>
-  </joint>
+  </joint> -->
+
   <link name="link0_torso">
     <inertial>
       <origin xyz="2.2000000171829015e-05 1.1000000085914508e-05 -0.009359000250697136" rpy="0.0 0.0 0.0"/>

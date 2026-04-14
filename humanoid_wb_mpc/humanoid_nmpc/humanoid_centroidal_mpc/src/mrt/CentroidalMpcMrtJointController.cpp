@@ -62,9 +62,40 @@ CentroidalMpcMrtJointController::CentroidalMpcMrtJointController(const ::robot::
   currentMpcObservation_.state = vector_t::Zero(mpcRobotModelPtr_->getStateDim());
   currentMpcObservation_.input = vector_t::Zero(mpcRobotModelPtr_->getInputDim());
 
-  // Currently set to 0. There is still a bug in the momentum computation of the inverse dynamics.
-  inverse_dynamics_kp_.fill(0.0);
-  inverse_dynamics_kd_.fill(0.0);
+  // Initialize with default gains
+  inverse_dynamics_kp_.fill(1200.0);
+  inverse_dynamics_kd_.fill(10.0);
+  other_joints_kp_ = 100.0;
+  other_joints_kd_ = 1.0;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+
+void CentroidalMpcMrtJointController::loadJointPDGains(const std::string& taskFile, bool verbose) {
+  boost::property_tree::ptree pt;
+  boost::property_tree::read_info(taskFile, pt);
+  
+  if (verbose) {
+    std::cerr << "\n #### Joint PD Gains:" << "\n";
+    std::cerr << " #### =============================================================================" << "\n";
+  }
+  
+  // Load inverse dynamics PD gains (12x1 vectors)
+  loadData::loadEigenMatrix(taskFile, "joint_pd_gains.inverse_dynamics.kp", inverse_dynamics_kp_);
+  loadData::loadEigenMatrix(taskFile, "joint_pd_gains.inverse_dynamics.kd", inverse_dynamics_kd_);
+  
+  // Load other joints PD gains (scalar values)
+  loadData::loadPtreeValue(pt, other_joints_kp_, "joint_pd_gains.other_joints.kp", verbose);
+  loadData::loadPtreeValue(pt, other_joints_kd_, "joint_pd_gains.other_joints.kd", verbose);
+  
+  if (verbose) {
+    std::cerr << " #### Inverse Dynamics Kp: " << inverse_dynamics_kp_.transpose() << "\n";
+    std::cerr << " #### Inverse Dynamics Kd: " << inverse_dynamics_kd_.transpose() << "\n";
+    std::cerr << " #### Other Joints Kp: " << other_joints_kp_ << "\n";
+    std::cerr << " #### Other Joints Kd: " << other_joints_kd_ << "\n";
+  }
 }
 
 /******************************************************************************************************/
@@ -182,8 +213,8 @@ void CentroidalMpcMrtJointController::computeJointControlAction(scalar_t time,
 
       action.q_des = mpc_q_j_des[i];
       action.qd_des = mpc_qd_j_des[i];
-      action.kp = 1200.0;
-      action.kd = 10.0;
+      action.kp = inverse_dynamics_kp_[i];  // Use configurable gains
+      action.kd = inverse_dynamics_kd_[i];  // Use configurable gains
       action.feed_forward_effort = mpcJointTorques[i];
 
       // std::cerr << "MPCtorque!: " << mpcJointTorques[i] << std::endl;
@@ -212,8 +243,8 @@ void CentroidalMpcMrtJointController::computeJointControlAction(scalar_t time,
 
       action.q_des = 0;
       action.qd_des = 0;
-      action.kp = 1200;
-      action.kd = 10;
+      action.kp = inverse_dynamics_kp_[i];  // Use configurable gains
+      action.kd = inverse_dynamics_kd_[i];  // Use configurable gains
       action.feed_forward_effort = weightCompensatingTorques[i];
     };
   }
@@ -224,8 +255,8 @@ void CentroidalMpcMrtJointController::computeJointControlAction(scalar_t time,
 
     action.q_des = 0;
     action.qd_des = 0;
-    action.kp = 100;
-    action.kd = 1.0;
+    action.kp = other_joints_kp_;  // Use configurable gains
+    action.kd = other_joints_kd_;  // Use configurable gains
     action.feed_forward_effort = 0.0;
   };
 }

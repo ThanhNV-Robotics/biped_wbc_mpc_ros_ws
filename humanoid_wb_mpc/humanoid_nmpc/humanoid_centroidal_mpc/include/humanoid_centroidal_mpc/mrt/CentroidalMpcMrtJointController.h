@@ -63,6 +63,11 @@ class CentroidalMpcMrtJointController final : public ::robot::model::ControlBase
   bool ready() const { return mcpMrtInterface_.initialPolicyReceived(); }
 
   /**
+   * Load joint PD gains from configuration file
+   */
+  void loadJointPDGains(const std::string& taskFile, bool verbose = true);
+
+  /**
    * Handles the low level controller loop that updates the mpc observation, reads out the latest policy and sets the joint control action.
    */
 
@@ -107,6 +112,8 @@ class CentroidalMpcMrtJointController final : public ::robot::model::ControlBase
 
   vector_t inverse_dynamics_kp_;
   vector_t inverse_dynamics_kd_;
+  scalar_t other_joints_kp_;
+  scalar_t other_joints_kd_;
 };
 
 }  // namespace ocs2::humanoid
