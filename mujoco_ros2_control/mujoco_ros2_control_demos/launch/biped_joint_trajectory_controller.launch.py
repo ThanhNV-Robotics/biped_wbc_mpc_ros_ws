@@ -21,7 +21,7 @@ def launch_setup(context, *args, **kwargs):
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
-            PathJoinSubstitution([biped_pkg_share, "urdf", "biped_12dof.urdf"]),
+            PathJoinSubstitution([biped_pkg_share, "urdf", "biped_robot_12dof.urdf"]),
             " use_pid:=true",
             " headless:=",
             LaunchConfiguration("headless"),
