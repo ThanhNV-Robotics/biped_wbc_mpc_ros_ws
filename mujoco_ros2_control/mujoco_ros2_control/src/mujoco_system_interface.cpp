@@ -23,6 +23,7 @@
 #include <fmt/compile.h>
 #include <fmt/ranges.h>
 
+#include <algorithm>
 #include <unistd.h>
 #include <cerrno>
 #include <chrono>
@@ -1334,7 +1335,22 @@ std::vector<hardware_interface::CommandInterface> MujocoSystemInterface::export_
         {
           new_command_interfaces.emplace_back(joint.name, command_if.name, &joint.effort_interface.command_);
         }
+        else if (command_if.name == "feedforward_effort")
+        {
+          new_command_interfaces.emplace_back(joint.name, "feedforward_effort",
+                                              &joint.feedforward_effort_interface.command_);
+        }
       }
+    }
+  }
+
+  // Actuator command interfaces - add feedforward_effort for PD impedance control
+  for (auto& actuator : mujoco_actuator_data_)
+  {
+    if (actuator.actuator_type != ActuatorType::PASSIVE)
+    {
+      new_command_interfaces.emplace_back(actuator.joint_name, "feedforward_effort",
+                                          &actuator.feedforward_effort_interface.command_);
     }
   }
 
@@ -1419,6 +1435,7 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
       actuator_it->is_effort_control_enabled = false;
       actuator_it->is_position_pid_control_enabled = false;
       actuator_it->is_velocity_pid_control_enabled = false;
+      actuator_it->is_pd_impedance_control_enabled = false;
 
       if (interface_type == hardware_interface::HW_IF_POSITION)
       {
@@ -1442,6 +1459,11 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
         RCLCPP_INFO(get_logger(), "Joint %s: %s control enabled (position, velocity disabled)", joint_name.c_str(),
                     interface_type.c_str());
       }
+      else if (interface_type == "feedforward_effort")
+      {
+        // feedforward_effort is used in combination with position/velocity for PD impedance control
+        RCLCPP_INFO(get_logger(), "Joint %s: feedforward_effort interface enabled", joint_name.c_str());
+      }
     }
     else
     {
@@ -1457,6 +1479,7 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
       actuator_it->is_effort_control_enabled = false;
       actuator_it->is_position_pid_control_enabled = false;
       actuator_it->is_velocity_pid_control_enabled = false;
+      actuator_it->is_pd_impedance_control_enabled = false;
 
       RCLCPP_INFO(get_logger(), "Joint %s: %s control disabled", joint_name.c_str(), interface_type.c_str());
     }
@@ -1472,6 +1495,68 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
   for (const auto& interface : start_interfaces)
   {
     update_joint_interface(interface, true);
+  }
+
+  // Detect PD impedance mode: if position/velocity AND feedforward_effort are both actively claimed
+  // Check which interfaces are actually being used by looking at start_interfaces
+  std::map<std::string, std::set<std::string>> joint_active_interfaces;
+  for (const auto& interface : start_interfaces)
+  {
+    size_t delimiter_pos = interface.find('/');
+    if (delimiter_pos != std::string::npos)
+    {
+      std::string joint_name = interface.substr(0, delimiter_pos);
+      std::string interface_type = interface.substr(delimiter_pos + 1);
+      joint_active_interfaces[joint_name].insert(interface_type);
+    }
+  }
+
+  // Enable PD impedance mode for actuators that have both position/velocity AND feedforward_effort
+  for (auto& actuator : mujoco_actuator_data_)
+  {
+    if (actuator.actuator_type == ActuatorType::PASSIVE)
+      continue;
+
+    auto it = joint_active_interfaces.find(actuator.joint_name);
+    if (it != joint_active_interfaces.end())
+    {
+      const auto& interfaces = it->second;
+      bool has_pos_or_vel = interfaces.count(hardware_interface::HW_IF_POSITION) > 0 || 
+                            interfaces.count(hardware_interface::HW_IF_VELOCITY) > 0;
+      bool has_feedforward = interfaces.count("feedforward_effort") > 0;
+
+      if (has_pos_or_vel && has_feedforward)
+      {
+        // Disable regular position/velocity control and enable PD impedance mode
+        actuator.is_position_control_enabled = false;
+        actuator.is_position_pid_control_enabled = false;
+        actuator.is_velocity_control_enabled = false;
+        actuator.is_velocity_pid_control_enabled = false;
+        actuator.is_effort_control_enabled = false;
+        actuator.is_pd_impedance_control_enabled = true;
+        
+        // Initialize actuator commands to current state to prevent huge errors at startup
+        actuator.position_interface.command_ = mj_data_->qpos[actuator.mj_pos_adr];
+        actuator.velocity_interface.command_ = mj_data_->qvel[actuator.mj_vel_adr];
+        actuator.feedforward_effort_interface.command_ = 0.0;
+        
+        // Also initialize the corresponding joint commands
+        auto joint_it = std::find_if(urdf_joint_data_.begin(), urdf_joint_data_.end(),
+                                     [&actuator](const URDFJointData& joint) { 
+                                       return joint.name == actuator.joint_name; 
+                                     });
+        if (joint_it != urdf_joint_data_.end())
+        {
+          joint_it->position_interface.command_ = actuator.position_interface.command_;
+          joint_it->velocity_interface.command_ = actuator.velocity_interface.command_;
+          joint_it->feedforward_effort_interface.command_ = actuator.feedforward_effort_interface.command_;
+        }
+        
+        RCLCPP_INFO(get_logger(), "Joint %s: PD impedance control enabled (kp=%.2f, kd=%.2f), initialized to pos=%.3f, vel=%.3f", 
+                    actuator.joint_name.c_str(), actuator.pd_kp, actuator.pd_kd,
+                    actuator.position_interface.command_, actuator.velocity_interface.command_);
+      }
+    }
   }
 
   return hardware_interface::return_type::OK;
@@ -1579,6 +1664,14 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
 hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time& /*time*/,
                                                              const rclcpp::Duration& period)
 {
+  // Guard against invalid period (negative or too small)
+  if (period.seconds() <= 0.0)
+  {
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+                         "write() called with invalid period: %.6f seconds, skipping", period.seconds());
+    return hardware_interface::return_type::OK;
+  }
+  
   // Update mimic joints
   for (auto& joint : urdf_joint_data_)
   {
@@ -1618,24 +1711,8 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     }
     else if (actuator.is_position_pid_control_enabled)
     {
-      // Impedance Control Mode: τ = Kp*(q_target - q) + Kd*(qd_target - qd) + τ_feedforward
-      // This matches real motor driver behavior for mobile/legged robots
-      const double position_error = actuator.position_interface.command_ - mj_data_->qpos[actuator.mj_pos_adr];
-      const double velocity_error = actuator.velocity_interface.command_ - mj_data_->qvel[actuator.mj_vel_adr];
-      
-      // Get PID gains (Kp and Kd)
-#if ROS_DISTRO_HUMBLE
-      const auto gains = actuator.pos_pid->getGains();
-#else
-      const auto gains = actuator.pos_pid->get_gains();
-#endif
-      
-      // Impedance control law: position feedback + velocity feedback + feedforward
-      const double torque = gains.p_gain_ * position_error + 
-                           gains.d_gain_ * velocity_error + 
-                           actuator.effort_interface.command_;
-      
-      mj_data_control_->ctrl[actuator.mj_actuator_id] = torque;
+      const double error = actuator.position_interface.command_ - mj_data_->qpos[actuator.mj_pos_adr];
+      mj_data_control_->ctrl[actuator.mj_actuator_id] = pid_compute_command(actuator.pos_pid, error, period);
     }
     else if (actuator.is_velocity_control_enabled)
     {
@@ -1645,6 +1722,45 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     {
       const double error = actuator.velocity_interface.command_ - mj_data_->qvel[actuator.mj_vel_adr];
       mj_data_control_->ctrl[actuator.mj_actuator_id] = pid_compute_command(actuator.vel_pid, error, period);
+    }
+    else if (actuator.is_pd_impedance_control_enabled)
+    {
+      // PD Impedance control with feedforward torque
+      // tau = kp * (q_des - q) + kd * (qd_des - qd) + tau_ff
+      const double pos_cmd = actuator.position_interface.command_;
+      const double vel_cmd = actuator.velocity_interface.command_;
+      const double ff_cmd = actuator.feedforward_effort_interface.command_;
+      
+      // Debug: Print feedforward effort for first joint
+      if (actuator.mj_actuator_id == 0)
+      {
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+                             "Joint %s: ff_cmd=%.2f, pos_cmd=%.3f, vel_cmd=%.3f",
+                             actuator.joint_name.c_str(), ff_cmd, pos_cmd, vel_cmd);
+      }
+      
+      // Safety check: if commands are NaN, use current state as safe fallback
+      const double pos_des = std::isfinite(pos_cmd) ? pos_cmd : mj_data_->qpos[actuator.mj_pos_adr];
+      const double vel_des = std::isfinite(vel_cmd) ? vel_cmd : 0.0;
+      const double ff_effort = std::isfinite(ff_cmd) ? ff_cmd : 0.0;
+      
+      const double pos_error = pos_des - mj_data_->qpos[actuator.mj_pos_adr];
+      const double vel_error = vel_des - mj_data_->qvel[actuator.mj_vel_adr];
+      const double pd_torque = actuator.pd_kp * pos_error + actuator.pd_kd * vel_error;
+      const double total_torque = pd_torque + ff_effort;
+      
+      // Clamp to reasonable limits (e.g., ±500 Nm for safety)
+      const double max_torque = 500.0;
+      const double clamped_torque = std::clamp(total_torque, -max_torque, max_torque);
+      
+      if (std::abs(total_torque) > max_torque)
+      {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+                             "Joint %s: Torque %.2f Nm exceeds limit, clamping to %.2f Nm",
+                             actuator.joint_name.c_str(), total_torque, clamped_torque);
+      }
+      
+      mj_data_control_->ctrl[actuator.mj_actuator_id] = clamped_torque;
     }
     else if (actuator.is_effort_control_enabled)
     {
@@ -1708,6 +1824,7 @@ void MujocoSystemInterface::joint_command_to_actuator_command()
         actuator_interface.position_interface.command_ = joint.position_interface.command_;
         actuator_interface.velocity_interface.command_ = joint.velocity_interface.command_;
         actuator_interface.effort_interface.command_ = joint.effort_interface.command_;
+        actuator_interface.feedforward_effort_interface.command_ = joint.feedforward_effort_interface.command_;
       }
     });
   }
@@ -1864,6 +1981,68 @@ bool MujocoSystemInterface::register_mujoco_actuators()
       actuator_data.has_vel_pid = initialize_velocity_pids();
       actuator_data.is_effort_control_enabled = true;
     }
+
+    // Load PD impedance gains if configured
+    RCLCPP_INFO(get_logger(), ">>> Attempting to load PD gains for actuator '%s' <<<", actuator_data.joint_name.c_str());
+    std::string kp_param_name = "pd_gains.kp." + actuator_data.joint_name;
+    std::string kd_param_name = "pd_gains.kd." + actuator_data.joint_name;
+    
+    RCLCPP_INFO(get_logger(), "Looking for params: '%s' and '%s'", kp_param_name.c_str(), kd_param_name.c_str());
+    
+    // Declare parameters with default value 0.0, then get the value
+    // If the parameter is set in the YAML file, it will override the default
+    try
+    {
+      RCLCPP_INFO(get_logger(), "Entering try block for '%s'", actuator_data.joint_name.c_str());
+      
+      if (!get_node()->has_parameter(kp_param_name))
+      {
+        RCLCPP_INFO(get_logger(), "Declaring parameter '%s' with default 0.0", kp_param_name.c_str());
+        get_node()->declare_parameter(kp_param_name, 0.0);
+      }
+      else
+      {
+        RCLCPP_INFO(get_logger(), "Parameter '%s' already exists", kp_param_name.c_str());
+      }
+      
+      if (!get_node()->has_parameter(kd_param_name))
+      {
+        RCLCPP_INFO(get_logger(), "Declaring parameter '%s' with default 0.0", kd_param_name.c_str());
+        get_node()->declare_parameter(kd_param_name, 0.0);
+      }
+      else
+      {
+        RCLCPP_INFO(get_logger(), "Parameter '%s' already exists", kd_param_name.c_str());
+      }
+      
+      RCLCPP_INFO(get_logger(), "Getting parameter values...");
+      actuator_data.pd_kp = get_node()->get_parameter(kp_param_name).as_double();
+      actuator_data.pd_kd = get_node()->get_parameter(kd_param_name).as_double();
+      
+      RCLCPP_INFO(get_logger(), "Retrieved values: Kp=%.2f, Kd=%.2f", actuator_data.pd_kp, actuator_data.pd_kd);
+      
+      if (actuator_data.pd_kp > 0.0)
+      {
+        RCLCPP_INFO(get_logger(), "Loaded PD impedance gains for '%s': Kp=%.2f, Kd=%.2f", 
+                    actuator_data.joint_name.c_str(), actuator_data.pd_kp, actuator_data.pd_kd);
+      }
+      else
+      {
+        RCLCPP_DEBUG(get_logger(), "No PD impedance gains configured for '%s' (Kp=%.2f)", 
+                     actuator_data.joint_name.c_str(), actuator_data.pd_kp);
+      }
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_WARN(get_logger(), "Failed to load PD gains for '%s': %s", 
+                  actuator_data.joint_name.c_str(), e.what());
+      actuator_data.pd_kp = 0.0;
+      actuator_data.pd_kd = 0.0;
+    }
+    
+    RCLCPP_INFO(get_logger(), "Finished loading PD gains for '%s': Kp=%.2f, Kd=%.2f", 
+                actuator_data.joint_name.c_str(), actuator_data.pd_kp, actuator_data.pd_kd);
+
     RCLCPP_DEBUG(get_logger(), "Successfully registered actuator '%s'", act_name);
   }
 
@@ -2147,10 +2326,20 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
           }
           else
           {
-            RCLCPP_ERROR(get_logger(),
-                         "Velocity command interface for the joint : %s is not supported with motor or custom actuator "
-                         "without defining the PIDs",
-                         actuator_name.c_str());
+            // Check if PD impedance gains are loaded - if so, velocity interface is valid for PD impedance mode
+            if (actuator_it->pd_kp > 0.0)
+            {
+              RCLCPP_INFO(get_logger(),
+                          "Velocity command interface for joint %s: will be used for PD impedance mode (Kp=%.2f, Kd=%.2f)",
+                          actuator_name.c_str(), actuator_it->pd_kp, actuator_it->pd_kd);
+            }
+            else
+            {
+              RCLCPP_ERROR(get_logger(),
+                           "Velocity command interface for the joint : %s is not supported with motor or custom actuator "
+                           "without defining the PIDs or pd_gains",
+                           actuator_name.c_str());
+            }
           }
         }
       }

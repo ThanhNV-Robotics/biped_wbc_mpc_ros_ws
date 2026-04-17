@@ -48,7 +48,8 @@ enum class ActuatorType
   POSITION,
   VELOCITY,
   PASSIVE,
-  CUSTOM
+  CUSTOM,
+  PD_IMPEDANCE
 };
 
 /**
@@ -95,8 +96,11 @@ struct MuJoCoActuatorData
   InterfaceData position_interface{ hardware_interface::HW_IF_POSITION };
   InterfaceData velocity_interface{ hardware_interface::HW_IF_VELOCITY };
   InterfaceData effort_interface{ hardware_interface::HW_IF_EFFORT };
+  InterfaceData feedforward_effort_interface{ "feedforward_effort" };
   std::shared_ptr<control_toolbox::PidROS> pos_pid{ nullptr };
   std::shared_ptr<control_toolbox::PidROS> vel_pid{ nullptr };
+  double pd_kp{ 0.0 };
+  double pd_kd{ 0.0 };
   ActuatorType actuator_type{ ActuatorType::UNKNOWN };
   int mj_joint_type = -1;
   int mj_pos_adr = -1;
@@ -110,6 +114,7 @@ struct MuJoCoActuatorData
   bool is_velocity_pid_control_enabled{ false };
   bool is_velocity_control_enabled{ false };
   bool is_effort_control_enabled{ false };
+  bool is_pd_impedance_control_enabled{ false };
   bool has_pos_pid{ false };
   bool has_vel_pid{ false };
 
@@ -118,6 +123,7 @@ struct MuJoCoActuatorData
     position_interface.transmission_passthrough_ = position_interface.state_;
     velocity_interface.transmission_passthrough_ = velocity_interface.state_;
     effort_interface.transmission_passthrough_ = effort_interface.state_;
+    feedforward_effort_interface.transmission_passthrough_ = feedforward_effort_interface.state_;
   }
 
   void copy_command_from_transmission()
@@ -125,6 +131,7 @@ struct MuJoCoActuatorData
     position_interface.command_ = position_interface.transmission_passthrough_;
     velocity_interface.command_ = velocity_interface.transmission_passthrough_;
     effort_interface.command_ = effort_interface.transmission_passthrough_;
+    feedforward_effort_interface.command_ = feedforward_effort_interface.transmission_passthrough_;
   }
 
   void copy_command_to_state()
@@ -132,6 +139,7 @@ struct MuJoCoActuatorData
     position_interface.state_ = position_interface.command_;
     velocity_interface.state_ = velocity_interface.command_;
     effort_interface.state_ = effort_interface.command_;
+    feedforward_effort_interface.state_ = feedforward_effort_interface.command_;
   }
 };
 
@@ -155,6 +163,7 @@ struct URDFJointData
   InterfaceData position_interface{ hardware_interface::HW_IF_POSITION };
   InterfaceData velocity_interface{ hardware_interface::HW_IF_VELOCITY };
   InterfaceData effort_interface{ hardware_interface::HW_IF_EFFORT };
+  InterfaceData feedforward_effort_interface{ "feedforward_effort" };
 
   std::vector<std::string> command_interfaces = {};
 
@@ -171,6 +180,7 @@ struct URDFJointData
     position_interface.state_ = position_interface.transmission_passthrough_;
     velocity_interface.state_ = velocity_interface.transmission_passthrough_;
     effort_interface.state_ = effort_interface.transmission_passthrough_;
+    feedforward_effort_interface.state_ = feedforward_effort_interface.transmission_passthrough_;
   }
 
   void copy_command_to_transmission()
@@ -178,6 +188,7 @@ struct URDFJointData
     position_interface.transmission_passthrough_ = position_interface.command_;
     velocity_interface.transmission_passthrough_ = velocity_interface.command_;
     effort_interface.transmission_passthrough_ = effort_interface.command_;
+    feedforward_effort_interface.transmission_passthrough_ = feedforward_effort_interface.command_;
   }
 
   void copy_state_to_command()
@@ -185,6 +196,7 @@ struct URDFJointData
     position_interface.command_ = position_interface.state_;
     velocity_interface.command_ = velocity_interface.state_;
     effort_interface.command_ = effort_interface.state_;
+    feedforward_effort_interface.command_ = feedforward_effort_interface.state_;
   }
 };
 

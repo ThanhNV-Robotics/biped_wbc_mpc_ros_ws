@@ -319,7 +319,7 @@
 
       <!-- Conditional mujoco_model parameter based on use_pid -->
       <xacro:if value="$(arg use_pid)">
-        <param name="pids_config_file">$(find biped_description)/config/joint_pd_gain.yaml</param>
+        <param name="pids_config_file">$(find biped_joint_pd_impedance_controller)/config/pd_impedance_controller.yaml</param>
       </xacro:if>
 
       <xacro:unless value="$(arg use_mjcf_from_topic)">
