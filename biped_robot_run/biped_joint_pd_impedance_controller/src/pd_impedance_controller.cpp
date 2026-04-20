@@ -224,14 +224,14 @@ controller_interface::return_type PdImpedanceController::update(const rclcpp::Ti
     command_interfaces_[feedforward_effort_cmd_indices_[i]].set_value(ff_cmd);
   }
   
-  // Debug logging
-  if (verbose_ && has_command_)
-  {
-    RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-                         "Commanding %s to pos=%.3f, vel=%.3f, effort=%.3f",
-                         joint_names_[0].c_str(), commanded_positions_[0], 
-                         commanded_velocities_[0], commanded_efforts_[0]);
-  }
+  // // Debug logging
+  // if (verbose_ && has_command_)
+  // {
+  //   RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //                        "Commanding %s to pos=%.3f, vel=%.3f, effort=%.3f",
+  //                        joint_names_[0].c_str(), commanded_positions_[0], 
+  //                        commanded_velocities_[0], commanded_efforts_[0]);
+  // }
 
   return controller_interface::return_type::OK;
 }

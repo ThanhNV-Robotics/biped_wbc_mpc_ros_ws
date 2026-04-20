@@ -1731,13 +1731,13 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       const double vel_cmd = actuator.velocity_interface.command_;
       const double ff_cmd = actuator.feedforward_effort_interface.command_;
       
-      // Debug: Print feedforward effort for first joint
-      if (actuator.mj_actuator_id == 0)
-      {
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
-                             "Joint %s: ff_cmd=%.2f, pos_cmd=%.3f, vel_cmd=%.3f",
-                             actuator.joint_name.c_str(), ff_cmd, pos_cmd, vel_cmd);
-      }
+      // // Debug: Print feedforward effort for first joint
+      // if (actuator.mj_actuator_id == 0)
+      // {
+      //   RCLCPP_INFO_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+      //                        "Joint %s: ff_cmd=%.2f, pos_cmd=%.3f, vel_cmd=%.3f",
+      //                        actuator.joint_name.c_str(), ff_cmd, pos_cmd, vel_cmd);
+      // }
       
       // Safety check: if commands are NaN, use current state as safe fallback
       const double pos_des = std::isfinite(pos_cmd) ? pos_cmd : mj_data_->qpos[actuator.mj_pos_adr];
