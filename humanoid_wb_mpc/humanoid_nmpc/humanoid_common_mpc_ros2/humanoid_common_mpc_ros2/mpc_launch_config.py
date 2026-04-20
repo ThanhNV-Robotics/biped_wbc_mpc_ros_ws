@@ -6,7 +6,14 @@ import launch_ros
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import Command, LaunchConfiguration
-
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, Shutdown
+from launch_ros.substitutions import FindPackageShare
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
 
 def extract_constant_from_cpp(file_path, constant_name):
     with open(file_path, "r") as file:
@@ -95,6 +102,46 @@ class MPCLaunchConfig:
                 LaunchConfiguration("target_gait_file"),
                 LaunchConfiguration("xml_path"),
             ],
+        )
+
+        # Init for mujoco_ros2_control node with MuJoCo sim
+        self.biped_pkg_share = FindPackageShare("biped_description")
+        self.controller_pkg_share = FindPackageShare("biped_joint_pd_impedance_controller")
+
+            # Build robot description for biped robot
+            # Note: use_pid is set to true to export velocity/effort command interfaces
+            # The MuJoCo interface will use custom PD impedance mode when all 3 interfaces are claimed
+        self.robot_description_content = Command(
+            [
+                PathJoinSubstitution([FindExecutable(name="xacro")]),
+                " ",
+                PathJoinSubstitution([self.biped_pkg_share, "urdf", "biped_robot_12dof.urdf"]),
+                " use_pid:=true",  # Export position, velocity, effort interfaces
+                " headless:=",
+                LaunchConfiguration("headless"),
+                " use_mjcf_from_topic:=false",
+                " use_transmissions:=false",
+            ]
+        )
+
+        robot_description_str = self.robot_description_content.perform(context)
+        robot_description = {"robot_description": ParameterValue(value=robot_description_str, value_type=str)}
+
+        # Controller configuration file
+        parameters_file = PathJoinSubstitution([controller_pkg_share, "config", "pd_impedance_controller.yaml"])
+        self.mujoco_ros2_control_sim = launch_ros.actions.Node(
+            package="mujoco_ros2_control",
+            executable="ros2_control_node",
+            emulate_tty=True,
+            output="both",
+            parameters=[
+                {"use_sim_time": True},
+                ParameterFile(parameters_file),
+            ],
+            remappings=(
+                [("~/robot_description", "/robot_description")] if os.environ.get("ROS_DISTRO") == "humble" else []
+            ),
+            on_exit=Shutdown(),
         )
 
         mpc_node_exec = self.mpc_lib_pkg + "_" + self.solver + "_node"
