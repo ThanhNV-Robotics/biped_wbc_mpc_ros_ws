@@ -120,10 +120,6 @@ int main(int argc, char** argv) {
                                                      interface.getMpcRobotModel(), mpc, interface.getPinocchioInterface(),
                                                      interface.mpcSettings().mpcDesiredFrequency_, humanoidVisualizer);
 
-  // Load joint PD gains from task config file
-  mpcJointController.loadJointPDGains(taskFile, true);
-
-  std::cout << "MPC MRT joint controller is set up. " << std::endl;
 
   // size_t mrtDeltaTMicroSeconds_ = 1000000 / (interface.mpcSettings().mrtDesiredFrequency_);
   size_t mrtDeltaTMicroSeconds_ = 1000000 / (500);

@@ -63,39 +63,10 @@ CentroidalMpcMrtJointController::CentroidalMpcMrtJointController(const ::robot::
   currentMpcObservation_.input = vector_t::Zero(mpcRobotModelPtr_->getInputDim());
 
   // Initialize with default gains
-  inverse_dynamics_kp_.fill(1200.0);
-  inverse_dynamics_kd_.fill(10.0);
-  other_joints_kp_ = 100.0;
-  other_joints_kd_ = 1.0;
-}
-
-/******************************************************************************************************/
-/******************************************************************************************************/
-/******************************************************************************************************/
-
-void CentroidalMpcMrtJointController::loadJointPDGains(const std::string& taskFile, bool verbose) {
-  boost::property_tree::ptree pt;
-  boost::property_tree::read_info(taskFile, pt);
-  
-  if (verbose) {
-    std::cerr << "\n #### Joint PD Gains:" << "\n";
-    std::cerr << " #### =============================================================================" << "\n";
-  }
-  
-  // Load inverse dynamics PD gains (12x1 vectors)
-  loadData::loadEigenMatrix(taskFile, "joint_pd_gains.inverse_dynamics.kp", inverse_dynamics_kp_);
-  loadData::loadEigenMatrix(taskFile, "joint_pd_gains.inverse_dynamics.kd", inverse_dynamics_kd_);
-  
-  // Load other joints PD gains (scalar values)
-  loadData::loadPtreeValue(pt, other_joints_kp_, "joint_pd_gains.other_joints.kp", verbose);
-  loadData::loadPtreeValue(pt, other_joints_kd_, "joint_pd_gains.other_joints.kd", verbose);
-  
-  if (verbose) {
-    std::cerr << " #### Inverse Dynamics Kp: " << inverse_dynamics_kp_.transpose() << "\n";
-    std::cerr << " #### Inverse Dynamics Kd: " << inverse_dynamics_kd_.transpose() << "\n";
-    std::cerr << " #### Other Joints Kp: " << other_joints_kp_ << "\n";
-    std::cerr << " #### Other Joints Kd: " << other_joints_kd_ << "\n";
-  }
+  inverse_dynamics_kp_.fill(0.0);
+  inverse_dynamics_kd_.fill(0.0);
+  // other_joints_kp_ = 100.0;
+  // other_joints_kd_ = 1.0;
 }
 
 /******************************************************************************************************/
