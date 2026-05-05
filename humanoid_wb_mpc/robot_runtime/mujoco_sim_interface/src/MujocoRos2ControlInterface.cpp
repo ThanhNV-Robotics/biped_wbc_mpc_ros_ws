@@ -138,6 +138,9 @@ void MujocoRos2ControlInterface::updateRobotStateFromSubscribedTopics(const sens
 
   robotStateInternal_.setContactFlag(0, leftFootContact);
   robotStateInternal_.setContactFlag(1, rightFootContact);
+
+  // Push into the thread-safe store so that updateInterfaceStateFromRobot() + getRobotState() see the latest topic data.
+  threadSafeRobotState_.set(robotStateInternal_);
 }
 
 // Impelement of std::unordered_map<std::string, double> getJointPositionMap() const;

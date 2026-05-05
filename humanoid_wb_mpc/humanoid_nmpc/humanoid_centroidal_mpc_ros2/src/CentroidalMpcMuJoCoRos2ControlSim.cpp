@@ -69,9 +69,13 @@ int main(int argc, char** argv) {
   auto subscription_imu = nodeHandle->create_subscription<sensor_msgs::msg::Imu>(
       "/imu_sensor_broadcaster/imu", 10, imu_callback );
   
-  // create a publisher to publish joint state from robotInterface.getRobotState() to /joint_states
-  auto publisher_joint_states = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
-      "/joint_states", 10);
+  // // create a publisher to publish joint state from robotInterface.getRobotState() to /joint_states
+  // auto publisher_joint_states = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
+  //     "/joint_states", 10);
+
+  // Publisher to send MPC joint commands to the PD impedance controller
+  auto publisher_joint_commands = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
+      "/pd_impedance_controller/commands", 10);
 
 
   std::shared_ptr<HumanoidVisualizer> humanoidVisualizer(
@@ -141,59 +145,72 @@ int main(int argc, char** argv) {
   
   // size_t mrtDeltaTMicroSeconds_ = 1000000 / (interface.mpcSettings().mrtDesiredFrequency_);
   size_t mrtDeltaTMicroSeconds_ = 1000000 / (500); // MRT runs at 500Hz
-  // robotInterface.updateRobotStateFromSubscribedTopics(JointState_msg, Imu_msg); // Update the robot state from the subscribed joint states and imu data
 
-  // mpcJointController.startMpcThread(robotInterface.getRobotState());
+  // Wait for first messages from mujoco_ros2_control before starting MPC
+  RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for joint state and IMU topics from mujoco_ros2_control...");
+  while (!JointState_msg || !Imu_msg) {
+    rclcpp::spin_some(nodeHandle);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Received first sensor messages.");
 
-  // while (!mpcJointController.ready()) {
-  //   RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for initial MPC policy...");
-  //   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  //   // print message for debugging
-  //   RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for initial MPC policy...");
-  // }
-  // RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Initial MPC policy received.");
-  // std::cout << "Initial MPC policy received. " << std::endl;
+  // Prime robot state from topics before starting MPC thread
+  robotInterface.updateRobotStateFromSubscribedTopics(JointState_msg, Imu_msg);
+  robotInterface.updateInterfaceStateFromRobot();
 
+  mpcJointController.startMpcThread(robotInterface.getRobotState());
 
-  // // Set up 200Hz publishing rate
-  // const double publish_rate_hz = 200.0;
-  // const auto publish_period = std::chrono::nanoseconds(static_cast<int64_t>(1e9 / publish_rate_hz));
-  // auto next_publish_time = std::chrono::steady_clock::now();
-  // rclcpp::spin_some(nodeHandle);
+  while (!mpcJointController.ready()) {
+    RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for initial MPC policy...");
+    rclcpp::spin_some(nodeHandle);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Initial MPC policy received.");
 
-  while (true)
+  const auto loop_period = std::chrono::microseconds(mrtDeltaTMicroSeconds_);
+  auto next_loop_time = std::chrono::steady_clock::now();
+
+  while (rclcpp::ok())
   {
-    // robotInterface.updateInterfaceStateFromRobot();
-    // // mpcJointController.computeJointControlAction(0.0, robotInterface.getRobotState(), robotInterface.getRobotJointAction());
-    // // robotInterface.applyJointAction();
-
-    // // Construct and publish JointState message from robotInterface.getRobotState()
-    // sensor_msgs::msg::JointState joint_state_msg;
-    // joint_state_msg.header.stamp = nodeHandle->now();
-
-    // const auto& robotState = robotInterface.getRobotState();
-    // const auto& robotDescription = robotInterface.getRobotDescription();
-    // const auto& jointNames = robotDescription.getJointNames();
-
-    // joint_state_msg.name = jointNames;
-    // joint_state_msg.position.resize(jointNames.size());
-    // joint_state_msg.velocity.resize(jointNames.size());
-    // joint_state_msg.effort.resize(jointNames.size());
-
-    // for (size_t i = 0; i < jointNames.size(); ++i) {
-    //   size_t jointId = robotDescription.getJointIndex(jointNames[i]);
-    //   joint_state_msg.position[i] = robotState.getJointPosition(jointId);
-    //   joint_state_msg.velocity[i] = robotState.getJointVelocity(jointId);
-    //   // If you have effort data, set it here. Otherwise, leave as default (0.0)
-    //   // joint_state_msg.effort[i] = robotState.getJointEffort(jointId);
-    // }
-
-    // publisher_joint_states->publish(joint_state_msg);
-
+    // 1. Pump topic callbacks so JointState_msg / Imu_msg get the latest data
     rclcpp::spin_some(nodeHandle);
 
-    // next_publish_time += publish_period;
-    // std::this_thread::sleep_until(next_publish_time);
+    // 2. Parse topic messages into the robot state and snapshot into getRobotState()
+    if (JointState_msg && Imu_msg) {
+      robotInterface.updateRobotStateFromSubscribedTopics(JointState_msg, Imu_msg);
+      robotInterface.updateInterfaceStateFromRobot();
+    }
+
+    // 3. Run MPC step with the topic-based robot state
+    mpcJointController.computeJointControlAction(0.0, robotInterface.getRobotState(), robotInterface.getRobotJointAction());
+
+    // 4. Publish computed joint commands (q_des, qd_des, ff_torque) to the PD impedance controller
+    {
+      const auto& jointAction = robotInterface.getRobotJointAction();
+      const auto& jointNames = robotInterface.getRobotDescription().getJointNames();
+
+      sensor_msgs::msg::JointState cmd_msg;
+      cmd_msg.header.stamp = nodeHandle->now();
+      cmd_msg.name.reserve(jointNames.size());
+      cmd_msg.position.reserve(jointNames.size());
+      cmd_msg.velocity.reserve(jointNames.size());
+      cmd_msg.effort.reserve(jointNames.size());
+
+      for (const auto& name : jointNames) {
+        robot::joint_index_t idx = robotInterface.getRobotDescription().getJointIndex(name);
+        const auto& action = jointAction.at(idx).value();
+        cmd_msg.name.push_back(name);
+        cmd_msg.position.push_back(action.q_des);
+        cmd_msg.velocity.push_back(action.qd_des);
+        cmd_msg.effort.push_back(action.feed_forward_effort);
+      }
+
+      publisher_joint_commands->publish(cmd_msg);
+    }
+
+    // // 5. Maintain control loop rate // dont need, computeJointControlAction (MRT) already handle this
+    // next_loop_time += loop_period;
+    // std::this_thread::sleep_until(next_loop_time);
   }
 
   return 0;
