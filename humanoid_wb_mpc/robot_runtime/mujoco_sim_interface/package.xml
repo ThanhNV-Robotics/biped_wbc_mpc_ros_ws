@@ -13,6 +13,8 @@
   <depend>mujoco_vendor</depend>
   <depend>robot_model</depend>
   <depend>robot_core</depend>
+  <depend>humanoid_common_mpc</depend>
+  <depend>ocs2_pinocchio_interface</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_cmake_clang_format</test_depend>

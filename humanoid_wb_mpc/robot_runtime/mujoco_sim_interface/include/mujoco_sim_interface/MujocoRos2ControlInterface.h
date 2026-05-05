@@ -12,9 +12,12 @@
 #include <chrono>
 #include <ctime>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 #include <Eigen/Dense>
+
+#include <ocs2_pinocchio_interface/PinocchioInterface.h>
 
 #include <robot_model/RobotState.h>
 #include "mujoco_sim_interface/MujocoUtils.h"
@@ -53,6 +56,13 @@ class MujocoRos2ControlInterface : public robot::model::RobotHWInterfaceBase {
 
   void updateRobotStateFromSubscribedTopics(const sensor_msgs::msg::JointState::SharedPtr jointStateMsg,
                                       const sensor_msgs::msg::Imu::SharedPtr imuMsg);
+
+  /// Initialises the Pinocchio-based base height estimator.
+  /// Call once after construction before the control loop.
+  /// @param pinocchioInterface  A copy of the MPC Pinocchio interface (with custom contact frames already added).
+  /// @param contactFrameNames   Pinocchio frame names for foot contacts (e.g. {"foot_l_contact", "foot_r_contact"}).
+  void initBaseHeightEstimator(ocs2::PinocchioInterface pinocchioInterface,
+                               std::vector<std::string> contactFrameNames);
 
     // return an order map of <joint_name, joint_position> from robotStateInternal_
   std::unordered_map<std::string, double> getJointPositionMap() const;
@@ -108,6 +118,10 @@ class MujocoRos2ControlInterface : public robot::model::RobotHWInterfaceBase {
   mjContact* mujocoContact_ = NULL;
   // mjfSensor mujocoSenor_;
 
+  // Pinocchio-based base height estimator (optional — initialised by initBaseHeightEstimator())
+  std::optional<ocs2::PinocchioInterface> heightEstPinocchioInterface_;
+  std::vector<std::string> heightEstContactFrameNames_;
+
   bool simInit_;
   const bool headless_;
   const bool verbose_;
@@ -121,7 +135,7 @@ class MujocoRos2ControlInterface : public robot::model::RobotHWInterfaceBase {
 
   std::shared_ptr<rclcpp::Node> RobotInterfaceHandleNode = rclcpp::Node::make_shared(
     "robot_state_visualization_node",
-    rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true));
+    rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true).use_global_arguments(false));
 };
 
 }  // namespace robot::mujoco_ros2_control_interface

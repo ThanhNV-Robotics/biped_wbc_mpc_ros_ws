@@ -19,6 +19,7 @@ find_package(kdl_parser REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(ocs2_ros2_interfaces REQUIRED)
 find_package(ocs2_ros2_msgs REQUIRED)
 find_package(ocs2_core REQUIRED)
@@ -76,6 +77,7 @@ set(dependencies
   visualization_msgs
   geometry_msgs
   sensor_msgs
+  std_msgs
   ocs2_ros2_interfaces
   ocs2_ros2_msgs
   ocs2_core

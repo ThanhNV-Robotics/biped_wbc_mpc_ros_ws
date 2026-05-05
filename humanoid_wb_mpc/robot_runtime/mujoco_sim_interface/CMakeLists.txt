@@ -35,6 +35,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(GLEW REQUIRED)
 
 find_package(rclcpp REQUIRED)
+find_package(humanoid_common_mpc REQUIRED)
+find_package(ocs2_pinocchio_interface REQUIRED)
 
 ###########
 ## Build ##
@@ -59,6 +61,8 @@ set(dependencies
   absl
   rclcpp
   sensor_msgs
+  humanoid_common_mpc
+  ocs2_pinocchio_interface
 )
 
 #############

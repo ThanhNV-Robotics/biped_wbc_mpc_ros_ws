@@ -2,7 +2,10 @@
 
 #include <cerrno>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
+
+#include <humanoid_common_mpc/pinocchio_model/DynamicsHelperFunctions.h>
 
 namespace robot::mujoco_ros2_control_interface {
 
@@ -22,7 +25,7 @@ MujocoRos2ControlInterface::MujocoRos2ControlInterface(const MujocoSimConfig& co
 
   RobotInterfaceHandleNode = rclcpp::Node::make_shared(
     "robot_state_visualization_node",
-    rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)); // init a node to handle to topic subscription
+    rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true).use_global_arguments(false)); // init a node to handle to topic subscription
 
 
   lastRealTime_ = std::chrono::high_resolution_clock::now();
@@ -139,8 +142,48 @@ void MujocoRos2ControlInterface::updateRobotStateFromSubscribedTopics(const sens
   robotStateInternal_.setContactFlag(0, leftFootContact);
   robotStateInternal_.setContactFlag(1, rightFootContact);
 
+  // Estimate base height using Pinocchio FK if the estimator has been initialised.
+  // Build q with base at origin + IMU orientation + current joint angles, run FK,
+  // then base_z = -(lowest contact frame z), so the lowest foot lands at z = 0.
+  if (heightEstPinocchioInterface_.has_value()) {
+    const int nJoints = heightEstPinocchioInterface_->getModel().nq - 7;  // subtract floating-base dof
+    ocs2::vector_t q(7 + nJoints);
+    q[0] = 0.0;  // base x
+    q[1] = 0.0;  // base y
+    q[2] = 0.0;  // base z (doesn't affect relative FK)
+    // Pinocchio free-flyer quaternion order: (x, y, z, w)
+    const quaternion_t& quat = robotStateInternal_.getRootRotationLocalToWorldFrame();
+    q[3] = quat.x();
+    q[4] = quat.y();
+    q[5] = quat.z();
+    q[6] = quat.w();
+    for (size_t i = 0; i < nActiveJoints_ && i < static_cast<size_t>(nJoints); ++i) {
+      q[7 + i] = robotStateInternal_.getJointPosition(activeRobotJointStateIndices_[i]);
+    }
+
+    const auto footPositions = ocs2::humanoid::computeFramePositions(
+        q, *heightEstPinocchioInterface_, heightEstContactFrameNames_);
+
+    double min_foot_z = std::numeric_limits<double>::max();
+    for (const auto& pos : footPositions) {
+      min_foot_z = std::min(min_foot_z, pos[2]);
+    }
+    const double base_z = -min_foot_z;
+    robotStateInternal_.setRootPositionInWorldFrame(
+        vector3_t(robotStateInternal_.getRootPositionInWorldFrame()[0],
+                  robotStateInternal_.getRootPositionInWorldFrame()[1],
+                  base_z));
+  }
+
   // Push into the thread-safe store so that updateInterfaceStateFromRobot() + getRobotState() see the latest topic data.
   threadSafeRobotState_.set(robotStateInternal_);
+}
+
+void MujocoRos2ControlInterface::initBaseHeightEstimator(
+    ocs2::PinocchioInterface pinocchioInterface,
+    std::vector<std::string> contactFrameNames) {
+  heightEstPinocchioInterface_ = std::move(pinocchioInterface);
+  heightEstContactFrameNames_  = std::move(contactFrameNames);
 }
 
 // Impelement of std::unordered_map<std::string, double> getJointPositionMap() const;

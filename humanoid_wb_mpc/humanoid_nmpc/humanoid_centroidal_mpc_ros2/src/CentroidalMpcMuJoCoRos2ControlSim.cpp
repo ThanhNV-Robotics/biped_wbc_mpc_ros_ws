@@ -2,6 +2,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 #include <humanoid_centroidal_mpc/CentroidalMpcInterface.h>
 #include <mujoco_sim_interface/MujocoRos2ControlInterface.h> //Use MujocoRos2ControlInterface to interact with mujoco_ros2_control sim
@@ -77,6 +78,15 @@ int main(int argc, char** argv) {
   auto publisher_joint_commands = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
       "/pd_impedance_controller/commands", 10);
 
+  // Publisher to inspect the MPC observation state vector for debugging
+  // Layout: [norm_h_com (6), base_pos xyz (3), euler_zyx (3), joint_angles (n)]
+  auto publisher_mpc_state = nodeHandle->create_publisher<std_msgs::msg::Float64MultiArray>(
+      "/mpc/observation_state", 10);
+
+  // Publisher to observe the robot state being fed into the MPC loop (for debugging)
+  auto publisher_mpc_obs_state = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
+      "/mpc/observer_state", 10);
+
 
   std::shared_ptr<HumanoidVisualizer> humanoidVisualizer(
       new HumanoidVisualizer(taskFile, interface.getPinocchioInterface(), interface.getMpcRobotModel(), nodeHandle));
@@ -138,6 +148,11 @@ int main(int argc, char** argv) {
   
   robot::mujoco_ros2_control_interface::MujocoRos2ControlInterface robotInterface(config, urdfFile);
 
+  // Initialise Pinocchio-based base height estimator (uses FK with base at origin to deduce base_z).
+  robotInterface.initBaseHeightEstimator(
+      interface.getPinocchioInterface(),
+      interface.modelSettings().contactNames6DoF);
+
   // MRT controller
   CentroidalMpcMrtJointController mpcJointController(robotInterface.getRobotDescription(), interface.modelSettings(),
                                                      interface.getMpcRobotModel(), mpc, interface.getPinocchioInterface(),
@@ -184,29 +199,38 @@ int main(int argc, char** argv) {
     // 3. Run MPC step with the topic-based robot state
     mpcJointController.computeJointControlAction(0.0, robotInterface.getRobotState(), robotInterface.getRobotJointAction());
 
-    // 4. Publish computed joint commands (q_des, qd_des, ff_torque) to the PD impedance controller
+    // 4. Publish the MPC observation state for debugging
+    // Layout: [norm_h_com (6), base_pos xyz (3), euler_zyx (3), joint_angles (n)]
     {
-      const auto& jointAction = robotInterface.getRobotJointAction();
-      const auto& jointNames = robotInterface.getRobotDescription().getJointNames();
-
-      sensor_msgs::msg::JointState cmd_msg;
-      cmd_msg.header.stamp = nodeHandle->now();
-      cmd_msg.name.reserve(jointNames.size());
-      cmd_msg.position.reserve(jointNames.size());
-      cmd_msg.velocity.reserve(jointNames.size());
-      cmd_msg.effort.reserve(jointNames.size());
-
-      for (const auto& name : jointNames) {
-        robot::joint_index_t idx = robotInterface.getRobotDescription().getJointIndex(name);
-        const auto& action = jointAction.at(idx).value();
-        cmd_msg.name.push_back(name);
-        cmd_msg.position.push_back(action.q_des);
-        cmd_msg.velocity.push_back(action.qd_des);
-        cmd_msg.effort.push_back(action.feed_forward_effort);
-      }
-
-      publisher_joint_commands->publish(cmd_msg);
+      const auto& obs = mpcJointController.getCurrentMpcObservation();
+      std_msgs::msg::Float64MultiArray state_msg;
+      state_msg.data.assign(obs.state.data(), obs.state.data() + obs.state.size());
+      publisher_mpc_state->publish(state_msg);
     }
+
+    // // 4. Publish computed joint commands (q_des, qd_des, ff_torque) to the PD impedance controller
+    // {
+    //   const auto& jointAction = robotInterface.getRobotJointAction();
+    //   const auto& jointNames = robotInterface.getRobotDescription().getJointNames();
+
+    //   sensor_msgs::msg::JointState cmd_msg;
+    //   cmd_msg.header.stamp = nodeHandle->now();
+    //   cmd_msg.name.reserve(jointNames.size());
+    //   cmd_msg.position.reserve(jointNames.size());
+    //   cmd_msg.velocity.reserve(jointNames.size());
+    //   cmd_msg.effort.reserve(jointNames.size());
+
+    //   for (const auto& name : jointNames) {
+    //     robot::joint_index_t idx = robotInterface.getRobotDescription().getJointIndex(name);
+    //     const auto& action = jointAction.at(idx).value();
+    //     cmd_msg.name.push_back(name);
+    //     cmd_msg.position.push_back(action.q_des);
+    //     cmd_msg.velocity.push_back(action.qd_des);
+    //     cmd_msg.effort.push_back(action.feed_forward_effort);
+    //   }
+
+    //   publisher_joint_commands->publish(cmd_msg);
+    // }
 
     // // 5. Maintain control loop rate // dont need, computeJointControlAction (MRT) already handle this
     // next_loop_time += loop_period;

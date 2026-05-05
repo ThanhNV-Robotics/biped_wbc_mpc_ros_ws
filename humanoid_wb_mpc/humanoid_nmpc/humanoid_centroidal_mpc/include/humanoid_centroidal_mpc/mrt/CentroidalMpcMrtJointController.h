@@ -62,6 +62,8 @@ class CentroidalMpcMrtJointController final : public ::robot::model::ControlBase
 
   bool ready() const { return mcpMrtInterface_.initialPolicyReceived(); }
 
+  const ocs2::SystemObservation& getCurrentMpcObservation() const { return currentMpcObservation_; }
+
   /**
    * Handles the low level controller loop that updates the mpc observation, reads out the latest policy and sets the joint control action.
    */

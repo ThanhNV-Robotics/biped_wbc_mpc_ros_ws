@@ -159,21 +159,21 @@ Q
   scaling 1e+0
 
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
-  (0,0)   8.0     ; h_com_x / robotMass
-  (1,1)   8.0     ; h_com_y / robotMass
-  (2,2)   15.0     ; h_com_z / robotMass
-  (3,3)   15.0      ; L_x / robotMass
-  (4,4)   15.0      ; L_y / robotMass
-  (5,5)   4.0      ; L_z / robotMass
+  (0,0)   0.0     ; h_com_x / robotMass
+  (1,1)   0.0     ; h_com_y / robotMass
+  (2,2)   0.0     ; h_com_z / robotMass
+  (3,3)   0.0      ; L_x / robotMass
+  (4,4)   0.0      ; L_y / robotMass
+  (5,5)   0.0      ; L_z / robotMass
 
   ;; Base Pose: [position, orientation] ;;
   (6,6)   0.0    ; p_base_x
   (7,7)   0.0    ; p_base_y
-  (8,8)   15.0    ; p_base_z
+  (8,8)   15.0    ; p_base_z , test control the pelvis height
   ; euler angles for base to world rotation
   (9,9)   0.0    ; theta_base_z
-  (10,10) 5.0    ; theta_base_y
-  (11,11) 5.0    ; theta_base_x
+  (10,10) 0.0    ; theta_base_y
+  (11,11) 0.0    ; theta_base_x
 
   ;; Joint Positions ;;
   (12,12) 0.02     ;    left_hip_pitch_joint
@@ -230,12 +230,12 @@ Q_final
   scaling 1e+0
 
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
-  (0,0)   25.0     ; h_com_x / robotMass
-  (1,1)   25.0     ; h_com_y / robotMass
-  (2,2)   25.0     ; h_com_z / robotMass
-  (3,3)   25.0     ; L_x / robotMass
-  (4,4)   25.0     ; L_y / robotMass
-  (5,5)   25.0      ; L_z / robotMass
+  (0,0)   0.0     ; h_com_x / robotMass
+  (1,1)   0.0     ; h_com_y / robotMass
+  (2,2)   0.0     ; h_com_z / robotMass
+  (3,3)   0.0     ; L_x / robotMass
+  (4,4)   0.0     ; L_y / robotMass
+  (5,5)   0.0      ; L_z / robotMass
 
   ;; Base Pose: [position, orientation] ;;
   (6,6)   0.0    ; p_base_x
@@ -243,8 +243,8 @@ Q_final
   (8,8)   20.0    ; p_base_z
   ; euler angles for base to world rotation
   (9,9)   0.0    ; theta_base_z
-  (10,10) 5.0    ; theta_base_y
-  (11,11) 5.0    ; theta_base_x
+  (10,10) 0.0    ; theta_base_y
+  (11,11) 0.0    ; theta_base_x
 
   ;; Joint Positions ;;
   (12,12) 0.02     ;    left_hip_pitch_joint
@@ -402,54 +402,6 @@ jointLimits
     ; relaxed log barrier parameters
     mu                     1200.0
     delta                  0.1   
-}
-
-; Joint PD Gains for MRT Joint Controller
-joint_pd_gains
-{
-  inverse_dynamics
-  {
-    ; Kp gains (12x1 vector for each joint)
-    kp
-    {
-      (0,0)  350.0    ; left_hip_pitch_joint
-      (1,0)  350.0    ; left_hip_roll_joint
-      (2,0)  150.0    ; left_hip_yaw_joint
-      (3,0)  200.0    ; left_knee_pitch_joint
-      (4,0)  50.0    ; left_ankle_roll_joint
-      (5,0)  60.0    ; left_ankle_pitch_joint
-      (6,0)  350.0    ; right_hip_pitch_joint
-      (7,0)  350.0    ; right_hip_roll_joint
-      (8,0)  150.0    ; right_hip_yaw_joint
-      (9,0)  200.0    ; right_knee_pitch_joint
-      (10,0) 50.0    ; right_ankle_roll_joint
-      (11,0) 60.0    ; right_ankle_pitch_joint
-    }
-
-    ; Kd gains (12x1 vector for each joint)
-    kd
-    {
-      (0,0)  2.5      ; left_hip_pitch_joint
-      (1,0)  2.5      ; left_hip_roll_joint
-      (2,0)  2.5      ; left_hip_yaw_joint
-      (3,0)  2.5      ; left_knee_pitch_joint
-      (4,0)  1.5      ; left_ankle_roll_joint
-      (5,0)  1.5      ; left_ankle_pitch_joint
-      (6,0)  2.5      ; right_hip_pitch_joint
-      (7,0)  2.5      ; right_hip_roll_joint
-      (8,0)  2.5      ; right_hip_yaw_joint
-      (9,0)  2.5      ; right_knee_pitch_joint
-      (10,0) 1.5      ; right_ankle_roll_joint
-      (11,0) 1.5      ; right_ankle_pitch_joint
-    }
-  }
-
-  ; Gains for non-MPC joints (other joints like virtual arm joints)
-  other_joints
-  {
-    kp    100.0
-    kd    1.0
-  }
 }
 
 collision_constraint
