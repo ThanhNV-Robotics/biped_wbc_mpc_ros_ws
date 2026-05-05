@@ -131,7 +131,9 @@ struct MuJoCoActuatorData
     position_interface.command_ = position_interface.transmission_passthrough_;
     velocity_interface.command_ = velocity_interface.transmission_passthrough_;
     effort_interface.command_ = effort_interface.transmission_passthrough_;
-    feedforward_effort_interface.command_ = feedforward_effort_interface.transmission_passthrough_;
+    // feedforward_effort is NOT propagated through the transmission pipeline.
+    // It is written directly by the controller via the actuator-level command interface,
+    // so we must not overwrite it here (transmission_passthrough_ is always NaN).
   }
 
   void copy_command_to_state()

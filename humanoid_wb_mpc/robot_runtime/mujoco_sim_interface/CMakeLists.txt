@@ -31,8 +31,10 @@ find_package(absl REQUIRED)
 find_package(urdf REQUIRED)
 
 find_package(glfw3 REQUIRED)
-
+find_package(sensor_msgs REQUIRED)
 find_package(GLEW REQUIRED)
+
+find_package(rclcpp REQUIRED)
 
 ###########
 ## Build ##
@@ -55,6 +57,8 @@ set(dependencies
   robot_core
   robot_model
   absl
+  rclcpp
+  sensor_msgs
 )
 
 #############
@@ -64,6 +68,7 @@ set(dependencies
 add_library(${PROJECT_NAME}
   src/MujocoSimInterface.cpp
   src/MujocoRenderer.cpp
+  src/MujocoRos2ControlInterface.cpp
 )
 ament_target_dependencies(${PROJECT_NAME}
   ${dependencies}

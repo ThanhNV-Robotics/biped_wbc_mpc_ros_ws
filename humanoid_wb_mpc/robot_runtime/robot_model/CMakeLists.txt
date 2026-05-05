@@ -14,6 +14,7 @@ find_package(robot_core REQUIRED)
 
 find_package(GTest REQUIRED)
 
+find_package(rclcpp REQUIRED)
 
 
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
@@ -60,6 +61,7 @@ ament_target_dependencies(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
         ${urdf_LIBRARIES}
         absl::flat_hash_map
+        absl::flat_hash_set
 )
 target_include_directories(${PROJECT_NAME}
     PUBLIC

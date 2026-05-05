@@ -302,9 +302,9 @@ int main(int argc, char** argv) {
 
   std::string urdfFile;
   try {
-    urdfFile = ament_index_cpp::get_package_share_directory("g1_description") + "/urdf/g1_29dof.urdf";
+    urdfFile = ament_index_cpp::get_package_share_directory("biped_description") + "/urdf/biped_robot_12dof.urdf";
   } catch (const std::exception& e) {
-    throw std::runtime_error("Failed to get package share directory: g1_description. Error: " + std::string(e.what()));
+    throw std::runtime_error("Failed to get package share directory: biped_description. Error: " + std::string(e.what()));
   }
 
   const std::string taskFile = dir + "/../config/mpc/task.info";
@@ -321,42 +321,59 @@ int main(int argc, char** argv) {
   printJointNames(pin_interface);
 
   // Initialize states
-  Eigen::VectorXd q = Eigen::VectorXd::Zero(35);
-  q[2] = 0.8415;
+  Eigen::VectorXd q = Eigen::VectorXd::Zero(18);
+  // q[0] - q[2]: floating base position
+  // q[3] - q[5]: floating base orientation (e.g., Euler angles)
+  // q[6]: left hip pitch
+  // q[7]: left hip roll
+  // q[8]: left hip yaw
+  // q[9]: left knee pitch
+  // q[10]: left ankle pitch
+  // q[11]: left ankle roll
+  // q[12]: right hip pitch
+  // q[13]: right hip roll
+  // q[14]: right hip yaw
+  // q[15]: right knee pitch
+  // q[16]: right ankle pitch
+  // q[17]: right ankle roll
 
+  q[9] = 1.5;
+
+  std::cout << "Compute forward kinematics\n" << std::endl;
   computeForwardKinematics(pin_interface, q);
   std::string leftFootFrameName("foot_l_contact");
   std::string rightFootFrameName("foot_r_contact");
   printFrameRotation(pin_interface, q, leftFootFrameName);
+  printFrameRotation(pin_interface, q, rightFootFrameName);
 
   /// Test custom model
-  ModelSettings modelSettings(taskFile, urdfFile, "test_pinocchio", "true");
+  // ModelSettings modelSettings(taskFile, urdfFile, "test_pinocchio", "true");
 
-  pin_interface = createCustomPinocchioInterface(taskFile, urdfFile, modelSettings);
+  // pin_interface = createCustomPinocchioInterface(taskFile, urdfFile, modelSettings);
 
-  std::cout << "Custom PinocchioInterface initialized " << std::endl;
+  // std::cout << "Custom PinocchioInterface initialized " << std::endl;
 
-  printModelDimensionality(pin_interface);
-  printJointNames(pin_interface);
+  // printModelDimensionality(pin_interface);
+  // printJointNames(pin_interface);
 
-  // Initialize states
-  q = Eigen::VectorXd::Zero(29);
-  q[2] = 0.7925;
-  // q[6] = 0.5;
+  // // Initialize states
+  // q = Eigen::VectorXd::Zero(29);
+  // q[2] = 0.7925;
+  // // q[6] = 0.5;
 
-  computeForwardKinematics(pin_interface, q);
-  printFrameRotation(pin_interface, q, rightFootFrameName);
-  printFrameRotation(pin_interface, q, leftFootFrameName);
+  // computeForwardKinematics(pin_interface, q);
+  // printFrameRotation(pin_interface, q, rightFootFrameName);
+  // printFrameRotation(pin_interface, q, leftFootFrameName);
 
-  testOrientationErrorWrtPlane(&pin_interface, q);
+  // testOrientationErrorWrtPlane(&pin_interface, q);
 
-  /// Test custom model with mass scaling
+  // /// Test custom model with mass scaling
 
-  pin_interface = createCustomPinocchioInterface(taskFile, urdfFile, modelSettings, true, 44.44);
+  // pin_interface = createCustomPinocchioInterface(taskFile, urdfFile, modelSettings, true, 44.44);
 
-  benchmarkInverseDynamics(pin_interface);
+  // benchmarkInverseDynamics(pin_interface);
 
-  compareInverseDynamics(pin_interface);
+  // compareInverseDynamics(pin_interface);
 
   return 0;
 }

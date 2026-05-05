@@ -132,6 +132,8 @@ def generate_launch_description():
     # cfg.ld.add_action(cfg.terminal_robot_state_publisher_node) # can be ignored since we already have robot_state_publisher_node in the mujoco_ros2_control launch
     # cfg.ld.add_action(cfg.target_robot_state_publisher_node)
     # cfg.ld.add_action(cfg.rviz_node)
+
+    cfg.ld.add_action(cfg.mpc_mujoco_ros2_control_sim)
     cfg.ld.add_action(cfg.base_velocity_controller_gui_node)
 
     final_launch_description = LaunchDescription()

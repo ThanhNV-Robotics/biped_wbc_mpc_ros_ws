@@ -12,6 +12,7 @@
 
   <depend>robot_core</depend>
   <depend>libabsl-dev</depend>
+  <depend>rclcpp</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_cmake_clang_format</test_depend>

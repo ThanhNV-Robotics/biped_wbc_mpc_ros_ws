@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
   // size_t mrtDeltaTMicroSeconds_ = 1000000 / (interface.mpcSettings().mrtDesiredFrequency_);
   size_t mrtDeltaTMicroSeconds_ = 1000000 / (500);
   robotInterface.initSim();
-  robotInterface.updateInterfaceStateFromRobot();
+  robotInterface.updateInterfaceStateFromRobot(); 
   mpcJointController.startMpcThread(robotInterface.getRobotState());
 
   while (!mpcJointController.ready()) {

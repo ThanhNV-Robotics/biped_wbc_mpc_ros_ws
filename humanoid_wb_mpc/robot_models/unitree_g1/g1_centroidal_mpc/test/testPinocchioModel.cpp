@@ -321,7 +321,7 @@ int main(int argc, char** argv) {
   printJointNames(pin_interface);
 
   // Initialize states
-  Eigen::VectorXd q = Eigen::VectorXd::Zero(35);
+  Eigen::VectorXd q = Eigen::VectorXd::Zero(18);
   q[2] = 0.8415;
 
   computeForwardKinematics(pin_interface, q);

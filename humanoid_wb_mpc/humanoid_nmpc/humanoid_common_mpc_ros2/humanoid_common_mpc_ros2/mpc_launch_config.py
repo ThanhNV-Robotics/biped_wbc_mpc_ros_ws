@@ -97,6 +97,27 @@ class MPCLaunchConfig:
             ],
         )
 
+        #in CMake:
+        # MPC Mujoco ros2 control sim
+        # add_executable(humanoid_centroidal_mpc_mujoco_ros2_control_sim
+        #   src/CentroidalMpcMuJoCoRos2ControlSim.cpp
+        # )
+        mpc_mujoco_ros2_control_exec = "humanoid_centroidal_mpc_mujoco_ros2_control_sim" # humanoid_centroidal_mpc_mujoco_ros2_control_sim
+        self.mpc_mujoco_ros2_control_sim = launch_ros.actions.Node(
+            package=self.mpc_lib_pkg_ros2,
+            executable=mpc_mujoco_ros2_control_exec,
+            prefix=self.terminal_prefix,
+            name=mpc_mujoco_ros2_control_exec,
+            arguments=[
+                LaunchConfiguration("robot_name"),
+                LaunchConfiguration("config_name"),
+                LaunchConfiguration("target_command_file"),
+                LaunchConfiguration("description_name"),
+                LaunchConfiguration("target_gait_file"),
+                LaunchConfiguration("xml_path"),
+            ],
+        )
+
         mpc_node_exec = self.mpc_lib_pkg + "_" + self.solver + "_node"
         self.mpc_node = launch_ros.actions.Node(
             package=self.mpc_lib_pkg_ros2,

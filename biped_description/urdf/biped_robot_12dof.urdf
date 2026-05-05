@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<robot name="Bipedal_Final" version="1.0" xmlns:xacro="http://www.ros.org/wiki/xacro">
+<robot name="biped 12-dof robot" version="1.0" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- For ros2_control: Whether or not to use PID control -->
   <xacro:arg name="use_pid" default="false"/>

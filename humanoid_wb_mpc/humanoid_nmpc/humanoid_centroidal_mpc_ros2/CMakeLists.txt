@@ -146,6 +146,21 @@ target_link_libraries(humanoid_centroidal_mpc_sim
 )
 target_compile_options(humanoid_centroidal_mpc_sim PUBLIC ${FLAGS})
 
+# MPC Mujoco ros2 control sim
+add_executable(humanoid_centroidal_mpc_mujoco_ros2_control_sim
+  src/CentroidalMpcMuJoCoRos2ControlSim.cpp
+)
+ament_target_dependencies(humanoid_centroidal_mpc_mujoco_ros2_control_sim
+  ${dependencies}
+)
+target_link_libraries(humanoid_centroidal_mpc_mujoco_ros2_control_sim
+  absl::flat_hash_map
+  absl::flat_hash_set
+  glfw
+  GLEW
+)
+target_compile_options(humanoid_centroidal_mpc_mujoco_ros2_control_sim PUBLIC ${FLAGS})
+
 # Pose Command Node
 add_executable(humanoid_centroidal_mpc_pose_command_node
   src/CentroidalMpcKeyboardPoseCommandNode.cpp
@@ -193,6 +208,7 @@ install(DIRECTORY include/${PROJECT_NAME}
 install(TARGETS
   test_visualizer
   humanoid_centroidal_mpc_sim
+  humanoid_centroidal_mpc_mujoco_ros2_control_sim
   humanoid_centroidal_mpc_sqp_node
   humanoid_centroidal_mpc_dummy_sim_node
   humanoid_centroidal_mpc_pose_command_node

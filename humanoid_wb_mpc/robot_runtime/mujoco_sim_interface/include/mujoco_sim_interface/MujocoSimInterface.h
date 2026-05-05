@@ -50,6 +50,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "robot_core/FPSTracker.h"
 #include "robot_core/Types.h"
 #include "robot_model/RobotHWInterfaceBase.h"
+#include <sensor_msgs/msg/joint_state.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace robot::mujoco_sim_interface {
 
@@ -64,6 +66,7 @@ struct MujocoSimConfig {
 
 class MujocoSimInterface : public robot::model::RobotHWInterfaceBase {
  public:
+
   MujocoSimInterface(const MujocoSimConfig& config, const std::string& urdfPath);
 
   /** Destructor */
