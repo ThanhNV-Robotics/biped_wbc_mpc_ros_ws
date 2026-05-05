@@ -224,14 +224,14 @@ controller_interface::return_type PdImpedanceController::update(const rclcpp::Ti
     command_interfaces_[feedforward_effort_cmd_indices_[i]].set_value(ff_cmd);
   }
 
-  // DEBUG: print what the controller is sending to the command interfaces (throttled to 1 Hz)
-  RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-                       "[CTRL update] has_command=%d | %s: pos_cmd=%.4f vel_cmd=%.4f ff_cmd=%.4f",
-                       static_cast<int>(has_command_),
-                       joint_names_[0].c_str(),
-                       has_command_ ? commanded_positions_[0] : initial_positions_[0],
-                       has_command_ ? commanded_velocities_[0] : 0.0,
-                       has_command_ ? commanded_efforts_[0] : 0.0);
+  // // DEBUG: print what the controller is sending to the command interfaces (throttled to 1 Hz)
+  // RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  //                      "[CTRL update] has_command=%d | %s: pos_cmd=%.4f vel_cmd=%.4f ff_cmd=%.4f",
+  //                      static_cast<int>(has_command_),
+  //                      joint_names_[0].c_str(),
+  //                      has_command_ ? commanded_positions_[0] : initial_positions_[0],
+  //                      has_command_ ? commanded_velocities_[0] : 0.0,
+  //                      has_command_ ? commanded_efforts_[0] : 0.0);
 
   return controller_interface::return_type::OK;
 }

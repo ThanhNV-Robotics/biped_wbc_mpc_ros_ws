@@ -117,6 +117,7 @@ struct MuJoCoActuatorData
   bool is_pd_impedance_control_enabled{ false };
   bool has_pos_pid{ false };
   bool has_vel_pid{ false };
+  bool has_pd_gains{ false };  ///< true if pd_gains were explicitly loaded from YAML (even if kp/kd == 0)
 
   void copy_state_to_transmission()
   {

@@ -140,60 +140,60 @@ int main(int argc, char** argv) {
                                                      interface.mpcSettings().mpcDesiredFrequency_, humanoidVisualizer);
   
   // size_t mrtDeltaTMicroSeconds_ = 1000000 / (interface.mpcSettings().mrtDesiredFrequency_);
-  size_t mrtDeltaTMicroSeconds_ = 1000000 / (500);
+  size_t mrtDeltaTMicroSeconds_ = 1000000 / (500); // MRT runs at 500Hz
   // robotInterface.updateRobotStateFromSubscribedTopics(JointState_msg, Imu_msg); // Update the robot state from the subscribed joint states and imu data
 
-  mpcJointController.startMpcThread(robotInterface.getRobotState());
+  // mpcJointController.startMpcThread(robotInterface.getRobotState());
 
-  while (!mpcJointController.ready()) {
-    RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for initial MPC policy...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    // print message for debugging
-    RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for initial MPC policy...");
-  }
-  RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Initial MPC policy received.");
-  std::cout << "Initial MPC policy received. " << std::endl;
+  // while (!mpcJointController.ready()) {
+  //   RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for initial MPC policy...");
+  //   std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  //   // print message for debugging
+  //   RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Waiting for initial MPC policy...");
+  // }
+  // RCLCPP_INFO_STREAM(nodeHandle->get_logger(), "Initial MPC policy received.");
+  // std::cout << "Initial MPC policy received. " << std::endl;
 
 
-  // Set up 200Hz publishing rate
-  const double publish_rate_hz = 200.0;
-  const auto publish_period = std::chrono::nanoseconds(static_cast<int64_t>(1e9 / publish_rate_hz));
-  auto next_publish_time = std::chrono::steady_clock::now();
-  rclcpp::spin_some(nodeHandle);
+  // // Set up 200Hz publishing rate
+  // const double publish_rate_hz = 200.0;
+  // const auto publish_period = std::chrono::nanoseconds(static_cast<int64_t>(1e9 / publish_rate_hz));
+  // auto next_publish_time = std::chrono::steady_clock::now();
+  // rclcpp::spin_some(nodeHandle);
 
   while (true)
   {
-    robotInterface.updateInterfaceStateFromRobot();
-    // mpcJointController.computeJointControlAction(0.0, robotInterface.getRobotState(), robotInterface.getRobotJointAction());
-    // robotInterface.applyJointAction();
+    // robotInterface.updateInterfaceStateFromRobot();
+    // // mpcJointController.computeJointControlAction(0.0, robotInterface.getRobotState(), robotInterface.getRobotJointAction());
+    // // robotInterface.applyJointAction();
 
-    // Construct and publish JointState message from robotInterface.getRobotState()
-    sensor_msgs::msg::JointState joint_state_msg;
-    joint_state_msg.header.stamp = nodeHandle->now();
+    // // Construct and publish JointState message from robotInterface.getRobotState()
+    // sensor_msgs::msg::JointState joint_state_msg;
+    // joint_state_msg.header.stamp = nodeHandle->now();
 
-    const auto& robotState = robotInterface.getRobotState();
-    const auto& robotDescription = robotInterface.getRobotDescription();
-    const auto& jointNames = robotDescription.getJointNames();
+    // const auto& robotState = robotInterface.getRobotState();
+    // const auto& robotDescription = robotInterface.getRobotDescription();
+    // const auto& jointNames = robotDescription.getJointNames();
 
-    joint_state_msg.name = jointNames;
-    joint_state_msg.position.resize(jointNames.size());
-    joint_state_msg.velocity.resize(jointNames.size());
-    joint_state_msg.effort.resize(jointNames.size());
+    // joint_state_msg.name = jointNames;
+    // joint_state_msg.position.resize(jointNames.size());
+    // joint_state_msg.velocity.resize(jointNames.size());
+    // joint_state_msg.effort.resize(jointNames.size());
 
-    for (size_t i = 0; i < jointNames.size(); ++i) {
-      size_t jointId = robotDescription.getJointIndex(jointNames[i]);
-      joint_state_msg.position[i] = robotState.getJointPosition(jointId);
-      joint_state_msg.velocity[i] = robotState.getJointVelocity(jointId);
-      // If you have effort data, set it here. Otherwise, leave as default (0.0)
-      // joint_state_msg.effort[i] = robotState.getJointEffort(jointId);
-    }
+    // for (size_t i = 0; i < jointNames.size(); ++i) {
+    //   size_t jointId = robotDescription.getJointIndex(jointNames[i]);
+    //   joint_state_msg.position[i] = robotState.getJointPosition(jointId);
+    //   joint_state_msg.velocity[i] = robotState.getJointVelocity(jointId);
+    //   // If you have effort data, set it here. Otherwise, leave as default (0.0)
+    //   // joint_state_msg.effort[i] = robotState.getJointEffort(jointId);
+    // }
 
-    publisher_joint_states->publish(joint_state_msg);
+    // publisher_joint_states->publish(joint_state_msg);
 
     rclcpp::spin_some(nodeHandle);
 
-    next_publish_time += publish_period;
-    std::this_thread::sleep_until(next_publish_time);
+    // next_publish_time += publish_period;
+    // std::this_thread::sleep_until(next_publish_time);
   }
 
   return 0;

@@ -138,7 +138,8 @@ def generate_launch_description():
 
     final_launch_description = LaunchDescription()
     
-    final_launch_description.add_action(mujoco_ros2_control_launch_description)
+    
     final_launch_description.add_action(cfg.ld)
+    final_launch_description.add_action(mujoco_ros2_control_launch_description)
 
     return final_launch_description

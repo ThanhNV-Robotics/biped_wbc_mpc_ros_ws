@@ -1731,20 +1731,20 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       const double vel_cmd = actuator.velocity_interface.command_;
       const double ff_cmd = actuator.feedforward_effort_interface.command_;
       
-      // DEBUG: Print PD impedance values at 1 Hz for left_hip_pitch_joint
-      if (actuator.joint_name == "left_hip_pitch_joint")
-      {
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
-                             "[MJ write PD] %s: ff_cmd=%.4f pos_cmd=%.4f vel_cmd=%.4f "
-                             "q=%.4f qd=%.4f pd_torque=%.4f total=%.4f",
-                             actuator.joint_name.c_str(), ff_cmd, pos_cmd, vel_cmd,
-                             mj_data_->qpos[actuator.mj_pos_adr],
-                             mj_data_->qvel[actuator.mj_vel_adr],
-                             actuator.pd_kp * (pos_cmd - mj_data_->qpos[actuator.mj_pos_adr]) +
-                             actuator.pd_kd * (vel_cmd - mj_data_->qvel[actuator.mj_vel_adr]),
-                             actuator.pd_kp * (pos_cmd - mj_data_->qpos[actuator.mj_pos_adr]) +
-                             actuator.pd_kd * (vel_cmd - mj_data_->qvel[actuator.mj_vel_adr]) + ff_cmd);
-      }
+      // // DEBUG: Print PD impedance values at 1 Hz for left_hip_pitch_joint
+      // if (actuator.joint_name == "left_hip_pitch_joint")
+      // {
+      //   RCLCPP_INFO_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+      //                        "[MJ write PD] %s: ff_cmd=%.4f pos_cmd=%.4f vel_cmd=%.4f "
+      //                        "q=%.4f qd=%.4f pd_torque=%.4f total=%.4f",
+      //                        actuator.joint_name.c_str(), ff_cmd, pos_cmd, vel_cmd,
+      //                        mj_data_->qpos[actuator.mj_pos_adr],
+      //                        mj_data_->qvel[actuator.mj_vel_adr],
+      //                        actuator.pd_kp * (pos_cmd - mj_data_->qpos[actuator.mj_pos_adr]) +
+      //                        actuator.pd_kd * (vel_cmd - mj_data_->qvel[actuator.mj_vel_adr]),
+      //                        actuator.pd_kp * (pos_cmd - mj_data_->qpos[actuator.mj_pos_adr]) +
+      //                        actuator.pd_kd * (vel_cmd - mj_data_->qvel[actuator.mj_vel_adr]) + ff_cmd);
+      // }
       
       // Safety check: if commands are NaN, use current state as safe fallback
       const double pos_des = std::isfinite(pos_cmd) ? pos_cmd : mj_data_->qpos[actuator.mj_pos_adr];
@@ -1831,16 +1831,17 @@ void MujocoSystemInterface::joint_command_to_actuator_command()
         actuator_interface.position_interface.command_ = joint.position_interface.command_;
         actuator_interface.velocity_interface.command_ = joint.velocity_interface.command_;
         actuator_interface.effort_interface.command_ = joint.effort_interface.command_;
-        // DEBUG: check feedforward value is preserved (not overwritten from joint)
-        if (actuator_interface.joint_name == "left_hip_pitch_joint")
-        {
-          RCLCPP_INFO_THROTTLE(rclcpp::get_logger("MujocoSystemInterface"),
-                               *get_node()->get_clock(), 1000,
-                               "[MJ j2a] left_hip_pitch: ff_actuator=%.4f joint_ff=%.4f pos_cmd=%.4f",
-                               actuator_interface.feedforward_effort_interface.command_,
-                               joint.feedforward_effort_interface.command_,
-                               actuator_interface.position_interface.command_);
-        }
+
+        // // DEBUG: check feedforward value is preserved (not overwritten from joint)
+        // if (actuator_interface.joint_name == "left_hip_pitch_joint")
+        // {
+        //   RCLCPP_INFO_THROTTLE(rclcpp::get_logger("MujocoSystemInterface"),
+        //                        *get_node()->get_clock(), 1000,
+        //                        "[MJ j2a] left_hip_pitch: ff_actuator=%.4f joint_ff=%.4f pos_cmd=%.4f",
+        //                        actuator_interface.feedforward_effort_interface.command_,
+        //                        joint.feedforward_effort_interface.command_,
+        //                        actuator_interface.position_interface.command_);
+        // }
         // NOTE: feedforward_effort_interface.command_ is NOT copied from the joint here.
         // The feedforward_effort command interface is registered directly at the actuator level
         // (in export_command_interfaces), so the controller writes to actuator.feedforward_effort_interface.command_
@@ -2024,6 +2025,7 @@ bool MujocoSystemInterface::register_mujoco_actuators()
       else
       {
         RCLCPP_INFO(get_logger(), "Parameter '%s' already exists", kp_param_name.c_str());
+        actuator_data.has_pd_gains = true;  // parameter was pre-loaded from YAML
       }
       
       if (!get_node()->has_parameter(kd_param_name))
@@ -2348,7 +2350,7 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
           else
           {
             // Check if PD impedance gains are loaded - if so, velocity interface is valid for PD impedance mode
-            if (actuator_it->pd_kp > 0.0)
+            if (actuator_it->has_pd_gains)
             {
               RCLCPP_INFO(get_logger(),
                           "Velocity command interface for joint %s: will be used for PD impedance mode (Kp=%.2f, Kd=%.2f)",
