@@ -50,8 +50,8 @@ model_settings
   ; The Parent frames on which the contact frames are added. 
   contactParentJointNames
   {
-    [0] "left_ankle_pitch_joint"
-    [1] "right_ankle_pitch_joint"
+    [0] "left_ankle_roll_joint"
+    [1] "right_ankle_roll_joint"
   }
 
   ;; Map arm swing reference to hip joints since biped_robot_12dof has no arms

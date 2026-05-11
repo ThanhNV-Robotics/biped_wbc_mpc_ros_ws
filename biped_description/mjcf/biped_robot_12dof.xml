@@ -93,7 +93,7 @@
         <!--   Link0_Torso -->
         <body name="link0_torso" pos="0 0 0.85" euler="0 0 0">
             <geom type="mesh" class="visual" mesh="link0_torso" />
-            <!-- <joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false"/> -->
+            <joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false"/>
             <inertial pos="0.022E-3 0.011E-3 -9.359E-3" mass="5.721" fullinertia="1.338E-1 1.019E-1 6.278E-2 -7542.256E-9 8599.288E-9 8566.243E-9"/>
             <camera name="track" pos="1 0 1.5" xyaxes="0.78 -0.63 0 0.27 0.33 0.9"/>
             <site name="torso_imu" type = "box" pos="0.02 0 0.02" euler="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1"/>
@@ -115,7 +115,7 @@
                                 <inertial pos="-0.314E-3 -13.334E-3 -166.036E-3" mass="1.983" fullinertia="1.165E-2 1.208E-2 2.085E-3 26778.277E-9 -32964.406E-9 -9.808E-4" />
 
                                 <body name="left_knee_link" pos="0 17E-3 -203.5E-3" euler="-90 0 90">
-                                    <joint type="hinge" name="left_knee_pitch_joint" axis="0 0 1" pos="0 0 0" range="-10 120" class = "AK109_actuator"/>
+                                    <joint type="hinge" name="left_knee_pitch_joint" axis="0 0 1" pos="0 0 0" range="0 120" class = "AK109_actuator"/>
                                     <geom type="mesh" class="visual" mesh="left_knee_link" />
                                     <inertial pos="163.789E-3 -9.7E-3 -13.415E-3" mass="1.894" fullinertia="1.510E-3 1.681E-2 1.663E-2 8.447E-4 8.897E-4 -31714.412E-9" />
                                          
@@ -152,7 +152,7 @@
                                 <inertial pos="-0.029E-3 13.844E-3 -165.473E-3" mass="1.983" fullinertia="1.164E-2 1.208E-2 2.009E-3 2389.96E-9 -1032.992E-9 9.596E-4" />
 
                                 <body name="right_knee_link" pos="0 -17E-3 -203.5E-3" euler="-90 0 90">
-                                    <joint type="hinge" name="right_knee_pitch_joint" axis="0 0 1" pos="0 0 0" range="-10 120" class = "AK109_actuator"/>
+                                    <joint type="hinge" name="right_knee_pitch_joint" axis="0 0 1" pos="0 0 0" range="0 120" class = "AK109_actuator"/>
                                     <geom type="mesh" class="visual" mesh="right_knee_link" />
                                     <inertial pos="163.038E-3 -9.336E-3 13.239E-3" mass="1.879" fullinertia="1.480E-3 1.653E-2 1.633E-2 7.738E-4 -8.795E-4 35348.501E-9" />
                                     

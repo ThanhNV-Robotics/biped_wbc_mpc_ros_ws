@@ -109,6 +109,7 @@ class MujocoRos2ControlInterface : public robot::model::RobotHWInterfaceBase {
   size_t nActiveJoints_;
   size_t nActuators_;
   std::vector<std::string> activeMuJoCoJointNames_;
+  std::vector<int> activeMuJoCoJointIndices_;  // MuJoCo joint indices for active joints
   std::vector<std::string> activeMuJoCoActuatorNames_;
   std::vector<joint_index_t> activeRobotJointStateIndices_;
   std::vector<joint_index_t> activeRobotActuatorIndices_;

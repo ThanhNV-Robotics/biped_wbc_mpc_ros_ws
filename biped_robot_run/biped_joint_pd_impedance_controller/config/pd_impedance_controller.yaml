@@ -19,33 +19,33 @@ controller_manager:
     pd_gains:
       kp:
         # Left leg
-        left_hip_pitch_joint: 250.0
-        left_hip_roll_joint: 250.0
+        left_hip_pitch_joint: 650.0
+        left_hip_roll_joint: 600.0
         left_hip_yaw_joint: 150.0
-        left_knee_pitch_joint: 200.0
-        left_ankle_roll_joint: 50.0
-        left_ankle_pitch_joint: 50.0
+        left_knee_pitch_joint: 350.0
+        left_ankle_roll_joint: 250.0
+        left_ankle_pitch_joint: 250.0
         # Right leg
-        right_hip_pitch_joint: 250.0
-        right_hip_roll_joint: 250.0
+        right_hip_pitch_joint: 650.0
+        right_hip_roll_joint: 600.0
         right_hip_yaw_joint: 150.0
-        right_knee_pitch_joint: 200.0
-        right_ankle_roll_joint: 50.0
-        right_ankle_pitch_joint: 50.0
+        right_knee_pitch_joint: 350.0
+        right_ankle_roll_joint: 250.0
+        right_ankle_pitch_joint: 250.0
       
       kd:
         # Left leg
-        left_hip_pitch_joint: 2.5
-        left_hip_roll_joint: 2.5
-        left_hip_yaw_joint: 2.0
-        left_knee_pitch_joint: 2.5
+        left_hip_pitch_joint: 1.5
+        left_hip_roll_joint: 1.5
+        left_hip_yaw_joint: 1.5
+        left_knee_pitch_joint: 1.5
         left_ankle_roll_joint: 1.5
         left_ankle_pitch_joint: 1.5
         # Right leg
-        right_hip_pitch_joint: 2.5
-        right_hip_roll_joint: 2.5
-        right_hip_yaw_joint: 2.0
-        right_knee_pitch_joint: 2.5
+        right_hip_pitch_joint: 1.5
+        right_hip_roll_joint: 1.5
+        right_hip_yaw_joint: 1.5
+        right_knee_pitch_joint: 1.5
         right_ankle_roll_joint: 1.5
         right_ankle_pitch_joint: 1.5
 

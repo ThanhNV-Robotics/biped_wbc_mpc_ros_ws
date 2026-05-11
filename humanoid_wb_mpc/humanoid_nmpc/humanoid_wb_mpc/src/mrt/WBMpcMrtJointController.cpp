@@ -219,7 +219,7 @@ void WBMpcMrtJointController::solverWorker() {
       if (currentTime > targetTimeForNextIteration) {
         auto delay = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - targetTimeForNextIteration).count();
 
-        std::cerr << "Warning: MPC loop running slow by " << delay << " microseconds." << std::endl;
+        // std::cerr << "Warning: MPC loop running slow by " << delay << " microseconds." << std::endl;
       } else {
         // Sleep in case sim loop is faster than specified
         std::this_thread::sleep_until(targetTimeForNextIteration);

@@ -33,11 +33,21 @@ MujocoRos2ControlInterface::MujocoRos2ControlInterface(const MujocoSimConfig& co
   char errstr[errstr_sz];      // Declare the error string buffer
 
   // option 1: parse and compile XML from file
+  std::cerr << "\n=== Loading MuJoCo XML ===" << std::endl;
+  std::cerr << "File path: " << config.scenePath << std::endl;
+  
   mujocoModel_ = mj_loadXML(config.scenePath.c_str(), NULL, errstr, errstr_sz);
   if (!mujocoModel_) {
     std::cerr << "Could not load MuJoCo model: " << config.scenePath << ". Error: " << std::strerror(errno) << std::endl;
+    std::cerr << "MuJoCo error string: " << errstr << std::endl;
     throw std::runtime_error("Could not load MuJoCo: " + std::string(std::strerror(errno)));
   }
+  
+  if (strlen(errstr) > 0) {
+    std::cerr << "MuJoCo warnings/errors during XML load: " << errstr << std::endl;
+  }
+  std::cerr << "MuJoCo model loaded successfully" << std::endl;
+  std::cerr << "Number of joints in model (njnt): " << mujocoModel_->njnt << std::endl;
 
   // Create data
   mujocoData_ = mj_makeData(mujocoModel_);
@@ -67,6 +77,15 @@ MujocoRos2ControlInterface::MujocoRos2ControlInterface(const MujocoSimConfig& co
     initRobotState.setConfigurationToZero();
     initRobotState.setRootPositionInWorldFrame(vector3_t(0.0, 0.0, 1.0));
   }
+  
+  // // DEBUG: Print what joints RobotDescription knows about
+  // std::cerr << "\n=== RobotDescription vs MuJoCo Joint Names ===" << std::endl;
+  // std::cerr << "activeRobotJointStateIndices_ (from RobotDescription.getJointIndices()):" << std::endl;
+  // for (size_t i = 0; i < activeMuJoCoJointNames_.size(); ++i) {
+  //   std::cerr << "  MuJoCo[" << i << "] " << activeMuJoCoJointNames_[i] 
+  //             << " -> RobotState[" << activeRobotJointStateIndices_[i] << "]" << std::endl;
+  // }
+  
   setSimState(initRobotState);
 
   // Add default joint damping
@@ -107,7 +126,22 @@ MujocoRos2ControlInterface::MujocoRos2ControlInterface(const MujocoSimConfig& co
 void MujocoRos2ControlInterface::updateRobotStateFromSubscribedTopics(const sensor_msgs::msg::JointState::SharedPtr jointStateMsg,
                                                               const sensor_msgs::msg::Imu::SharedPtr imuMsg) {
 
-// update joint states
+// // update joint states
+//   static bool printed_joint_info = false;
+//   if (!printed_joint_info) {
+//     std::cerr << "\n=== Joint State Message Info ===" << std::endl;
+//     std::cerr << "Received " << jointStateMsg->name.size() << " joints from topic:" << std::endl;
+//     for (size_t i = 0; i < jointStateMsg->name.size(); ++i) {
+//       std::cerr << "  [" << i << "] " << jointStateMsg->name[i] << std::endl;
+//     }
+//     std::cerr << "\nRobot Description joints:" << std::endl;
+//     const auto& allJointNames = getRobotDescription().getJointNames();
+//     for (size_t i = 0; i < allJointNames.size(); ++i) {
+//       std::cerr << "  [" << i << "] " << allJointNames[i] << std::endl;
+//     }
+//     printed_joint_info = true;
+//   }
+
   for (size_t i = 0; i < jointStateMsg->name.size(); ++i) {
     const std::string& jointName = jointStateMsg->name[i];
     double jointPosition = jointStateMsg->position[i];
@@ -146,29 +180,82 @@ void MujocoRos2ControlInterface::updateRobotStateFromSubscribedTopics(const sens
   // Build q with base at origin + IMU orientation + current joint angles, run FK,
   // then base_z = -(lowest contact frame z), so the lowest foot lands at z = 0.
   if (heightEstPinocchioInterface_.has_value()) {
-    const int nJoints = heightEstPinocchioInterface_->getModel().nq - 7;  // subtract floating-base dof
-    ocs2::vector_t q(7 + nJoints);
+    const int nJoints = heightEstPinocchioInterface_->getModel().nq - 6;  // subtract floating-base dof (Translation + EulerZYX = 6)
+    ocs2::vector_t q(6 + nJoints);
     q[0] = 0.0;  // base x
     q[1] = 0.0;  // base y
     q[2] = 0.0;  // base z (doesn't affect relative FK)
-    // Pinocchio free-flyer quaternion order: (x, y, z, w)
+    // Pinocchio SphericalZYX uses Euler ZYX angles (z, y, x)
     const quaternion_t& quat = robotStateInternal_.getRootRotationLocalToWorldFrame();
-    q[3] = quat.x();
-    q[4] = quat.y();
-    q[5] = quat.z();
-    q[6] = quat.w();
-    for (size_t i = 0; i < nActiveJoints_ && i < static_cast<size_t>(nJoints); ++i) {
-      q[7 + i] = robotStateInternal_.getJointPosition(activeRobotJointStateIndices_[i]);
+    const ocs2::vector3_t eulerZYX = ocs2::humanoid::quaternionToEulerZYX(quat);
+    q[3] = eulerZYX[0];  // theta_z
+    q[4] = eulerZYX[1];  // theta_y
+    q[5] = eulerZYX[2];  // theta_x
+
+    // get joint angles from robot state in Pinocchio's expected joint order
+    const auto& pinocchioModel = heightEstPinocchioInterface_->getModel();
+    for (size_t i = 0; i < static_cast<size_t>(nJoints); ++i) {
+      // Get joint name from Pinocchio model (skip universe at index 0, root_joint at index 1)
+      const std::string& pinocchioJointName = pinocchioModel.names[i + 2];  // +2 to skip universe and root_joint
+      
+      // Find this joint in RobotDescription and get its angle
+      if (getRobotDescription().containsJoint(pinocchioJointName)) {
+        size_t robotStateIdx = getRobotDescription().getJointIndex(pinocchioJointName);
+        q[6 + i] = robotStateInternal_.getJointPosition(robotStateIdx);
+      } else {
+        q[6 + i] = 0.0;  // Default to zero if joint not found
+      }
     }
+
+    // // DEBUG: Print joint configuration and orientation
+    // static int debug_counter = 0;
+    // if (debug_counter++ % 100 == 0) {  // Print every 100 iterations
+    //   std::cerr << "\n=== FK Debug Info ===" << std::endl;
+    //   std::cerr << "Orientation (quat x,y,z,w): " << quat.x() << ", " << quat.y() << ", " << quat.z() << ", " << quat.w() << std::endl;
+    //   std::cerr << "nActiveJoints: " << nActiveJoints_ << ", nJoints (Pinocchio): " << nJoints << std::endl;
+      
+    //   // Print Pinocchio joint names to identify which joint is missing
+    //   if (debug_counter == 1) {
+    //     std::cerr << "Pinocchio model joints (excluding floating base):" << std::endl;
+    //     const auto& model = heightEstPinocchioInterface_->getModel();
+    //     for (size_t jid = 1; jid < model.names.size(); ++jid) {  // Start from 1 to skip universe
+    //       std::cerr << "  [" << jid-1 << "] " << model.names[jid] << std::endl;
+    //     }
+    //   }
+      
+    //   std::cerr << "Joint names and angles:" << std::endl;
+    //   for (size_t i = 0; i < std::min(static_cast<size_t>(nJoints), nActiveJoints_); ++i) {
+    //     std::string jointName = getRobotDescription().getJointName(activeRobotJointStateIndices_[i]);
+    //     std::cerr << "  [" << i << "] " << jointName << ": " << q[6 + i] << std::endl;
+    //   }
+    //   std::cerr << "Contact frame names: ";
+    //   for (const auto& name : heightEstContactFrameNames_) {
+    //     std::cerr << name << " ";
+    //   }
+    //   std::cerr << std::endl;
+    // }
 
     const auto footPositions = ocs2::humanoid::computeFramePositions(
         q, *heightEstPinocchioInterface_, heightEstContactFrameNames_);
 
+    // // DEBUG: Print foot positions to see which one changes when leg moves
+    // std::cerr << "Foot[0] z: " << footPositions[0][2] 
+    //           << " | Foot[1] z: " << footPositions[1][2] << std::endl;
+
     double min_foot_z = std::numeric_limits<double>::max();
-    for (const auto& pos : footPositions) {
-      min_foot_z = std::min(min_foot_z, pos[2]);
-    }
+    // for (const auto& pos : footPositions) {
+    //   min_foot_z = std::min(min_foot_z, pos[2]);
+    // }
+    
+    min_foot_z = std::min(footPositions[0][2], footPositions[1][2]);
+    // min_foot_z = footPositions[1][2]; // TODO: fix this when we have proper contact info, for now just use left foot height as base height estimate
     const double base_z = -min_foot_z;
+    
+    // // DEBUG: Directly use left foot z position as base height (footPositions[1] is left foot)
+    // // const double base_z = footPositions[1][2]; // to check left leg or right leg
+    // const double base_z = footPositions[0][2]; // to check left leg or right leg
+    
+    // std::cerr << "Setting base_z to: " << base_z << std::endl;
     robotStateInternal_.setRootPositionInWorldFrame(
         vector3_t(robotStateInternal_.getRootPositionInWorldFrame()[0],
                   robotStateInternal_.getRootPositionInWorldFrame()[1],
@@ -250,15 +337,22 @@ void MujocoRos2ControlInterface::reset() {
 
 void MujocoRos2ControlInterface::setupJointIndexMaps() {
   // Mujoco to Robot joints
+  std::cerr << "\n=== MuJoCo Model Joints ===" << std::endl;
   for (int i = 1; i < mujocoModel_->njnt; ++i) {
     // Get the joint name
     const std::string jointName(&mujocoModel_->names[mujocoModel_->name_jntadr[i]]);
+    std::cerr << "  [" << i << "] " << jointName;
     if (getRobotDescription().containsJoint(jointName)) {
       activeMuJoCoJointNames_.emplace_back(jointName);
+      activeMuJoCoJointIndices_.emplace_back(i);  // Store MuJoCo joint index
+      std::cerr << " ✓ (matched)" << std::endl;
     } else {
+      std::cerr << " ✗ (NOT in RobotDescription)" << std::endl;
       std::cerr << "WARNING: Joint contained in mujoco xml not exposed to RobotHWInterface: " << jointName << std::endl;
     }
   }
+  std::cerr << "Total MuJoCo joints: " << (mujocoModel_->njnt - 1) << std::endl;
+  std::cerr << "Matched joints: " << activeMuJoCoJointNames_.size() << std::endl;
 
   activeRobotJointStateIndices_ = getRobotDescription().getJointIndices(activeMuJoCoJointNames_);
 
@@ -328,9 +422,11 @@ void MujocoRos2ControlInterface::printModelInfo() {
     // Get the joint name
     std::string jointName(&mujocoModel_->names[mujocoModel_->name_jntadr[i]]);
 
-    // Get the joint position and velocity
-    double jointPos = mujocoData_->qpos[i + 6];
-    double jointVel = mujocoData_->qvel[i + 5];
+    // Get the joint position and velocity using proper MuJoCo addressing
+    int qpos_addr = mujocoModel_->jnt_qposadr[i];
+    int dof_addr = mujocoModel_->jnt_dofadr[i];
+    double jointPos = mujocoData_->qpos[qpos_addr];
+    double jointVel = mujocoData_->qvel[dof_addr];
 
     // Print the information
     std::cerr << "Joint Name: " << jointName << ", Position: " << jointPos << ", Velocity: " << jointVel << std::endl;
@@ -373,10 +469,32 @@ void MujocoRos2ControlInterface::setSimState(const model::RobotState& robotState
   mujocoData_->qvel[4] = root_vel_ang_local_frame[1];
   mujocoData_->qvel[5] = root_vel_ang_local_frame[2];
 
-  // Joint State
+  // DEBUG: Print sizing info
+  static bool printed_once = false;
+  if (!printed_once) {
+    std::cerr << "\n=== setSimState() Debug ===" << std::endl;
+    std::cerr << "nActiveJoints_: " << nActiveJoints_ << std::endl;
+    std::cerr << "activeMuJoCoJointIndices_.size(): " << activeMuJoCoJointIndices_.size() << std::endl;
+    std::cerr << "activeRobotJointStateIndices_.size(): " << activeRobotJointStateIndices_.size() << std::endl;
+    printed_once = true;
+  }
+
+  // Joint State - use proper MuJoCo addressing for each joint
   for (size_t i = 0; i < nActiveJoints_; ++i) {
-    mujocoData_->qpos[i + 7] = robotStateInternal_.getJointPosition(activeRobotJointStateIndices_[i]);
-    mujocoData_->qvel[i + 6] = robotStateInternal_.getJointVelocity(activeRobotJointStateIndices_[i]);
+    int mjJointIdx = activeMuJoCoJointIndices_[i];
+    int qpos_addr = mujocoModel_->jnt_qposadr[mjJointIdx];
+    int dof_addr = mujocoModel_->jnt_dofadr[mjJointIdx];
+    
+    // DEBUG: Print what we're about to access
+    std::string jointName(&mujocoModel_->names[mujocoModel_->name_jntadr[mjJointIdx]]);
+    std::cerr << "  [" << i << "] " << jointName 
+              << " mjIdx=" << mjJointIdx 
+              << " qpos_addr=" << qpos_addr 
+              << " dof_addr=" << dof_addr
+              << " robotStateIdx=" << activeRobotJointStateIndices_[i] << std::endl;
+    
+    mujocoData_->qpos[qpos_addr] = robotState.getJointPosition(activeRobotJointStateIndices_[i]);
+    mujocoData_->qvel[dof_addr] = robotState.getJointVelocity(activeRobotJointStateIndices_[i]);
   }
 }
 

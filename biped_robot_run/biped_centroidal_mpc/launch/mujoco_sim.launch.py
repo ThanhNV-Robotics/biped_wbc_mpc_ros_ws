@@ -139,7 +139,14 @@ def generate_launch_description():
     final_launch_description = LaunchDescription()
     
     
+    
     final_launch_description.add_action(cfg.ld)
+    # add a delay to ensure the MPC nodes are properly initialized before starting the mujoco_ros2_control nodes
+    # Note: This is a simple workaround to avoid
+    # potential race conditions between the MPC and mujoco_ros2_control nodes during startup. A more robust solution would involve proper synchronization between the nodes.
+    # final_launch_description.add_action(launch.actions.TimerAction(period=5.0, actions=[cfg.mpc_mujoco_ros2_control_sim]))
+
     final_launch_description.add_action(mujoco_ros2_control_launch_description)
+    
 
     return final_launch_description
