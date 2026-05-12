@@ -45,6 +45,23 @@ int main(int argc, char *argv[])
     std::unordered_map<std::string, std::pair<double, double>> joint_limits;
     std::vector<std::string> joint_names;
 
+    // Define expected joint order for 12-DOF biped (must match IK computation order)
+    std::vector<std::string> expected_joint_order = {
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_pitch_joint",
+        "left_ankle_roll_joint",
+        "left_ankle_pitch_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_pitch_joint",
+        "right_ankle_roll_joint",
+        "right_ankle_pitch_joint"
+    };
+
+    // Extract limits for all joints
     for (const auto& joint_pair : robot_model.joints_)
     {
         const auto& joint = joint_pair.second;
@@ -53,8 +70,6 @@ int main(int argc, char *argv[])
         if ((joint->type == urdf::Joint::REVOLUTE || joint->type == urdf::Joint::CONTINUOUS) &&
             joint->name != "root")
         {
-            joint_names.push_back(joint->name);
-            
             if (joint->limits)
             {
                 double lower = joint->limits->lower;
@@ -71,8 +86,29 @@ int main(int argc, char *argv[])
         }
     }
 
+    // Use expected joint order (verify all joints exist in URDF)
+    for (const auto& joint_name : expected_joint_order)
+    {
+        if (robot_model.joints_.find(joint_name) != robot_model.joints_.end())
+        {
+            joint_names.push_back(joint_name);
+        }
+        else
+        {
+            RCLCPP_WARN(control_action_server_node->get_logger(), 
+                "Expected joint '%s' not found in URDF", joint_name.c_str());
+        }
+    }
+
     RCLCPP_INFO(control_action_server_node->get_logger(), 
-        "Loaded %zu joints from URDF", joint_names.size());
+        "Loaded %zu joints from URDF in correct order", joint_names.size());
+    
+    // Print joint order for verification
+    RCLCPP_INFO(control_action_server_node->get_logger(), "Joint order:");
+    for (size_t i = 0; i < joint_names.size(); ++i)
+    {
+        RCLCPP_INFO(control_action_server_node->get_logger(), "  [%zu] %s", i, joint_names[i].c_str());
+    }
 
     // Set joint information in the node
     control_action_server_node->set_joint_limits(joint_limits);

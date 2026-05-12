@@ -2,8 +2,10 @@
 #include <control_actions/computation_utils.hpp>
 #include <Eigen/Dense>
 
-#include <trajectory_msgs/msg/joint_trajectory.hpp>
-#include <trajectory_msgs/msg/joint_trajectory_point.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
+#include <chrono>
+#include <thread>
+#include <cmath>
 
 using Eigen::Matrix3d;
 using Eigen::Vector3d;
@@ -103,29 +105,72 @@ namespace control_actions
                            
                     target_joint_angles << left_leg_target_joint_angles, right_leg_target_joint_angles;
 
-                    // create publishing message to joint trajectory command
-                    // created target_joint_map
-                    std::unordered_map<std::string, double> target_joint_map;
+                    // Log computed joint angles for debugging
+                    RCLCPP_INFO(this->get_logger(), "Computed target joint angles:");
                     for (size_t i = 0; i < joint_names.size(); ++i)
                     {
-                        target_joint_map[joint_names[i]] = target_joint_angles[i];
+                        RCLCPP_INFO(this->get_logger(), "  %s: %.4f rad (%.2f deg)", 
+                                    joint_names[i].c_str(), 
+                                    target_joint_angles[i],
+                                    target_joint_angles[i] * 180.0 / M_PI);
                     }
 
-                    // prepare the trajectory message
-                    trajectory_msgs::msg::JointTrajectory traj_msg;
-                    traj_msg.joint_names = joint_names;
-                    trajectory_msgs::msg::JointTrajectoryPoint point;
-
-                    for (const auto &name : joint_names)
+                    // Store initial and target positions
+                    std::vector<double> initial_positions_vec = current_joint_angle;
+                    std::vector<double> target_positions_vec(joint_names.size());
+                    for (size_t i = 0; i < joint_names.size(); ++i)
                     {
-                        point.positions.push_back(target_joint_map[name]);
+                        target_positions_vec[i] = target_joint_angles[i];
                     }
+                    
+                    double duration = goal->duration;
+                    RCLCPP_INFO(this->get_logger(), "Executing smooth standing trajectory over %.2f seconds", duration);
 
-                    point.time_from_start = rclcpp::Duration::from_seconds(goal->duration); // duration to reach the target
-                    traj_msg.points.push_back(point);
-                    auto traj_pub = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-                        "/joint_trajectory_controller/joint_trajectory", 10);
-                    traj_pub->publish(traj_msg);
+                    // create a publisher for PD impedance controller
+                    auto cmd_pub = this->create_publisher<sensor_msgs::msg::JointState>(
+                        "/pd_impedance_controller/commands", 10);
+                    
+                    // Allow time for publisher to establish connections
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    
+                    // Execute 5th-order polynomial trajectory
+                    double dt = 0.004; // 250Hz command rate
+                    rclcpp::Rate loop_rate(1.0 / dt);
+                    
+                    sensor_msgs::msg::JointState cmd_msg;
+                    cmd_msg.name = joint_names;
+                    cmd_msg.position.resize(joint_names.size());
+                    cmd_msg.velocity.resize(joint_names.size(), 0.0);
+                    cmd_msg.effort.resize(joint_names.size(), 0.0);
+                    
+                    for (double t = 0.0; t <= duration; t += dt)
+                    {
+                        if (goal_handle->is_canceling())
+                        {
+                            RCLCPP_INFO(this->get_logger(), "Standing trajectory canceled");
+                            break;
+                        }
+                        
+                        // Compute 5th-order polynomial: s(t) = 6*(t/T)^5 - 15*(t/T)^4 + 10*(t/T)^3
+                        double s = t / duration;
+                        double smooth_factor = 6.0 * std::pow(s, 5) - 15.0 * std::pow(s, 4) + 10.0 * std::pow(s, 3);
+                        
+                        // Clamp to [0, 1]
+                        smooth_factor = std::max(0.0, std::min(1.0, smooth_factor));
+                        
+                        // Compute interpolated positions: theta(t) = theta_s + (theta_e - theta_s) * smooth_factor
+                        cmd_msg.header.stamp = this->now();
+                        for (size_t i = 0; i < joint_names.size(); ++i)
+                        {
+                            cmd_msg.position[i] = initial_positions_vec[i] + 
+                                                  (target_positions_vec[i] - initial_positions_vec[i]) * smooth_factor;
+                        }
+                        
+                        cmd_pub->publish(cmd_msg);
+                        loop_rate.sleep();
+                    }
+                    
+                    RCLCPP_INFO(this->get_logger(), "Standing trajectory completed");
 
                     // publish feedback
                     auto feedback = std::make_shared<InitialStandingAction::Feedback>();

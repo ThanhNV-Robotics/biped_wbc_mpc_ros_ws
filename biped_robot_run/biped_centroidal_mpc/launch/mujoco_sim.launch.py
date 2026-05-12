@@ -59,6 +59,19 @@ def launch_mujoco_ros2_control_setup(context, *args, **kwargs):
         )
     )
 
+    # Controller spawners
+    # Note: We spawn the PD impedance controller
+    controllers_to_spawn = ["joint_state_broadcaster", "pd_impedance_controller", "imu_sensor_broadcaster"]
+    for controller in controllers_to_spawn:
+        nodes.append(
+            Node(
+                package="controller_manager",
+                executable="spawner",
+                arguments=[controller, "--param-file", parameters_file],
+                output="both",
+            )
+        )
+
     # ros2_control node with MuJoCo - PD gains loaded from config
     nodes.append(
         Node(
@@ -75,18 +88,15 @@ def launch_mujoco_ros2_control_setup(context, *args, **kwargs):
         )
     )
 
-    # Controller spawners
-    # Note: We spawn the PD impedance controller
-    controllers_to_spawn = ["joint_state_broadcaster", "pd_impedance_controller", "imu_sensor_broadcaster"]
-    for controller in controllers_to_spawn:
-        nodes.append(
-            Node(
-                package="controller_manager",
-                executable="spawner",
-                arguments=[controller, "--param-file", parameters_file],
-                output="both",
-            )
+    # Control actions server
+    nodes.append(
+        Node(
+            package="control_actions",
+            executable="control_actions_server_node",
+            output="both",
+            parameters=[{"use_sim_time": True}],
         )
+    )
 
     return nodes
 

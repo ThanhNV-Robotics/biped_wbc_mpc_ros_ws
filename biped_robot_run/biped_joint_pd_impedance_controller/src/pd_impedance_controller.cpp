@@ -215,7 +215,7 @@ controller_interface::return_type PdImpedanceController::update(const rclcpp::Ti
   // Update commands for all joints
   for (size_t i = 0; i < joint_names_.size(); ++i)
   {
-    double pos_cmd = has_command_ ? commanded_positions_[i] : initial_positions_[i];
+    double pos_cmd = has_command_ ? commanded_positions_[i] : 0.0;
     double vel_cmd = has_command_ ? commanded_velocities_[i] : 0.0;
     double ff_cmd = has_command_ ? commanded_efforts_[i] : 0.0;
     

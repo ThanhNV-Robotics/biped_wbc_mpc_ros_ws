@@ -1,4 +1,7 @@
 #include <control_actions/control_actions_server.hpp>
+#include <chrono>
+#include <thread>
+#include <cmath>
 
 namespace control_actions
 {
@@ -69,28 +72,74 @@ namespace control_actions
                 }
             }
             std::vector<std::string> joint_names =  ControlActionServer::get_joint_names();
-            // get the current joint position
-            std::unordered_map<std::string, double> target_position = ControlActionServer::get_current_joint_positions(joint_names);
-            target_position[goal->joint_name] = goal->target_position;
+            // get the current joint positions
+            std::unordered_map<std::string, double> initial_positions = ControlActionServer::get_current_joint_positions(joint_names);
+            
+            // Store initial and target positions for all joints
+            std::unordered_map<std::string, double> target_positions = initial_positions;
+            target_positions[goal->joint_name] = goal->target_position;
+            
+            double initial_pos = initial_positions[goal->joint_name];
+            double target_pos = goal->target_position;
+            double duration = goal->duration;
 
-            // create a publisher to publish to the joint trajectory command
-            auto traj_pub = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-                "/joint_trajectory_controller/joint_trajectory", 10);
-            // prepare the trajectory message
-            trajectory_msgs::msg::JointTrajectory traj_msg;
-            traj_msg.joint_names = joint_names_;
-            trajectory_msgs::msg::JointTrajectoryPoint point;
-            for (const auto &jname : joint_names_)
+            // create a publisher to publish to the PD impedance controller
+            auto cmd_pub = this->create_publisher<sensor_msgs::msg::JointState>(
+                "/pd_impedance_controller/commands", 10);
+            
+            // Allow time for publisher to establish connections
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            
+            RCLCPP_INFO(this->get_logger(), "Executing smooth trajectory for %s from %.3f to %.3f over %.2f seconds",
+                        goal->joint_name.c_str(), initial_pos, target_pos, duration);
+            
+            // Execute 5th-order polynomial trajectory
+            double dt = 0.004; // 250Hz command rate
+            rclcpp::Rate loop_rate(1.0 / dt);
+            
+            sensor_msgs::msg::JointState cmd_msg;
+            cmd_msg.name = joint_names_;
+            cmd_msg.position.resize(joint_names_.size());
+            cmd_msg.velocity.resize(joint_names_.size(), 0.0);
+            cmd_msg.effort.resize(joint_names_.size(), 0.0);
+            
+            for (double t = 0.0; t <= duration; t += dt)
             {
-                point.positions.push_back(target_position[jname]);
+                if (goal_handle->is_canceling())
+                {
+                    RCLCPP_INFO(this->get_logger(), "Trajectory canceled");
+                    break;
+                }
+                
+                // Compute 5th-order polynomial: s(t) = 6*(t/T)^5 - 15*(t/T)^4 + 10*(t/T)^3
+                double s = t / duration;
+                double smooth_factor = 6.0 * std::pow(s, 5) - 15.0 * std::pow(s, 4) + 10.0 * std::pow(s, 3);
+                
+                // Clamp to [0, 1]
+                smooth_factor = std::max(0.0, std::min(1.0, smooth_factor));
+                
+                // Compute interpolated position: theta(t) = theta_s + (theta_e - theta_s) * smooth_factor
+                double interpolated_pos = initial_pos + (target_pos - initial_pos) * smooth_factor;
+                
+                // Set positions for all joints (only target joint moves)
+                cmd_msg.header.stamp = this->now();
+                for (size_t i = 0; i < joint_names_.size(); ++i)
+                {
+                    if (joint_names_[i] == goal->joint_name)
+                    {
+                        cmd_msg.position[i] = interpolated_pos;
+                    }
+                    else
+                    {
+                        cmd_msg.position[i] = initial_positions[joint_names_[i]];
+                    }
+                }
+                
+                cmd_pub->publish(cmd_msg);
+                loop_rate.sleep();
             }
-            point.time_from_start = rclcpp::Duration::from_seconds(goal->duration);
-            traj_msg.points.push_back(point);
-
-            // publish the trajectory command
-            traj_pub->publish(traj_msg);
-            RCLCPP_INFO(this->get_logger(), "Published trajectory command to move joint %s to position %f in duration %f",
-                        goal->joint_name.c_str(), goal->target_position, goal->duration);
+            
+            RCLCPP_INFO(this->get_logger(), "Trajectory execution completed");
             // Feedback loop, update feedback at 20 Hz
             // update current joint positions
             rclcpp::Rate rate(20); // 20 Hz feedback

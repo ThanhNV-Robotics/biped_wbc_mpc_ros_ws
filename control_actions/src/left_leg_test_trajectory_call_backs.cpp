@@ -1,7 +1,6 @@
 #include <control_actions/control_actions_server.hpp>
 
-#include <trajectory_msgs/msg/joint_trajectory.hpp>
-#include <trajectory_msgs/msg/joint_trajectory_point.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
 #include <Eigen/Dense>
 #include <cmath>
 #include <vector>
@@ -46,14 +45,12 @@ namespace control_actions
             return;
         }
 
-        // create a publisher to publish joint trajectory to left leg joints
-        auto joint_trajectory_pub = this->create_publisher<trajectory_msgs::msg::JointTrajectory>(
-            "/joint_trajectory_controller/joint_trajectory", 10);
+        // create a publisher to publish joint commands to PD impedance controller
+        auto cmd_pub = this->create_publisher<sensor_msgs::msg::JointState>(
+            "/pd_impedance_controller/commands", 10);
 
-        // create a joint trajectory message
-        trajectory_msgs::msg::JointTrajectory joint_trajectory_msg;
-        // specify left leg joint names
-        joint_trajectory_msg.joint_names = {
+        // Specify joint names
+        std::vector<std::string> joint_names = {
             "left_hip_pitch_joint",
             "left_hip_roll_joint", 
             "left_hip_yaw_joint",
@@ -81,31 +78,41 @@ namespace control_actions
         // Trajectory frequencies for each joint (Hz)
         std::vector<double> frequencies = {0.25, 0.275, 0.3, 0.35, 0.35, 0.45};
         
-        // Generate trajectory points
+        // Execute trajectory by publishing commands in real-time
         double init_duration = 2.5; // seconds for initialization
-        double trajectory_duration = duration - init_duration;
-        double dt = 0.004; // 250Hz trajectory points to match controller frequency
-        int num_points = static_cast<int>(duration / dt);
+        double dt = 0.004; // 250Hz command rate to match controller frequency
+        rclcpp::Rate loop_rate(1.0 / dt); // 250 Hz
         
         // Low-pass filter parameters
-        double cutoff_frequency = 2.0; // Hz - reduce this (try 2.0-3.0) for smoother motion
-        double sample_rate = 1.0 / dt; // 250 Hz
+        double cutoff_frequency = 2.0; // Hz
+        double sample_rate = 1.0 / dt;
         double alpha = (2.0 * M_PI * dt * cutoff_frequency) / (2.0 * M_PI * dt * cutoff_frequency + 1.0);
-        std::vector<double> filtered_positions(12, 0.0); // Store previous filtered values
+        std::vector<double> filtered_positions(12, 0.0);
         
-        joint_trajectory_msg.points.resize(num_points);
+        auto feedback = std::make_shared<LeftLegTestTrajectoryAction::Feedback>();
+        auto result = std::make_shared<LeftLegTestTrajectoryAction::Result>();
         
-        for (int i = 0; i < num_points; ++i) {
-            double t = i * dt;
-            trajectory_msgs::msg::JointTrajectoryPoint point;
-            point.positions.resize(12);
-            // point.velocities.resize(12);
-            // point.accelerations.resize(12);
+        for (double t = 0.0; t < duration; t += dt) {
+            if (goal_handle->is_canceling()) {
+                result->success = false;
+                result->message = "Left leg trajectory was canceled";
+                goal_handle->canceled(result);
+                RCLCPP_INFO(this->get_logger(), "Left leg trajectory canceled");
+                return;
+            }
+            
+            // Create command message
+            sensor_msgs::msg::JointState cmd_msg;
+            cmd_msg.header.stamp = this->now();
+            cmd_msg.name = joint_names;
+            cmd_msg.position.resize(12);
+            cmd_msg.velocity.resize(12, 0.0);  // Zero velocity for position tracking
+            cmd_msg.effort.resize(12, 0.0);    // Zero feedforward torque
             
             for (size_t j = 0; j < 12; ++j) {
                 if (j >= 6) {
                     // Right leg joints remain at zero position
-                    point.positions[j] = 0.0;
+                    cmd_msg.position[j] = 0.0;
                     continue;
                 }
                 double lower_limit = joint_limits[j].first;
@@ -120,61 +127,32 @@ namespace control_actions
                     double s = t / init_duration;
                     double smooth_factor = 6 * std::pow(s, 5) - 15 * std::pow(s, 4) + 10 * std::pow(s, 3);
                     raw_position = smooth_factor * mid_point;
-                    // point.velocities[j] = (30 * std::pow(t, 4) / std::pow(init_duration, 5) - 
-                    //                      60 * std::pow(t, 3) / std::pow(init_duration, 4) + 
-                    //                      30 * std::pow(t, 2) / std::pow(init_duration, 3)) * mid_point;
-                    // point.accelerations[j] = (120 * std::pow(t, 3) / std::pow(init_duration, 5) - 
-                                            // 180 * std::pow(t, 2) / std::pow(init_duration, 4) + 
-                                            // 60 * t / std::pow(init_duration, 3)) * mid_point;
-                } else if (t <= duration) {
+                } else {
                     // Sinusoidal trajectory phase
                     double phase_time = t - init_duration;
                     double omega = 2.0 * M_PI * frequencies[j];
-                    
                     raw_position = mid_point + amplitude * std::sin(omega * phase_time);
-                    // point.velocities[j] = amplitude * omega * std::cos(omega * phase_time);
-                    // point.accelerations[j] = -amplitude * omega * omega * std::sin(omega * phase_time);
-                } else {
-                    // Hold final position
-                    raw_position = mid_point;
-                    // point.velocities[j] = 0.0;
-                    // point.accelerations[j] = 0.0;
                 }
                 
                 // Apply first-order low-pass filter
                 filtered_positions[j] = alpha * raw_position + (1.0 - alpha) * filtered_positions[j];
-                point.positions[j] = filtered_positions[j];
+                cmd_msg.position[j] = filtered_positions[j];
             }
             
-            point.time_from_start = rclcpp::Duration::from_seconds(t);
-            joint_trajectory_msg.points[i] = point;
-        }
-        
-        // Publish trajectory
-        joint_trajectory_pub->publish(joint_trajectory_msg);
-        RCLCPP_INFO(this->get_logger(), "Trajectory published successfully");
-        
-        // Wait for trajectory execution and provide feedback
-        rclcpp::Rate loop_rate(10); // 10 Hz feedback rate
-        auto feedback = std::make_shared<LeftLegTestTrajectoryAction::Feedback>();
-        auto result = std::make_shared<LeftLegTestTrajectoryAction::Result>();
-        
-        for (double elapsed_time = 0.0; elapsed_time < duration; elapsed_time += 0.1) {
-            if (goal_handle->is_canceling()) {
-                result->success = false;
-                result->message = "Left leg trajectory was canceled";
-                goal_handle->canceled(result);
-                RCLCPP_INFO(this->get_logger(), "Left leg trajectory canceled");
-                return;
-            }
+            // Publish command
+            cmd_pub->publish(cmd_msg);
             
-            // Update feedback
-            feedback->elapsed_time = elapsed_time;
-            feedback->remaining_time = duration - elapsed_time;
-            goal_handle->publish_feedback(feedback);
+            // Update feedback every 0.1 seconds
+            if (static_cast<int>(t * 10) % static_cast<int>(0.1 / dt * 10) == 0) {
+                feedback->elapsed_time = t;
+                feedback->remaining_time = duration - t;
+                goal_handle->publish_feedback(feedback);
+            }
             
             loop_rate.sleep();
         }
+        
+        RCLCPP_INFO(this->get_logger(), "Trajectory execution completed successfully");
         
         // Check if goal is still active and set result
         if (rclcpp::ok() && !goal_handle->is_canceling()) {
