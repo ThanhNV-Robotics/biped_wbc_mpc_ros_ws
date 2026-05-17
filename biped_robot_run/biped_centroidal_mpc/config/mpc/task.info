@@ -133,7 +133,7 @@ initialState
   ;; Base Pose: [position, orientation] ;;
   (6,0)  0.0     ; p_base_x
   (7,0)  0.0     ; p_base_y
-  (8,0)  0.81     ; p_base_z
+  (8,0)  0.7     ; p_base_z
   (9,0)  0.0     ; theta_base_z
   (10,0) 0.0     ; theta_base_y
   (11,0) 0.0     ; theta_base_x
@@ -169,23 +169,23 @@ Q
   ;; Base Pose: [position, orientation] ;;
   (6,6)   0.0    ; p_base_x
   (7,7)   0.0    ; p_base_y
-  (8,8)   15.0    ; p_base_z , test control the pelvis height
+  (8,8)   0.1    ; p_base_z , test control the pelvis height - HIGH WEIGHT
   ; euler angles for base to world rotation
   (9,9)   0.0    ; theta_base_z
-  (10,10) 0.0    ; theta_base_y
-  (11,11) 0.0    ; theta_base_x
+  (10,10) 0.1    ; theta_base_y - 
+  (11,11) 0.1    ; theta_base_x - 
 
   ;; Joint Positions ;;
-  (12,12) 0.02     ;    left_hip_pitch_joint
-  (13,13) 0.06     ;    left_hip_roll_joint
-  (14,14) 4.0      ;    left_hip_yaw_joint
-  (15,15) 0.02     ;    left_knee_pitch_joint
+  (12,12) 0.01     ;    left_hip_pitch_joint
+  (13,13) 0.01     ;    left_hip_roll_joint
+  (14,14) 0.01      ;    left_hip_yaw_joint
+  (15,15) 0.01     ;    left_knee_pitch_joint
   (16,16) 0.01     ;    left_ankle_roll_joint
   (17,17) 0.01     ;    left_ankle_pitch_joint
-  (18,18) 0.02     ;    right_hip_pitch_joint
-  (19,19) 0.06     ;    right_hip_roll_joint
-  (20,20) 4.0      ;    right_hip_yaw_joint
-  (21,21) 0.02     ;    right_knee_pitch_joint
+  (18,18) 0.01     ;    right_hip_pitch_joint
+  (19,19) 0.01     ;    right_hip_roll_joint
+  (20,20) 0.01      ;    right_hip_yaw_joint
+  (21,21) 0.01     ;    right_knee_pitch_joint
   (22,22) 0.01     ;    right_ankle_roll_joint
   (23,23) 0.01     ;    right_ankle_pitch_joint
 }
@@ -196,32 +196,32 @@ R
   scaling 1e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
-  (0,0)   0.05       ; left_force_x
-  (1,1)   0.05       ; left_force_y
-  (2,2)   0.01       ; left_force_z
-  (3,3)   0.05       ; left_moment_x
-  (4,4)   0.05       ; left_moment_y
-  (5,5)   0.2        ; left_moment_z
-  (6,6)   0.05       ; right_force_x
-  (7,7)   0.05       ; right_force_y
-  (8,8)   0.01       ; right_force_z
-  (9,9)   0.05       ; right_moment_x
-  (10,10) 0.05       ; right_moment_y
-  (11,11) 0.2        ; right_moment_z
+  (0,0)   0.1       ; left_force_x
+  (1,1)   0.1       ; left_force_y
+  (2,2)   0.1       ; left_force_z
+  (3,3)   0.1       ; left_moment_x
+  (4,4)   0.1       ; left_moment_y
+  (5,5)   0.1        ; left_moment_z
+  (6,6)   0.1       ; right_force_x
+  (7,7)   0.1       ; right_force_y
+  (8,8)   0.1       ; right_force_z
+  (9,9)   0.1       ; right_moment_x
+  (10,10) 0.1       ; right_moment_y
+  (11,11) 0.1        ; right_moment_z
 
   ;; Joint Velocities ;;
-  (12,12) 20.0       ;    left_hip_pitch_joint
-  (13,13) 20.0      ;    left_hip_roll_joint
-  (14,14) 200.0      ;    left_hip_yaw_joint
-  (15,15) 20.0       ;    left_knee_pitch_joint
-  (16,16) 20.0       ;    left_ankle_roll_joint
-  (17,17) 20.0       ;    left_ankle_pitch_joint
-  (18,18) 20.0       ;    right_hip_pitch_joint
-  (19,19) 20.0      ;    right_hip_roll_joint
-  (20,20) 200.0      ;    right_hip_yaw_joint
-  (21,21) 20.0       ;    right_knee_pitch_joint
-  (22,22) 20.0       ;    right_ankle_roll_joint
-  (23,23) 20.0       ;    right_ankle_pitch_joint
+  (12,12) 0.01       ;    left_hip_pitch_joint
+  (13,13) 0.01      ;    left_hip_roll_joint
+  (14,14) 0.01      ;    left_hip_yaw_joint
+  (15,15) 0.01       ;    left_knee_pitch_joint
+  (16,16) 0.01       ;    left_ankle_roll_joint
+  (17,17) 0.01       ;    left_ankle_pitch_joint
+  (18,18) 0.01       ;    right_hip_pitch_joint
+  (19,19) 0.01      ;    right_hip_roll_joint
+  (20,20) 0.01      ;    right_hip_yaw_joint
+  (21,21) 0.01       ;    right_knee_pitch_joint
+  (22,22) 0.01       ;    right_ankle_roll_joint
+  (23,23) 0.01       ;    right_ankle_pitch_joint
 }
 
 terminalCostScaling       3.0
@@ -240,25 +240,25 @@ Q_final
   ;; Base Pose: [position, orientation] ;;
   (6,6)   0.0    ; p_base_x
   (7,7)   0.0    ; p_base_y
-  (8,8)   20.0    ; p_base_z
+  (8,8)   0.0    ; p_base_z - terminal height tracking
   ; euler angles for base to world rotation
   (9,9)   0.0    ; theta_base_z
-  (10,10) 0.0    ; theta_base_y
-  (11,11) 0.0    ; theta_base_x
+  (10,10) 0.5    ; theta_base_y 
+  (11,11) 0.5    ; theta_base_x 
 
   ;; Joint Positions ;;
-  (12,12) 0.02     ;    left_hip_pitch_joint
-  (13,13) 0.06     ;    left_hip_roll_joint
-  (14,14) 8.0      ;    left_hip_yaw_joint
-  (15,15) 0.02     ;    left_knee_pitch_joint
-  (16,16) 0.01     ;    left_ankle_roll_joint
-  (17,17) 0.01     ;    left_ankle_pitch_joint
-  (18,18) 0.02     ;    right_hip_pitch_joint
-  (19,19) 0.06     ;    right_hip_roll_joint
-  (20,20) 8.0      ;    right_hip_yaw_joint
-  (21,21) 0.02     ;    right_knee_pitch_joint
-  (22,22) 0.01     ;    right_ankle_roll_joint
-  (23,23) 0.01     ;    right_ankle_pitch_joint
+  (12,12) 0.0     ;    left_hip_pitch_joint
+  (13,13) 0.0     ;    left_hip_roll_joint
+  (14,14) 0.0      ;    left_hip_yaw_joint
+  (15,15) 0.0     ;    left_knee_pitch_joint
+  (16,16) 0.0     ;    left_ankle_roll_joint
+  (17,17) 0.0     ;    left_ankle_pitch_joint
+  (18,18) 0.0     ;    right_hip_pitch_joint
+  (19,19) 0.0     ;    right_hip_roll_joint
+  (20,20) 0.0      ;    right_hip_yaw_joint
+  (21,21) 0.0     ;    right_knee_pitch_joint
+  (22,22) 0.0     ;    right_ankle_roll_joint
+  (23,23) 0.0     ;    right_ankle_pitch_joint
 }
 
 icp_cost_weights
@@ -271,15 +271,15 @@ task_space_foot_cost_weights
   pos_x               0.0
   pos_y               0.0
   pos_z               0.0
-  orientation_x       1000.0
-  orientation_y       1000.0
+  orientation_x       0.0
+  orientation_y       0.0
   orientation_z       0.0
-  lin_velocity_x      10.0
-  lin_velocity_y      10.0
+  lin_velocity_x      0.0
+  lin_velocity_y      0.0
   lin_velocity_z      0.0
-  ang_velocity_x      1.0
-  ang_velocity_y      1.0
-  ang_velocity_z      0.005
+  ang_velocity_x      0.0
+  ang_velocity_y      0.0
+  ang_velocity_z      0.0
   lin_acceleration_x  0.0
   lin_acceleration_y  0.0
   lin_acceleration_z  0.0
@@ -296,15 +296,15 @@ task_space_costs
       pos_x               0.0
       pos_y               0.0
       pos_z               0.0
-      orientation_x       100.0
-      orientation_y       100.0
+      orientation_x       0.0
+      orientation_y       0.0
       orientation_z       0.0
-      lin_velocity_x      0.1
-      lin_velocity_y      0.1
-      lin_velocity_z      0.005
-      ang_velocity_x      5.0
-      ang_velocity_y      5.0
-      ang_velocity_z      2.0
+      lin_velocity_x      0.0
+      lin_velocity_y      0.0
+      lin_velocity_z      0.0
+      ang_velocity_x      0.0
+      ang_velocity_y      0.0
+      ang_velocity_z      0.0
       lin_acceleration_x  0.0
       lin_acceleration_y  0.0
       lin_acceleration_z  0.0
@@ -331,12 +331,12 @@ left_leg_torque_cost
   weights {
     scaling 1e-4
 
-    (0,0)  2.0     ; 
-    (1,1)  2.0     ; 
-    (2,2)  1.0     ; 
-    (3,3)  8.0     ; 
-    (4,4)  0.2     ; 
-    (5,5)  0.2     ; 
+    (0,0)  0.0     ; 
+    (1,1)  0.0     ; 
+    (2,2)  0.0     ; 
+    (3,3)  0.0     ; 
+    (4,4)  0.0     ; 
+    (5,5)  0.0     ; 
   }
 }
 
@@ -355,12 +355,12 @@ right_leg_torque_cost
   weights {
     scaling 1e-4
 
-    (0,0)  2.0     ; 
-    (1,1)  2.0     ; 
-    (2,2)  1.0     ; 
-    (3,3)  8.0     ; 
-    (4,4)  0.2     ; 
-    (5,5)  0.2     ; 
+    (0,0)  0.0     ; 
+    (1,1)  0.0     ; 
+    (2,2)  0.0     ; 
+    (3,3)  0.0     ; 
+    (4,4)  0.0     ; 
+    (5,5)  0.0     ; 
   }
 }
 
@@ -369,9 +369,9 @@ contacts
   contact_frame_translation
   {
    ;; Translation vector from parent joint to contact frame ;;
-   x  0.035
+   x  0.0
    y  0.0
-   z  -0.035    
+   z  0.0    
   }
   contact_rectangle 
   {

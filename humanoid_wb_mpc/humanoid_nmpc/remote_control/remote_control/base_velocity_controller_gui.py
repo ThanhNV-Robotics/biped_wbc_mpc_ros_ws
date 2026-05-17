@@ -131,12 +131,12 @@ class App(tk.Tk):
         )
         self.joystick_right.pack(pady=(5, 5))
 
-        # Slider frame
-        self.slider_default_value = 75
+        # Slider frame (pelvis height control: 0.7m to 0.79m)
+        self.slider_default_value = 75  # Corresponds to ~0.7675m
         self.slider_frame = ttk.Frame(main_frame)
         self.slider_frame.grid(row=0, column=2, padx=15, pady=10, sticky="ns")
 
-        self.slider_label = ttk.Label(self.slider_frame, text="Root Height (LT + RT)")
+        self.slider_label = ttk.Label(self.slider_frame, text="Root Height [0.70-0.79m]")
         self.slider_label.pack(pady=(0, 5))
 
         self.slider = ttk.Scale(
@@ -208,7 +208,8 @@ class App(tk.Tk):
     def set_knob_positions(self, msg: WalkingVelocityCommand):
         self.joystick_left.set_position(msg.linear_velocity_x, msg.linear_velocity_y)
         self.joystick_right.set_position(0.0, msg.angular_velocity_z)
-        self.slider.set((msg.desired_pelvis_height - 0.2) / 0.008)
+        # Scale pelvis height from [0.7, 0.79] to slider range [0, 100]
+        self.slider.set((msg.desired_pelvis_height - 0.7) / 0.0009)
 
     def get_walking_command_msg(self):
         msg = WalkingVelocityCommand()
@@ -217,7 +218,8 @@ class App(tk.Tk):
         msg.linear_velocity_y = self.joystick_left.y_norm
         msg.angular_velocity_z = self.joystick_right.y_norm
 
-        msg.desired_pelvis_height = self.slider.get() * 0.008 + 0.2
+        # Scale slider range [0, 100] to pelvis height [0.7, 0.79]
+        msg.desired_pelvis_height = self.slider.get() * 0.0009 + 0.7
         return msg
 
 

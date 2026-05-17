@@ -65,6 +65,20 @@ class CentroidalMpcMrtJointController final : public ::robot::model::ControlBase
   const ocs2::SystemObservation& getCurrentMpcObservation() const { return currentMpcObservation_; }
 
   /**
+   * Get the latest MPC policy (planned trajectory).
+   * Contains timeTrajectory_, stateTrajectory_, and inputTrajectory_ over the MPC horizon.
+   */
+  const ocs2::PrimalSolution& getPolicy() const { return mcpMrtInterface_.getPolicy(); }
+
+  /**
+   * Get the MPC target/reference trajectories (the goal the MPC is tracking).
+   * Contains the desired state and input trajectories that the MPC tries to follow.
+   */
+  const ocs2::TargetTrajectories& getTargetTrajectories() const { 
+    return mcpMrtInterface_.getReferenceManager().getTargetTrajectories(); 
+  }
+
+  /**
    * Handles the low level controller loop that updates the mpc observation, reads out the latest policy and sets the joint control action.
    */
 
