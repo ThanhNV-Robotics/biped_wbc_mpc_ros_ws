@@ -74,9 +74,13 @@ int main(int argc, char** argv) {
   // auto publisher_joint_states = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
   //     "/joint_states", 10);
 
-  // Publisher to send MPC joint commands to the PD impedance controller
+  // // Publisher to send MPC joint commands
+  // auto publisher_joint_commands = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
+  //     "/mpc/output_commands", 10);
+
+    // Publisher to send MPC joint commands to the PD impedance controller
   auto publisher_joint_commands = nodeHandle->create_publisher<sensor_msgs::msg::JointState>(
-      "/mpc/output_commands", 10);
+      "/pd_impedance_controller/commands", 10);
 
   // Publisher to inspect the MPC observation state vector for debugging
   // Layout: [norm_h_com (6), base_pos xyz (3), euler_zyx (3), joint_angles (n)]
@@ -201,81 +205,82 @@ int main(int argc, char** argv) {
 
     rclcpp::spin_some(nodeHandle);
 
-    // // 4. Publish the MPC observation state for debugging
-    // // Layout: [norm_h_com (6), base_pos xyz (3), euler_zyx (3), joint_angles (n)]
-    // {
-    //   const auto& obs = mpcJointController.getCurrentMpcObservation();
-    //   std_msgs::msg::Float64MultiArray state_msg;
-    //   state_msg.data.assign(obs.state.data(), obs.state.data() + obs.state.size());
-    //   publisher_mpc_state->publish(state_msg);
-    // }
+    // 4. Publish the MPC observation state for debugging
+    // Layout: [norm_h_com (6), base_pos xyz (3), euler_zyx (3), joint_angles (n)]
+    {
+      const auto& obs = mpcJointController.getCurrentMpcObservation();
+      std_msgs::msg::Float64MultiArray state_msg;
+      state_msg.data.assign(obs.state.data(), obs.state.data() + obs.state.size());
+      publisher_mpc_state->publish(state_msg);
+    }
 
-    // // 5. Publish the MPC reference state (the goal the MPC is tracking)
-    // // Layout: [norm_h_com (6), base_pos xyz (3), euler_zyx (3), joint_angles (12)]
-    // {
-    //   if (mpcJointController.ready()) {
-    //     const auto& targetTrajectories = mpcJointController.getTargetTrajectories();
+    // 5. Publish the MPC reference state (the goal the MPC is tracking)
+    // Layout: [norm_h_com (6), base_pos xyz (3), euler_zyx (3), joint_angles (12)]
+    {
+      if (mpcJointController.ready()) {
+        const auto& targetTrajectories = mpcJointController.getTargetTrajectories();
         
-    //     std_msgs::msg::Float64MultiArray ref_msg;
+        std_msgs::msg::Float64MultiArray ref_msg;
         
-    //     // If stateTrajectory is not empty, publish the first reference state (current target)
-    //     if (!targetTrajectories.stateTrajectory.empty() && targetTrajectories.stateTrajectory[0].size() > 0) {
-    //       const auto& ref_state = targetTrajectories.stateTrajectory[0];
-    //       ref_msg.data.assign(ref_state.data(), ref_state.data() + ref_state.size());
+        // If stateTrajectory is not empty, publish the first reference state (current target)
+        if (!targetTrajectories.stateTrajectory.empty() && targetTrajectories.stateTrajectory[0].size() > 0) {
+          const auto& ref_state = targetTrajectories.stateTrajectory[0];
+          ref_msg.data.assign(ref_state.data(), ref_state.data() + ref_state.size());
           
-    //       // Debug logging (every 100 iterations)
-    //       static int counter = 0;
-    //       if (counter++ % 100 == 0) {
-    //         RCLCPP_INFO(nodeHandle->get_logger(), 
-    //                     "MPC Reference State: pelvis_height=%.3f, base_pos=[%.3f, %.3f, %.3f], euler=[%.3f, %.3f, %.3f]",
-    //                     ref_state.size() > 8 ? ref_state[8] : 0.0,
-    //                     ref_state.size() > 6 ? ref_state[6] : 0.0,
-    //                     ref_state.size() > 7 ? ref_state[7] : 0.0,
-    //                     ref_state.size() > 8 ? ref_state[8] : 0.0,
-    //                     ref_state.size() > 9 ? ref_state[9] : 0.0,
-    //                     ref_state.size() > 10 ? ref_state[10] : 0.0,
-    //                     ref_state.size() > 11 ? ref_state[11] : 0.0);
-    //       }
-    //     } else {
-    //       // If no state trajectory, the reference is likely the current observation
-    //       const auto& obs = mpcJointController.getCurrentMpcObservation();
-    //       ref_msg.data.assign(obs.state.data(), obs.state.data() + obs.state.size());
+        //   // Debug logging (every 100 iterations)
+        //   static int counter = 0;
+        //   if (counter++ % 100 == 0) {
+        //     RCLCPP_INFO(nodeHandle->get_logger(), 
+        //                 "MPC Reference State: pelvis_height=%.3f, base_pos=[%.3f, %.3f, %.3f], euler=[%.3f, %.3f, %.3f]",
+        //                 ref_state.size() > 8 ? ref_state[8] : 0.0,
+        //                 ref_state.size() > 6 ? ref_state[6] : 0.0,
+        //                 ref_state.size() > 7 ? ref_state[7] : 0.0,
+        //                 ref_state.size() > 8 ? ref_state[8] : 0.0,
+        //                 ref_state.size() > 9 ? ref_state[9] : 0.0,
+        //                 ref_state.size() > 10 ? ref_state[10] : 0.0,
+        //                 ref_state.size() > 11 ? ref_state[11] : 0.0);
+        //   }
+        // } else {
+        //   // If no state trajectory, the reference is likely the current observation
+        //   const auto& obs = mpcJointController.getCurrentMpcObservation();
+        //   ref_msg.data.assign(obs.state.data(), obs.state.data() + obs.state.size());
           
-    //       static bool logged_once = false;
-    //       if (!logged_once) {
-    //         RCLCPP_WARN(nodeHandle->get_logger(), 
-    //                     "Reference state trajectory empty, publishing current observation as reference");
-    //         logged_once = true;
-    //       }
-    //     }
+        //   static bool logged_once = false;
+        //   if (!logged_once) {
+        //     RCLCPP_WARN(nodeHandle->get_logger(), 
+        //                 "Reference state trajectory empty, publishing current observation as reference");
+        //     logged_once = true;
+        //   }
         
-    //     publisher_mpc_reference->publish(ref_msg);
-    //   }
-    // }
+        }
+        
+        publisher_mpc_reference->publish(ref_msg);
+      }
+    }
 
-    // // 4. Publish computed joint commands (q_des, qd_des, ff_torque) to the PD impedance controller
-    // {
-    //   const auto& jointAction = robotInterface.getRobotJointAction();
-    //   const auto& jointNames = robotInterface.getRobotDescription().getJointNames();
+    // 4. Publish computed joint commands (q_des, qd_des, ff_torque) to the PD impedance controller
+    {
+      const auto& jointAction = robotInterface.getRobotJointAction();
+      const auto& jointNames = robotInterface.getRobotDescription().getJointNames();
 
-    //   sensor_msgs::msg::JointState cmd_msg;
-    //   cmd_msg.header.stamp = nodeHandle->now();
-    //   cmd_msg.name.reserve(jointNames.size());
-    //   cmd_msg.position.reserve(jointNames.size());
-    //   cmd_msg.velocity.reserve(jointNames.size());
-    //   cmd_msg.effort.reserve(jointNames.size());
+      sensor_msgs::msg::JointState cmd_msg;
+      cmd_msg.header.stamp = nodeHandle->now();
+      cmd_msg.name.reserve(jointNames.size());
+      cmd_msg.position.reserve(jointNames.size());
+      cmd_msg.velocity.reserve(jointNames.size());
+      cmd_msg.effort.reserve(jointNames.size());
 
-    //   for (const auto& name : jointNames) {
-    //     robot::joint_index_t idx = robotInterface.getRobotDescription().getJointIndex(name);
-    //     const auto& action = jointAction.at(idx).value();
-    //     cmd_msg.name.push_back(name);
-    //     cmd_msg.position.push_back(action.q_des);
-    //     cmd_msg.velocity.push_back(action.qd_des);
-    //     cmd_msg.effort.push_back(action.feed_forward_effort);
-    //   }
+      for (const auto& name : jointNames) {
+        robot::joint_index_t idx = robotInterface.getRobotDescription().getJointIndex(name);
+        const auto& action = jointAction.at(idx).value();
+        cmd_msg.name.push_back(name);
+        cmd_msg.position.push_back(action.q_des);
+        cmd_msg.velocity.push_back(action.qd_des);
+        cmd_msg.effort.push_back(0*action.feed_forward_effort);
+      }
 
-    //   publisher_joint_commands->publish(cmd_msg);
-    // }
+      publisher_joint_commands->publish(cmd_msg);
+    }
 
     // // 5. Maintain control loop rate // dont need, computeJointControlAction (MRT) already handle this
     // next_loop_time += loop_period;

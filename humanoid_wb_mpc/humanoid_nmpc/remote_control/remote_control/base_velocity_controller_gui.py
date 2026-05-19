@@ -132,7 +132,7 @@ class App(tk.Tk):
         self.joystick_right.pack(pady=(5, 5))
 
         # Slider frame (pelvis height control: 0.7m to 0.79m)
-        self.slider_default_value = 75  # Corresponds to ~0.7675m
+        self.slider_default_value = 55.56  # Corresponds to ~0.75m
         self.slider_frame = ttk.Frame(main_frame)
         self.slider_frame.grid(row=0, column=2, padx=15, pady=10, sticky="ns")
 
