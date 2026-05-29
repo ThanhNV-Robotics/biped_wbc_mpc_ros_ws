@@ -1,4 +1,4 @@
-[submodule "humanoid_wb_mpc/lib/ocs2_ros2"]
+[submodule "ocs2_ros2"]
 	path = ocs2_lib/ocs2_ros2
 	url = https://github.com/leggedrobotics/ocs2.git
 	branch = ros2
