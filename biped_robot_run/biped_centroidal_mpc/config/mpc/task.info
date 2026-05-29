@@ -13,11 +13,13 @@ model_settings
 
   foot_constraint
   {
-    positionErrorGain_z             5.0
-    orientationErrorGain            20.0
-    linearVelocityErrorGain_z       1.0
-    linearVelocityErrorGain_xy      1.0
-    angularVelocityErrorGain        1.0
+    ; STEP 1: set to 0 - contact frame z is wrong in CppAD (z=0 vs z=-0.05)
+    ; positionErrorGain_z * (ankle_height - 0) commands ankle downward at 0.25m/s
+    positionErrorGain_z             0.0
+    orientationErrorGain            0.0
+    linearVelocityErrorGain_z       0.0
+    linearVelocityErrorGain_xy      0.0
+    angularVelocityErrorGain        0.0
     linearAccelerationErrorGain_z   0.0
     linearAccelerationErrorGain_xy  0.0
     angularAccelerationErrorGain    0.0
@@ -50,8 +52,8 @@ model_settings
   ; The Parent frames on which the contact frames are added. 
   contactParentJointNames
   {
-    [0] "left_ankle_roll_joint"
-    [1] "right_ankle_roll_joint"
+    [0] "left_ankle_pitch_joint"
+    [1] "right_ankle_pitch_joint"
   }
 
   ;; Map arm swing reference to hip joints since biped_robot_12dof has no arms
@@ -135,7 +137,7 @@ initialState ;; only used as the cold-start guess for the MPC optimizer on first
   ;; Base Pose: [position, orientation] ;;
   (6,0)  0.0     ; p_base_x
   (7,0)  0.0     ; p_base_y
-  (8,0)  0.79     ; p_base_z
+  (8,0)  0.75     ; p_base_z
   (9,0)  0.0     ; theta_base_z
   (10,0) 0.0     ; theta_base_y
   (11,0) 0.0     ; theta_base_x
@@ -163,7 +165,7 @@ Q
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
   (0,0)   0.0     ; h_com_x / robotMass
   (1,1)   0.0     ; h_com_y / robotMass
-  (2,2)   0.0     ; h_com_z / robotMass
+  (2,2)   50.0    ; h_com_z / robotMass  <-- vertical momentum for height change
   (3,3)   0.0      ; L_x / robotMass
   (4,4)   0.0      ; L_y / robotMass
   (5,5)   0.0      ; L_z / robotMass
@@ -171,25 +173,25 @@ Q
   ;; Base Pose: [position, orientation] ;;
   (6,6)   0.0    ; p_base_x
   (7,7)   0.0    ; p_base_y
-  (8,8)   0.01  ; p_base_z - HEIGHT TRACKING (primary goal)
+  (8,8)   500.0  ; p_base_z  <-- PELVIS HEIGHT TRACKING
   ; euler angles for base to world rotation
   (9,9)   0.0    ; theta_base_z
-  (10,10) 0.5  ; theta_base_y - pitch stabilization
-  (11,11) 0.5  ; theta_base_x - roll stabilization
+  (10,10) 0.0    ; theta_base_y
+  (11,11) 0.0    ; theta_base_x
 
-  ;; Joint Positions ;;
-  (12,12) 0.01     ;    left_hip_pitch_joint
-  (13,13) 0.01     ;    left_hip_roll_joint
-  (14,14) 0.01      ;    left_hip_yaw_joint
-  (15,15) 0.01     ;    left_knee_pitch_joint
-  (16,16) 0.01     ;    left_ankle_roll_joint
-  (17,17) 0.01     ;    left_ankle_pitch_joint
-  (18,18) 0.01     ;    right_hip_pitch_joint
-  (19,19) 0.01     ;    right_hip_roll_joint
-  (20,20) 0.01      ;    right_hip_yaw_joint
-  (21,21) 0.01     ;    right_knee_pitch_joint
-  (22,22) 0.01     ;    right_ankle_roll_joint
-  (23,23) 0.01     ;    right_ankle_pitch_joint
+  ;; Joint Positions - zeroed: only tracking pelvis height ;;
+  (12,12) 0.0   ;    left_hip_pitch_joint
+  (13,13) 0.0   ;    left_hip_roll_joint
+  (14,14) 0.0   ;    left_hip_yaw_joint
+  (15,15) 0.0   ;    left_knee_pitch_joint
+  (16,16) 0.0   ;    left_ankle_roll_joint
+  (17,17) 0.0   ;    left_ankle_pitch_joint
+  (18,18) 0.0   ;    right_hip_pitch_joint
+  (19,19) 0.0   ;    right_hip_roll_joint
+  (20,20) 0.0   ;    right_hip_yaw_joint
+  (21,21) 0.0   ;    right_knee_pitch_joint
+  (22,22) 0.0   ;    right_ankle_roll_joint
+  (23,23) 0.0   ;    right_ankle_pitch_joint
 }
 
 ; control weight matrix
@@ -197,7 +199,7 @@ R
 {
   scaling 1e-3
 
-  ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
+  ;; Feet Contact Forces: kept for QP regularization ;;
   (0,0)   0.1       ; left_force_x
   (1,1)   0.1       ; left_force_y
   (2,2)   0.1       ; left_force_z
@@ -211,19 +213,19 @@ R
   (10,10) 0.1       ; right_moment_y
   (11,11) 0.1        ; right_moment_z
 
-  ;; Joint Velocities ;;
-  (12,12) 1       ;    left_hip_pitch_joint
-  (13,13) 1      ;    left_hip_roll_joint
-  (14,14) 1      ;    left_hip_yaw_joint
-  (15,15) 1       ;    left_knee_pitch_joint
-  (16,16) 10.0       ;    left_ankle_roll_joint
-  (17,17) 10.0       ;    left_ankle_pitch_joint
-  (18,18) 1       ;    right_hip_pitch_joint
-  (19,19) 1      ;    right_hip_roll_joint
-  (20,20) 1      ;    right_hip_yaw_joint
-  (21,21) 1       ;    right_knee_pitch_joint
-  (22,22) 10.0       ;    right_ankle_roll_joint
-  (23,23) 10.0       ;    right_ankle_pitch_joint
+  ;; Joint Velocities - small regularization to keep QP well-conditioned ;;
+  (12,12) 0.1     ;    left_hip_pitch_joint
+  (13,13) 0.1     ;    left_hip_roll_joint
+  (14,14) 0.1     ;    left_hip_yaw_joint
+  (15,15) 0.1     ;    left_knee_pitch_joint
+  (16,16) 0.1     ;    left_ankle_roll_joint
+  (17,17) 0.1     ;    left_ankle_pitch_joint
+  (18,18) 0.1     ;    right_hip_pitch_joint
+  (19,19) 0.1     ;    right_hip_roll_joint
+  (20,20) 0.1     ;    right_hip_yaw_joint
+  (21,21) 0.1     ;    right_knee_pitch_joint
+  (22,22) 0.1     ;    right_ankle_roll_joint
+  (23,23) 0.1     ;    right_ankle_pitch_joint
 }
 
 terminalCostScaling       3.0
@@ -234,7 +236,7 @@ Q_final
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
   (0,0)   0.0     ; h_com_x / robotMass
   (1,1)   0.0     ; h_com_y / robotMass
-  (2,2)   0.0     ; h_com_z / robotMass
+  (2,2)   50.0    ; h_com_z / robotMass  <-- vertical momentum for height change
   (3,3)   0.0     ; L_x / robotMass
   (4,4)   0.0     ; L_y / robotMass
   (5,5)   0.0      ; L_z / robotMass
@@ -242,25 +244,25 @@ Q_final
   ;; Base Pose: [position, orientation] ;;
   (6,6)   0.0    ; p_base_x
   (7,7)   0.0    ; p_base_y
-  (8,8)   200.0  ; p_base_z - terminal height tracking
+  (8,8)   500.0  ; p_base_z  <-- PELVIS HEIGHT TRACKING
   ; euler angles for base to world rotation
   (9,9)   0.0    ; theta_base_z
-  (10,10) 100.0  ; theta_base_y - pitch stabilization
-  (11,11) 100.0  ; theta_base_x - roll stabilization
+  (10,10) 0.0    ; theta_base_y
+  (11,11) 0.0    ; theta_base_x
 
-  ;; Joint Positions ;;
-  (12,12) 0.0     ;    left_hip_pitch_joint
-  (13,13) 0.0     ;    left_hip_roll_joint
-  (14,14) 0.0      ;    left_hip_yaw_joint
-  (15,15) 0.0     ;    left_knee_pitch_joint
-  (16,16) 0.0     ;    left_ankle_roll_joint
-  (17,17) 0.0     ;    left_ankle_pitch_joint
-  (18,18) 0.0     ;    right_hip_pitch_joint
-  (19,19) 0.0     ;    right_hip_roll_joint
-  (20,20) 0.0      ;    right_hip_yaw_joint
-  (21,21) 0.0     ;    right_knee_pitch_joint
-  (22,22) 0.0     ;    right_ankle_roll_joint
-  (23,23) 0.0     ;    right_ankle_pitch_joint
+  ;; Joint Positions - zeroed: only tracking pelvis height ;;
+  (12,12) 0.0   ;    left_hip_pitch_joint
+  (13,13) 0.0   ;    left_hip_roll_joint
+  (14,14) 0.0   ;    left_hip_yaw_joint
+  (15,15) 0.0   ;    left_knee_pitch_joint
+  (16,16) 0.0   ;    left_ankle_roll_joint
+  (17,17) 0.0   ;    left_ankle_pitch_joint
+  (18,18) 0.0   ;    right_hip_pitch_joint
+  (19,19) 0.0   ;    right_hip_roll_joint
+  (20,20) 0.0   ;    right_hip_yaw_joint
+  (21,21) 0.0   ;    right_knee_pitch_joint
+  (22,22) 0.0   ;    right_ankle_roll_joint
+  (23,23) 0.0   ;    right_ankle_pitch_joint
 }
 
 icp_cost_weights
@@ -373,7 +375,7 @@ contacts
    ;; Translation vector from parent joint to contact frame ;;
    x  0.0
    y  0.0
-   z  0.0    
+   z  -0.05    
   }
   contact_rectangle 
   {
@@ -424,3 +426,15 @@ collision_constraint
     mu                     30000
     delta                  0.05     
   }
+
+; State Estimation
+kalmanFilter
+{
+    footRadius                  0.02
+    imuProcessNoisePosition     0.02
+    imuProcessNoiseVelocity     0.02
+    footProcessNoisePosition    0.002
+    footSensorNoisePosition     0.005
+    footSensorNoiseVelocity     0.1
+    footHeightSensorNoise       0.01
+}

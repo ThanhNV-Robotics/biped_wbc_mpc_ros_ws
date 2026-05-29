@@ -111,7 +111,7 @@
         <site name="COM_ref" pos="0 0 0" size="0.02" rgba="0 0 1 1"/> -->
 
         <!--   Link0_Torso -->
-        <body name="link0_torso" pos="0 0 0.81" euler="0 0 0">
+        <body name="link0_torso" pos="0 0 0.9" euler="0 0 0">
             <geom type="mesh" class="visual" mesh="link0_torso" />
             <!-- <joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false"/> -->
             <inertial pos="0.022E-3 0.011E-3 -9.359E-3" mass="5.721" fullinertia="1.338E-1 1.019E-1 6.278E-2 -7542.256E-9 8599.288E-9 8566.243E-9"/>
