@@ -1,19 +1,4 @@
-# [submodule "biped_wb_mpc"]
-# 	path = biped_wb_mpc
-# 	url = https://github.com/manumerous/wb_humanoid_mpc.git
-
-[submodule "humanoid_wb_mpc/lib/catkin"]
-	path = humanoid_wb_mpc/lib/catkin
-	url = https://github.com/ros/catkin.git
-[submodule "humanoid_wb_mpc/lib/magic_enum"]
-	path = humanoid_wb_mpc/lib/magic_enum
-	url = https://github.com/Neargye/magic_enum.git
-[submodule "humanoid_wb_mpc/lib/cmake_modules"]
-	path = humanoid_wb_mpc/lib/cmake_modules
-	url = https://github.com/ros/cmake_modules.git
-[submodule "humanoid_wb_mpc/lib/mujoco"]
-	path = humanoid_wb_mpc/lib/mujoco
-	url = https://github.com/google-deepmind/mujoco.git
 [submodule "humanoid_wb_mpc/lib/ocs2_ros2"]
-	path = humanoid_wb_mpc/lib/ocs2_ros2
-	url = https://github.com/manumerous/ocs2_ros2.git
+	path = ocs2_lib/ocs2_ros2
+	url = https://github.com/leggedrobotics/ocs2.git
+	branch = ros2
