@@ -204,3 +204,40 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# LaTeX auxiliary files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
+*.xdv
+
+# Latexmk
+*.latexmk
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Generated figures/conversions
+*.eps-converted-to.pdf
+
+# Keep source and final output
+!*.tex
+!*.pdf

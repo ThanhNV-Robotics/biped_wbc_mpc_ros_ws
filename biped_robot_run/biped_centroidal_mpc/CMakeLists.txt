@@ -11,7 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(humanoid_centroidal_mpc_ros2 REQUIRED)
+
 
 find_package(GTest REQUIRED)
 
@@ -55,29 +55,11 @@ set(dependencies
   ament_cmake
   ament_index_cpp
   rclcpp
-  humanoid_centroidal_mpc_ros2
 )
-
-add_executable(test_pinocchio_model
-  test/testPinocchioModel.cpp
-)
-ament_target_dependencies(test_pinocchio_model
-  ${dependencies}
-)
-target_link_libraries(test_pinocchio_model
-  ${Boost_LIBRARIES}
-  ${pinocchio_LIBRARIES}
-)
-target_compile_options(test_pinocchio_model PUBLIC ${FLAGS})
 
 #############
 ## Install ##
 #############
-
-install(TARGETS 
-  test_pinocchio_model 
-  DESTINATION lib/${PROJECT_NAME}
-)
 
 install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}

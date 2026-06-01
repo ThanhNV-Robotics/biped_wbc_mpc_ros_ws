@@ -1,0 +1,328 @@
+\section{StateEstimateBase Class}
+
+The \texttt{StateEstimateBase} class is an abstract base class used for state estimation in the legged robot framework. It provides common functionality for handling:
+
+\begin{itemize}
+    \item Joint encoder measurements
+    \item IMU measurements
+    \item Contact state information
+    \item Robot state storage
+    \item Odometry publishing
+\end{itemize}
+
+The actual estimation algorithm is implemented in derived classes through the pure virtual function \texttt{update()}.
+
+\subsection{Class Purpose}
+
+The class maintains the robot state vector
+
+\begin{equation}
+x =
+\begin{bmatrix}
+q \\
+\dot{q}
+\end{bmatrix},
+\end{equation}
+
+where \(q\) denotes the generalized coordinates and \(\dot{q}\) denotes the generalized velocities.
+
+The state is stored in
+
+\begin{lstlisting}[language=C++]
+vector_t rbdState_;
+\end{lstlisting}
+
+which is initialized as
+
+\begin{lstlisting}[language=C++]
+rbdState_(vector_t::Zero(
+    2 * info_.generalizedCoordinatesNum))
+\end{lstlisting}
+
+so that
+
+\begin{equation}
+\texttt{rbdState} =
+\begin{bmatrix}
+q \\
+\dot{q}
+\end{bmatrix}.
+\end{equation}
+
+\subsection{Constructor}
+
+The constructor is defined as
+
+\begin{lstlisting}[language=C++]
+StateEstimateBase(
+    rclcpp::Node::SharedPtr node,
+    PinocchioInterface pinocchioInterface,
+    CentroidalModelInfo info,
+    const PinocchioEndEffectorKinematics&
+        eeKinematics);
+\end{lstlisting}
+
+Its responsibilities are:
+
+\begin{enumerate}
+    \item Store the ROS node handle.
+    \item Store the Pinocchio interface.
+    \item Store robot model information.
+    \item Clone the end-effector kinematics object.
+    \item Allocate the state vector.
+    \item Create odometry and pose publishers.
+\end{enumerate}
+
+\subsection{State Vector Layout}
+
+Let
+
+\begin{equation}
+N = \texttt{info\_.generalizedCoordinatesNum}.
+\end{equation}
+
+The state vector layout is
+
+\begin{table}[h]
+\centering
+\begin{tabular}{cl}
+\hline
+Indices & Description \\
+\hline
+0--2 & Base orientation (ZYX Euler angles) \\
+3--5 & Base position \\
+6-- & Joint positions \\
+\hline
+$N+0$ -- $N+2$ & Base angular velocity \\
+$N+3$ -- $N+5$ & Base linear velocity \\
+$N+6$ -- & Joint velocities \\
+\hline
+\end{tabular}
+\caption{Layout of \texttt{rbdState}.}
+\end{table}
+
+\subsection{Joint State Update}
+
+The function
+
+\begin{lstlisting}[language=C++]
+updateJointStates(
+    const vector_t& jointPos,
+    const vector_t& jointVel);
+\end{lstlisting}
+
+stores the encoder measurements into the state vector:
+
+\begin{align}
+\texttt{rbdState}(6 : 6+n_j-1)
+    &= \texttt{jointPos}, \\
+\texttt{rbdState}(N+6 : N+6+n_j-1)
+    &= \texttt{jointVel},
+\end{align}
+
+where \(n_j\) is the number of actuated joints.
+
+\subsection{Contact State Update}
+
+The function
+
+\begin{lstlisting}[language=C++]
+updateContact(contactFlag);
+\end{lstlisting}
+
+stores the current foot contact configuration.
+
+This information is later used by state estimation algorithms such as:
+
+\begin{itemize}
+    \item Linear Kalman Filters
+    \item Contact-aided localization
+    \item Base velocity estimation
+\end{itemize}
+
+\subsection{Locomotion Mode}
+
+The function
+
+\begin{lstlisting}[language=C++]
+size_t getMode();
+\end{lstlisting}
+
+converts the contact pattern into a locomotion mode identifier:
+
+\begin{equation}
+\texttt{mode}
+=
+\texttt{stanceLeg2ModeNumber(contactFlag)}.
+\end{equation}
+
+Typical modes include:
+
+\begin{itemize}
+    \item Left stance
+    \item Right stance
+    \item Double support
+    \item Flight phase
+\end{itemize}
+
+\subsection{IMU Update}
+
+The function
+
+\begin{lstlisting}[language=C++]
+updateImu(...)
+\end{lstlisting}
+
+processes IMU measurements.
+
+Its inputs include:
+
+\begin{itemize}
+    \item Orientation quaternion
+    \item Angular velocity
+    \item Linear acceleration
+    \item Covariance matrices
+\end{itemize}
+
+The procedure is:
+
+\begin{enumerate}
+    \item Store raw IMU measurements.
+    \item Convert quaternion to ZYX Euler angles.
+    \item Remove orientation offset.
+    \item Convert local angular velocity into the representation required by OCS2.
+    \item Update the angular state.
+\end{enumerate}
+
+\subsubsection{Quaternion to Euler Conversion}
+
+The orientation is represented as
+
+\begin{equation}
+q =
+\begin{bmatrix}
+w & x & y & z
+\end{bmatrix}^{T}.
+\end{equation}
+
+The helper function
+
+\begin{lstlisting}[language=C++]
+quatToZyx(q)
+\end{lstlisting}
+
+returns
+
+\begin{equation}
+\boldsymbol{\theta}
+=
+\begin{bmatrix}
+\psi \\
+\theta \\
+\phi
+\end{bmatrix},
+\end{equation}
+
+where
+
+\begin{itemize}
+    \item \(\psi\): yaw
+    \item \(\theta\): pitch
+    \item \(\phi\): roll
+\end{itemize}
+
+\subsection{Angular State Update}
+
+The function
+
+\begin{lstlisting}[language=C++]
+updateAngular(
+    const vector3_t& zyx,
+    const vector_t& angularVel);
+\end{lstlisting}
+
+stores
+
+\begin{align}
+\texttt{rbdState}(0:2)
+    &= \texttt{zyx},\\
+\texttt{rbdState}(N:N+2)
+    &= \texttt{angularVel}.
+\end{align}
+
+Therefore, the state contains both orientation and angular velocity.
+
+\subsection{Linear State Update}
+
+The function
+
+\begin{lstlisting}[language=C++]
+updateLinear(
+    const vector_t& pos,
+    const vector_t& linearVel);
+\end{lstlisting}
+
+stores
+
+\begin{align}
+\texttt{rbdState}(3:5)
+    &= \texttt{pos},\\
+\texttt{rbdState}(N+3:N+5)
+    &= \texttt{linearVel}.
+\end{align}
+
+These correspond to the floating-base position and velocity.
+
+\subsection{State Estimation Interface}
+
+The function
+
+\begin{lstlisting}[language=C++]
+virtual vector_t update(
+    const rclcpp::Time& time,
+    const rclcpp::Duration& period) = 0;
+\end{lstlisting}
+
+is pure virtual and must be implemented by derived classes.
+
+A typical implementation performs:
+
+\begin{enumerate}
+    \item Read IMU measurements.
+    \item Read joint encoder measurements.
+    \item Read contact information.
+    \item Estimate base position and velocity.
+    \item Update the state vector.
+    \item Publish odometry.
+\end{enumerate}
+
+\subsection{Odometry Publishing}
+
+The function
+
+\begin{lstlisting}[language=C++]
+publishMsgs(const nav_msgs::msg::Odometry& odom);
+\end{lstlisting}
+
+publishes
+
+\begin{itemize}
+    \item \texttt{/odom}
+    \item \texttt{/pose}
+\end{itemize}
+
+at a fixed rate of approximately
+
+\begin{equation}
+f = 200\ \text{Hz}.
+\end{equation}
+
+Realtime ROS publishers are used to ensure thread-safe communication.
+
+\subsection{Class Architecture}
+
+The overall data flow is illustrated in Figure~\ref{fig:state_estimation_flow}.
+
+\input{figures/flow_diagram.tex}
+
+In summary, \texttt{StateEstimateBase} provides a common interface for sensor handling, state storage, and ROS communication, while derived classes implement the actual state estimation algorithm.
