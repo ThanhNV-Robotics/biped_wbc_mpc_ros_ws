@@ -10,7 +10,6 @@ find_package(controller_manager REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glfw3 REQUIRED)
-find_package(control_toolbox REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -218,7 +217,6 @@ PUBLIC
   pluginlib::pluginlib
   fmt::fmt
   ${MUJOCO_LIB}
-  control_toolbox::control_toolbox
   Eigen3::Eigen
 PRIVATE
   mujoco_simulate
@@ -305,7 +303,6 @@ ament_export_dependencies(
   mujoco_ros2_control_msgs
   mujoco_ros2_control_plugins
   pluginlib
-  control_toolbox
   Eigen3
   mujoco_vendor
 )

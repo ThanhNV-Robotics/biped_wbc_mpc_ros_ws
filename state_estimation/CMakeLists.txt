@@ -32,6 +32,7 @@ find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 add_library(${PROJECT_NAME} SHARED
   src/StateEstimation.cpp
   src/LinearKalmanFilter.cpp
+  src/FromTopicEstimate.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC

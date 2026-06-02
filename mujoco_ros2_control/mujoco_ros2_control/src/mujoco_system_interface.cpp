@@ -57,8 +57,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include "lodepng.h"
 
-#include "control_toolbox/pid.hpp"
-
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
 
 using namespace std::chrono_literals;
@@ -884,33 +882,10 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   sim_->LoadMessage(model_path_.c_str());
 
   // Construct and start the ROS node spinning
-  /// The PIDs config file
-  const auto pids_config_file = get_hardware_parameter(get_hardware_info(), "pids_config_file");
   rclcpp::NodeOptions node_options;
   node_options.append_parameter_override("use_sim_time", rclcpp::ParameterValue(true));
   node_options.automatically_declare_parameters_from_overrides(true);
   node_options.allow_undeclared_parameters(true);
-  if (pids_config_file.has_value())
-  {
-    std::string pids_config_file_path = pids_config_file.value();
-    // trim the trailing and leading whitespaces
-    pids_config_file_path.erase(0, pids_config_file_path.find_first_not_of(" \t\n\r\f\v"));
-    pids_config_file_path.erase(pids_config_file_path.find_last_not_of(" \t\n\r\f\v") + 1);
-
-    // Check if the file exists
-    const std::filesystem::path path_to_file(pids_config_file_path);
-    if (!std::filesystem::exists(path_to_file))
-    {
-      RCLCPP_FATAL(get_logger(), "PID config file '%s' does not exist!", pids_config_file->c_str());
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-    RCLCPP_INFO_STREAM(get_logger(), "Loading PID config from file: " << pids_config_file.value());
-    auto node_options_arguments = node_options.arguments();
-    node_options_arguments.push_back(RCL_ROS_ARGS_FLAG);
-    node_options_arguments.push_back(RCL_PARAM_FILE_FLAG);
-    node_options_arguments.push_back(pids_config_file.value());
-    node_options.arguments(node_options_arguments);
-  }
   RCLCPP_INFO(get_logger(), "Constructing node and executor...");
   executor_ = std::make_unique<rclcpp::executors::MultiThreadedExecutor>();
   mujoco_node_ = std::make_shared<rclcpp::Node>("mujoco_ros2_control_node", node_options);
@@ -1433,21 +1408,17 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
       actuator_it->is_position_control_enabled = false;
       actuator_it->is_velocity_control_enabled = false;
       actuator_it->is_effort_control_enabled = false;
-      actuator_it->is_position_pid_control_enabled = false;
-      actuator_it->is_velocity_pid_control_enabled = false;
       actuator_it->is_pd_impedance_control_enabled = false;
 
       if (interface_type == hardware_interface::HW_IF_POSITION)
       {
-        actuator_it->is_position_control_enabled = (actuator_it->pos_pid == nullptr);
-        actuator_it->is_position_pid_control_enabled = (actuator_it->pos_pid != nullptr);
+        actuator_it->is_position_control_enabled = true;
         joint_it->is_position_control_enabled = true;
         RCLCPP_INFO(get_logger(), "Joint %s: position control enabled (velocity, effort disabled)", joint_name.c_str());
       }
       else if (interface_type == hardware_interface::HW_IF_VELOCITY)
       {
-        actuator_it->is_velocity_control_enabled = (actuator_it->vel_pid == nullptr);
-        actuator_it->is_velocity_pid_control_enabled = (actuator_it->vel_pid != nullptr);
+        actuator_it->is_velocity_control_enabled = true;
         joint_it->is_velocity_control_enabled = true;
         RCLCPP_INFO(get_logger(), "Joint %s: velocity control enabled (position, effort disabled)", joint_name.c_str());
       }
@@ -1477,8 +1448,6 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
       actuator_it->is_position_control_enabled = false;
       actuator_it->is_velocity_control_enabled = false;
       actuator_it->is_effort_control_enabled = false;
-      actuator_it->is_position_pid_control_enabled = false;
-      actuator_it->is_velocity_pid_control_enabled = false;
       actuator_it->is_pd_impedance_control_enabled = false;
 
       RCLCPP_INFO(get_logger(), "Joint %s: %s control disabled", joint_name.c_str(), interface_type.c_str());
@@ -1529,9 +1498,7 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
       {
         // Disable regular position/velocity control and enable PD impedance mode
         actuator.is_position_control_enabled = false;
-        actuator.is_position_pid_control_enabled = false;
         actuator.is_velocity_control_enabled = false;
-        actuator.is_velocity_pid_control_enabled = false;
         actuator.is_effort_control_enabled = false;
         actuator.is_pd_impedance_control_enabled = true;
         
@@ -1688,15 +1655,6 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
 
   joint_command_to_actuator_command();
 
-  // portable lambda function to compute pid command using either function name for the correct distro
-  auto pid_compute_command = [](auto& pid, const auto& error, const auto& period_t) -> double {
-#if ROS_DISTRO_HUMBLE
-    return pid->computeCommand(error, period_t);
-#else
-    return pid->compute_command(error, period_t);
-#endif
-  };
-
   // Joint commands
   // TODO: Support command limits. For now those ranges can be limited in the MuJoCo actuators themselves.
   for (auto& actuator : mujoco_actuator_data_)
@@ -1709,19 +1667,9 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     {
       mj_data_control_->ctrl[actuator.mj_actuator_id] = actuator.position_interface.command_;
     }
-    else if (actuator.is_position_pid_control_enabled)
-    {
-      const double error = actuator.position_interface.command_ - mj_data_->qpos[actuator.mj_pos_adr];
-      mj_data_control_->ctrl[actuator.mj_actuator_id] = pid_compute_command(actuator.pos_pid, error, period);
-    }
     else if (actuator.is_velocity_control_enabled)
     {
       mj_data_control_->ctrl[actuator.mj_actuator_id] = actuator.velocity_interface.command_;
-    }
-    else if (actuator.is_velocity_pid_control_enabled)
-    {
-      const double error = actuator.velocity_interface.command_ - mj_data_->qvel[actuator.mj_vel_adr];
-      mj_data_control_->ctrl[actuator.mj_actuator_id] = pid_compute_command(actuator.vel_pid, error, period);
     }
     else if (actuator.is_pd_impedance_control_enabled)
     {
@@ -1955,52 +1903,16 @@ bool MujocoSystemInterface::register_mujoco_actuators()
     actuator_data.mj_joint_type = mj_model_->jnt_type[target_id];
     actuator_data.actuator_type = getActuatorType(mj_model_, actuator_data.mj_actuator_id);
 
-    // Initialize PID controllers for actuators that have them configured
-    const auto initialize_position_pids = [&]() -> bool {
-// after humble has an additional argument in the PidROS constructor, and uses a different function to initialize from parameters
-#if ROS_DISTRO_HUMBLE
-      actuator_data.pos_pid = std::make_shared<control_toolbox::PidROS>(
-          get_node(), "pid_gains.position." + actuator_data.joint_name, false);
-      actuator_data.pos_pid->initPid();
-      const auto gains = actuator_data.pos_pid->getGains();
-#else
-      actuator_data.pos_pid = std::make_shared<control_toolbox::PidROS>(
-          get_node(), "pid_gains.position." + actuator_data.joint_name, "", false);
-      actuator_data.pos_pid->initialize_from_ros_parameters();
-      const auto gains = actuator_data.pos_pid->get_gains();
-#endif
-      return std::isfinite(gains.p_gain_) && std::isfinite(gains.i_gain_) && std::isfinite(gains.d_gain_);
-    };
-
-    const auto initialize_velocity_pids = [&]() -> bool {
-// after humble has an additional argument in the PidROS constructor, and uses a different function to initialize from parameters
-#if ROS_DISTRO_HUMBLE
-      actuator_data.vel_pid = std::make_shared<control_toolbox::PidROS>(
-          get_node(), "pid_gains.velocity." + actuator_data.joint_name, false);
-      actuator_data.vel_pid->initPid();
-      const auto gains = actuator_data.pos_pid->getGains();
-#else
-      actuator_data.vel_pid = std::make_shared<control_toolbox::PidROS>(
-          get_node(), "pid_gains.velocity." + actuator_data.joint_name, "", false);
-      actuator_data.vel_pid->initialize_from_ros_parameters();
-      const auto gains = actuator_data.vel_pid->get_gains();
-#endif
-      return std::isfinite(gains.p_gain_) && std::isfinite(gains.i_gain_) && std::isfinite(gains.d_gain_);
-    };
-
     if (actuator_data.actuator_type == ActuatorType::POSITION)
     {
       actuator_data.is_position_control_enabled = true;
     }
     else if (actuator_data.actuator_type == ActuatorType::VELOCITY)
     {
-      actuator_data.has_pos_pid = initialize_position_pids();
       actuator_data.is_velocity_control_enabled = true;
     }
     else if (actuator_data.actuator_type == ActuatorType::MOTOR || actuator_data.actuator_type == ActuatorType::CUSTOM)
     {
-      actuator_data.has_pos_pid = initialize_position_pids();
-      actuator_data.has_vel_pid = initialize_velocity_pids();
       actuator_data.is_effort_control_enabled = true;
     }
 
@@ -2141,11 +2053,6 @@ bool MujocoSystemInterface::register_mujoco_actuators()
 
 void MujocoSystemInterface::register_urdf_joints(const hardware_interface::HardwareInfo& hardware_info)
 {
-  // portable lambda function to get pid gains using either function name for the correct distro
-#if !ROS_DISTRO_HUMBLE
-  auto get_pid_gains = [](auto& pid) -> control_toolbox::Pid::Gains { return pid->get_gains(); };
-#endif
-
   RCLCPP_INFO(get_logger(), "Registering joints...");
   urdf_joint_data_.resize(hardware_info.joints.size());
 
@@ -2280,7 +2187,7 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
       if (command_if == hardware_interface::HW_IF_POSITION)
       {
         // Position command interface
-        // Direct control for position actuators; position PID required for velocity, motor, or custom actuators.
+        // Direct control for position actuators; for velocity/motor/custom actuators use PD impedance mode.
 
         if (actuator_it->actuator_type == ActuatorType::POSITION)
         {
@@ -2292,35 +2199,14 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
                  actuator_it->actuator_type == ActuatorType::MOTOR ||
                  actuator_it->actuator_type == ActuatorType::CUSTOM)
         {
-          if (actuator_it->has_pos_pid)
-          {
-            actuator_it->is_position_control_enabled = false;
-            actuator_it->is_position_pid_control_enabled = true;
-
-// just disabling for humble because the member variables are different. Could make a different one for humble if desired
-#if !ROS_DISTRO_HUMBLE
-            const auto gains = get_pid_gains(actuator_it->pos_pid);
-            RCLCPP_INFO(get_logger(),
-                        "Position control PID gains for joint %s : P=%.4f, I=%.4f, D=%.4f, Imax=%.4f, Imin=%.4f, "
-                        "Umin=%.4f, Umax=%.4f, antiwindup_strategy=%s",
-                        actuator_name.c_str(), gains.p_gain_, gains.i_gain_, gains.d_gain_,
-                        gains.antiwindup_strat_.i_max, gains.antiwindup_strat_.i_min, gains.u_min_, gains.u_max_,
-                        gains.antiwindup_strat_.to_string().c_str());
-#endif
-          }
-          else
-          {
-            // RCLCPP_ERROR(get_logger(),
-            //              "Position command interface for the joint : %s is not supported with velocity or motor "
-            //              "actuator without defining the PIDs",
-            //              actuator_name.c_str());
-          }
+          // For non-position actuators with a position command interface,
+          // this is handled via PD impedance mode when feedforward_effort is also active.
         }
       }
       else if (command_if == hardware_interface::HW_IF_VELOCITY)
       {
         // Velocity command interface:
-        // Direct control for velocity actuators; velocity PID required for motor or custom actuators.
+        // Direct control for velocity actuators; for motor/custom actuators use PD impedance mode.
         RCLCPP_ERROR_EXPRESSION(get_logger(), actuator_it->actuator_type == ActuatorType::POSITION,
                                 "Velocity command interface for the joint : %s is not supported with position actuator",
                                 actuator_name.c_str());
@@ -2332,37 +2218,19 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
         }
         else if (actuator_it->actuator_type == ActuatorType::MOTOR || actuator_it->actuator_type == ActuatorType::CUSTOM)
         {
-          if (actuator_it->has_vel_pid)
+          // Check if PD impedance gains are loaded - if so, velocity interface is valid for PD impedance mode
+          if (actuator_it->has_pd_gains)
           {
-            actuator_it->is_velocity_control_enabled = false;
-            actuator_it->is_velocity_pid_control_enabled = true;
-// just disabling for humble because the member variables are different. Could make a different one for humble if desired
-#if !ROS_DISTRO_HUMBLE
-            const auto gains = get_pid_gains(actuator_it->vel_pid);
             RCLCPP_INFO(get_logger(),
-                        "Velocity control PID gains for joint %s : P=%.4f, I=%.4f, D=%.4f, Imax=%.4f, Imin=%.4f, "
-                        "Umin=%.4f, Umax=%.4f, antiwindup_strategy=%s",
-                        actuator_name.c_str(), gains.p_gain_, gains.i_gain_, gains.d_gain_,
-                        gains.antiwindup_strat_.i_max, gains.antiwindup_strat_.i_min, gains.u_min_, gains.u_max_,
-                        gains.antiwindup_strat_.to_string().c_str());
-#endif
+                        "Velocity command interface for joint %s: will be used for PD impedance mode (Kp=%.2f, Kd=%.2f)",
+                        actuator_name.c_str(), actuator_it->pd_kp, actuator_it->pd_kd);
           }
           else
           {
-            // Check if PD impedance gains are loaded - if so, velocity interface is valid for PD impedance mode
-            if (actuator_it->has_pd_gains)
-            {
-              RCLCPP_INFO(get_logger(),
-                          "Velocity command interface for joint %s: will be used for PD impedance mode (Kp=%.2f, Kd=%.2f)",
-                          actuator_name.c_str(), actuator_it->pd_kp, actuator_it->pd_kd);
-            }
-            else
-            {
-              RCLCPP_ERROR(get_logger(),
+            RCLCPP_ERROR(get_logger(),
                            "Velocity command interface for the joint : %s is not supported with motor or custom actuator "
-                           "without defining the PIDs or pd_gains",
+                           "without defining the pd_gains",
                            actuator_name.c_str());
-            }
           }
         }
       }
@@ -2391,8 +2259,7 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
       }
     }
     if (!command_interface_names.empty() && !actuator_it->is_position_control_enabled &&
-        !actuator_it->is_velocity_control_enabled && !actuator_it->is_effort_control_enabled &&
-        !actuator_it->is_position_pid_control_enabled && !actuator_it->is_velocity_pid_control_enabled)
+        !actuator_it->is_velocity_control_enabled && !actuator_it->is_effort_control_enabled)
     {
       throw std::runtime_error("Joint '" + joint.name + "' which uses actuator '" + actuator_name +
                                "' has an unsupported command interface for the specified MuJoCo actuator");
@@ -2890,25 +2757,11 @@ void MujocoSystemInterface::reset_simulation_state(bool fill_initial_state)
     actuator.velocity_interface.state_ = mj_data_->qvel[actuator.mj_vel_adr];
     actuator.effort_interface.state_ = 0.0;
 
-    // Reset PID internal state
-    if (actuator.pos_pid)
-    {
-      actuator.pos_pid->reset();
-    }
-    if (actuator.vel_pid)
-    {
-      actuator.vel_pid->reset();
-    }
-
     if (actuator.actuator_type != ActuatorType::PASSIVE)
     {
-      actuator.is_position_pid_control_enabled = actuator.has_pos_pid;
-      actuator.is_position_control_enabled = !actuator.has_pos_pid && actuator.actuator_type == ActuatorType::POSITION;
-      actuator.is_velocity_pid_control_enabled = !actuator.has_pos_pid && actuator.has_vel_pid;
-      actuator.is_velocity_control_enabled =
-          !actuator.has_pos_pid && !actuator.has_vel_pid && actuator.actuator_type == ActuatorType::VELOCITY;
+      actuator.is_position_control_enabled = (actuator.actuator_type == ActuatorType::POSITION);
+      actuator.is_velocity_control_enabled = (actuator.actuator_type == ActuatorType::VELOCITY);
       actuator.is_effort_control_enabled =
-          !actuator.has_pos_pid && !actuator.has_vel_pid &&
           (actuator.actuator_type == ActuatorType::MOTOR || actuator.actuator_type == ActuatorType::CUSTOM);
       // Set command to initial position to maintain position control at reset position
       actuator.position_interface.command_ = actuator.position_interface.state_;

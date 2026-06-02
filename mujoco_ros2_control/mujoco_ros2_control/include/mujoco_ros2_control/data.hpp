@@ -22,7 +22,6 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
-#include "control_toolbox/pid_ros.hpp"
 
 #include <string>
 #include <vector>
@@ -75,20 +74,14 @@ struct InterfaceData
  * @param position_interface Data for position command/state interface.
  * @param velocity_interface Data for velocity command/state interface.
  * @param effort_interface Data for effort command/state interface.
- * @param pos_pid Pointer to position PID controller if configured.
- * @param vel_pid Pointer to velocity PID controller if configured.
  * @param actuator_type Type of the MuJoCo actuator.
  * @param mj_joint_type MuJoCo joint type as per mjModel->jnt_type.
  * @param mj_pos_adr MuJoCo position address in mjData->qpos.
  * @param mj_vel_adr MuJoCo velocity address in mjData->qvel.
  * @param mj_actuator_id MuJoCo actuator id as per mjModel->actuator_id.
  * @param is_position_control_enabled Boolean flag indicating if position control is enabled.
- * @param is_position_pid_control_enabled Boolean flag indicating if position PID control is enabled.
- * @param is_velocity_pid_control_enabled Boolean flag indicating if velocity PID control is enabled.
  * @param is_velocity_control_enabled Boolean flag indicating if velocity control is enabled.
  * @param is_effort_control_enabled Boolean flag indicating if effort control is enabled.
- * @param has_pos_pid Boolean flag indicating if a position PID controller is configured.
- * @param has_vel_pid Boolean flag indicating if a velocity PID controller is configured.
  */
 struct MuJoCoActuatorData
 {
@@ -97,8 +90,6 @@ struct MuJoCoActuatorData
   InterfaceData velocity_interface{ hardware_interface::HW_IF_VELOCITY };
   InterfaceData effort_interface{ hardware_interface::HW_IF_EFFORT };
   InterfaceData feedforward_effort_interface{ "feedforward_effort" };
-  std::shared_ptr<control_toolbox::PidROS> pos_pid{ nullptr };
-  std::shared_ptr<control_toolbox::PidROS> vel_pid{ nullptr };
   double pd_kp{ 0.0 };
   double pd_kd{ 0.0 };
   ActuatorType actuator_type{ ActuatorType::UNKNOWN };
@@ -110,13 +101,9 @@ struct MuJoCoActuatorData
   // Booleans record whether or not we should be writing commands to these interfaces
   // based on if they have been claimed.
   bool is_position_control_enabled{ false };
-  bool is_position_pid_control_enabled{ false };
-  bool is_velocity_pid_control_enabled{ false };
   bool is_velocity_control_enabled{ false };
   bool is_effort_control_enabled{ false };
   bool is_pd_impedance_control_enabled{ false };
-  bool has_pos_pid{ false };
-  bool has_vel_pid{ false };
   bool has_pd_gains{ false };  ///< true if pd_gains were explicitly loaded from YAML (even if kp/kd == 0)
 
   void copy_state_to_transmission()
