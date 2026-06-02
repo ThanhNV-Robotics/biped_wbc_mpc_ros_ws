@@ -105,11 +105,6 @@
     
 
     <worldbody>
-        <!--   Projection of the Pelvis Ceter on the Ground -->
-        <!-- <site name="ZMP_est" pos="0 0 0" size="0.02" rgba="0 1 0 1"/>
-        <site name="ZMP_ref" pos="0 0 0" size="0.02" rgba="1 0 0 1"/>
-        <site name="COM_ref" pos="0 0 0" size="0.02" rgba="0 0 1 1"/> -->
-
         <!--   Link0_Torso -->
         <body name="link0_torso" pos="0 0 0.80" euler="0 0 0">
             <geom type="mesh" class="visual" mesh="link0_torso" />
@@ -148,7 +143,6 @@
                                                     <joint type="hinge" name="left_ankle_pitch_joint" axis="0 1 0" pos="0 0 0" range="-30 30" class = "AK606_actuator"/>
                                                     <geom name = "Left_Foot" type="mesh" friction="5.0 0.1 0.1" class="visual" mesh="left_ankle_pitch_link" />
                                                     <inertial pos="29.106E-3 0 -30.483E-3" mass="343.229E-3" fullinertia="1.546E-4 8.770E-4 9.434E-4 -9.97E-9 50230.908E-9 40.36E-9" />
-                                                    <!-- <site name="Left_Force_Torque_Sensor" type = "box" pos="30E-3 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/> -->
                                                 </body>
                                          </body>
                                 </body>
@@ -216,12 +210,5 @@
         <framequat name="torso_quat" objtype="site" objname="torso_imu" />
         <accelerometer name="torso_accel" site="torso_imu"/>
         <gyro name="torso_gyro" site="torso_imu"/>
-        <!-- <velocimeter name="velmeter" site="IMU"/>
-
-        <force name="left_foot_force" site="Left_Force_Torque_Sensor"/>
-        <torque name="left_foot_torque" site="Left_Force_Torque_Sensor"/>
-
-        <force name="right_foot_force" site="Right_Force_Torque_Sensor"/>
-        <torque name="right_foot_torque" site="Right_Force_Torque_Sensor"/> -->
     </sensor>
 </mujoco>

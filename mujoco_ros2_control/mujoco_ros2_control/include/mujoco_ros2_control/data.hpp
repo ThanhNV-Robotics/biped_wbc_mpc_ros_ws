@@ -216,6 +216,11 @@ struct IMUSensorData
   std::vector<double> orientation_covariance;
   std::vector<double> angular_velocity_covariance;
   std::vector<double> linear_acceleration_covariance;
+
+  // ID of the MuJoCo object (site or body) the framequat sensor is attached to.
+  // Used to look up world-frame position (site_xpos / xpos) and velocity (mj_objectVelocity).
+  int mj_site_id = -1;
+  int mj_site_objtype = -1;  // mjOBJ_SITE or mjOBJ_BODY
 };
 
 }  // namespace mujoco_ros2_control

@@ -375,6 +375,15 @@ private:
   realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>::SharedPtr floating_base_realtime_publisher_ = nullptr;
   nav_msgs::msg::Odometry floating_base_msg_;
 
+  // IMU ground-truth odometry publishers (one per IMU, world-frame position + velocity at the IMU site)
+  struct ImuGroundTruthPublisher
+  {
+    std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> publisher;
+    realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>::SharedPtr realtime_publisher;
+    nav_msgs::msg::Odometry msg;
+  };
+  std::vector<ImuGroundTruthPublisher> imu_ground_truth_publishers_;
+
   // Free joint data
   int free_joint_id_ = -1;
   int free_joint_qpos_adr_ = -1;
