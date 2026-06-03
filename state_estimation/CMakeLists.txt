@@ -27,6 +27,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(sensor_msgs REQUIRED)
 
 # ── Library ────────────────────────────────────────────────────────────────
 add_library(${PROJECT_NAME} SHARED
@@ -56,6 +57,23 @@ ament_target_dependencies(${PROJECT_NAME}
   tf2_geometry_msgs
 )
 
+# ── Standalone estimator node ────────────────────────────────────────────
+add_executable(state_estimator_node
+  src/StateEstimatorNode.cpp
+)
+target_include_directories(state_estimator_node PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  ${EIGEN3_INCLUDE_DIRS}
+)
+target_link_libraries(state_estimator_node ${PROJECT_NAME})
+ament_target_dependencies(state_estimator_node
+  rclcpp
+  sensor_msgs
+  ocs2_legged_robot
+  ocs2_centroidal_model
+  ocs2_pinocchio_interface
+)
+
 # ── Install ────────────────────────────────────────────────────────────────
 install(TARGETS ${PROJECT_NAME}
   EXPORT export_${PROJECT_NAME}
@@ -64,8 +82,17 @@ install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION bin
 )
 
+# ROS2 requires executables in lib/<package_name>/ for ros2 run / launch to find them
+install(TARGETS state_estimator_node
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
 install(DIRECTORY include/
   DESTINATION include
+)
+
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
 )
 
 # ── Export ─────────────────────────────────────────────────────────────────
@@ -73,6 +100,7 @@ ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_export_include_directories(include)
 ament_export_dependencies(
   rclcpp
+  sensor_msgs
   nav_msgs
   geometry_msgs
   realtime_tools

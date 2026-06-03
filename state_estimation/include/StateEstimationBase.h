@@ -59,7 +59,7 @@ class StateEstimateBase {
 
   std::shared_ptr<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>> odomPub_;
   std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::msg::PoseWithCovarianceStamped>> posePub_;
-  rclcpp::Time lastPub_;
+  rclcpp::Time lastPub_{0, 0u, RCL_ROS_TIME};
 };
 
 template <typename T>

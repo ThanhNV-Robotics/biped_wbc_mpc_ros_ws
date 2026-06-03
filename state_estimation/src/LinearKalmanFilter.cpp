@@ -52,6 +52,15 @@ KalmanFilterEstimate::KalmanFilterEstimate(rclcpp::Node::SharedPtr node, Pinocch
       std::bind(&KalmanFilterEstimate::callback, this, std::placeholders::_1));
 }
 
+void KalmanFilterEstimate::resetXYposition (const nav_msgs::msg::Odometry& odom) {
+  // Reset the x and y position of the state estimate to match the odometry measurement, while keeping the z position and orientation unchanged.
+  vector_t pos(3);
+  pos << odom.pose.pose.position.x, odom.pose.pose.position.y, rbdState_.segment<3>(3)[2];
+  vector_t vel(3);
+  vel << odom.twist.twist.linear.x, odom.twist.twist.linear.y, rbdState_.segment<3>(info_.generalizedCoordinatesNum + 3)[2];
+  updateLinear(pos, vel);
+}
+
 vector_t KalmanFilterEstimate::update(const rclcpp::Time& time, const rclcpp::Duration& period) {
   scalar_t dt = period.seconds();
   a_.block(0, 3, 3, 3) = dt * matrix3_t::Identity();

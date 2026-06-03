@@ -1,5 +1,12 @@
 centroidalModelType             0      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
-  
+
+legged_robot_interface
+{
+  verbose                               true  // show the loaded parameters
+  useAnalyticalGradientsDynamics        false
+  useAnalyticalGradientsConstraints     false
+}
+
 interface
 {
   verbose                               true  // show the loaded parameters
@@ -31,22 +38,33 @@ model_settings
   recompileLibrariesCppAd       false
   modelFolderCppAd              build/centroidal_mpc_cppad_autocode_gen
 
-  ; Exclude these joints from MPC model
-  ;fixedJointNames
-  ;{
-  ;  [0] "left_wrist_roll_joint"
-  ;  [1] "left_wrist_pitch_joint"
-  ; [2] "left_wrist_yaw_joint"
-  ;  [3] "right_wrist_roll_joint"
-  ;  [4] "right_wrist_pitch_joint"
-  ;  [5] "right_wrist_yaw_joint"
-  ;}
-  
-  ; Pinocchio Frame names for the contact frames
+  ; Active joints included in the MPC model (all others in URDF will be fixed)
+  jointNames
+  {
+    [0]  "left_hip_pitch_joint"
+    [1]  "left_hip_roll_joint"
+    [2]  "left_hip_yaw_joint"
+    [3]  "left_knee_pitch_joint"
+    [4]  "left_ankle_roll_joint"
+    [5]  "left_ankle_pitch_joint"
+    [6]  "right_hip_pitch_joint"
+    [7]  "right_hip_roll_joint"
+    [8]  "right_hip_yaw_joint"
+    [9]  "right_knee_pitch_joint"
+    [10] "right_ankle_roll_joint"
+    [11] "right_ankle_pitch_joint"
+  }
+
+  ; 3-DoF contact frame names (used by state estimator Kalman filter)
+  contactNames3DoF
+  {
+    [0] "left_ankle_pitch_link"
+    [1] "right_ankle_pitch_link"
+  }
+
+  ; Pinocchio Frame names for the 6-DoF contact frames (MPC foot pose constraints)
   contactNames6DoF
   {
-    [0] "foot_l_contact"
-    [1] "foot_r_contact"
   }
 
   ; The Parent frames on which the contact frames are added. 

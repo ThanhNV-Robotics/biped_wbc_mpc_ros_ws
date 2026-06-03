@@ -32,6 +32,7 @@ class KalmanFilterEstimate : public StateEstimateBase {
   void updateFromTopic();
 
   void callback(const nav_msgs::msg::Odometry::SharedPtr msg);
+  void resetXYposition (const nav_msgs::msg::Odometry& odom);
 
   nav_msgs::msg::Odometry getOdomMsg();
 
