@@ -1574,55 +1574,6 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
     data.linear_acceleration.data.z() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index + 2];
   }
 
-  // Publish IMU ground-truth odometry: world-frame position + velocity at each IMU site
-  for (size_t i = 0; i < imu_sensor_data_.size(); ++i)
-  {
-    const auto& data = imu_sensor_data_[i];
-    if (data.mj_site_id < 0 || i >= imu_ground_truth_publishers_.size())
-      continue;
-
-    auto& gt_pub = imu_ground_truth_publishers_[i];
-    gt_pub.msg.header.stamp = time;
-
-    // Position: world-frame position of the IMU attachment point
-    if (data.mj_site_objtype == mjOBJ_SITE)
-    {
-      const mjtNum* p = &mj_data_control_->site_xpos[data.mj_site_id * 3];
-      gt_pub.msg.pose.pose.position.x = p[0];
-      gt_pub.msg.pose.pose.position.y = p[1];
-      gt_pub.msg.pose.pose.position.z = p[2];
-    }
-    else if (data.mj_site_objtype == mjOBJ_BODY)
-    {
-      const mjtNum* p = &mj_data_control_->xpos[data.mj_site_id * 3];
-      gt_pub.msg.pose.pose.position.x = p[0];
-      gt_pub.msg.pose.pose.position.y = p[1];
-      gt_pub.msg.pose.pose.position.z = p[2];
-    }
-
-    // Orientation: from the IMU framequat sensor (already read above)
-    gt_pub.msg.pose.pose.orientation.w = data.orientation.data.w();
-    gt_pub.msg.pose.pose.orientation.x = data.orientation.data.x();
-    gt_pub.msg.pose.pose.orientation.y = data.orientation.data.y();
-    gt_pub.msg.pose.pose.orientation.z = data.orientation.data.z();
-
-    // Velocity: world-frame 6D velocity at the IMU attachment point [angular(3), linear(3)]
-    mjtNum vel6[6];
-    mj_objectVelocity(mj_model_, mj_data_control_, data.mj_site_objtype, data.mj_site_id, vel6, 0);
-    gt_pub.msg.twist.twist.linear.x  = vel6[3];
-    gt_pub.msg.twist.twist.linear.y  = vel6[4];
-    gt_pub.msg.twist.twist.linear.z  = vel6[5];
-    gt_pub.msg.twist.twist.angular.x = vel6[0];
-    gt_pub.msg.twist.twist.angular.y = vel6[1];
-    gt_pub.msg.twist.twist.angular.z = vel6[2];
-
-#if ROS_DISTRO_HUMBLE
-    gt_pub.realtime_publisher->tryPublish(gt_pub.msg);
-#else
-    gt_pub.realtime_publisher->try_publish(gt_pub.msg);
-#endif
-  }
-
   // FT Sensor data
   for (auto& data : ft_sensor_data_)
   {
@@ -2645,26 +2596,9 @@ void MujocoSystemInterface::register_sensors(const hardware_interface::HardwareI
 
       sensor_data.orientation.mj_sensor_index = mj_model_->sensor_adr[quat_id];
       sensor_data.angular_velocity.mj_sensor_index = mj_model_->sensor_adr[gyro_id];
-      sensor_data.linear_acceleration.mj_sensor_index = mj_model_->sensor_adr[accel_id];
-
-      // Store the MuJoCo object the framequat sensor is attached to so we can
-      // look up world-frame position and velocity at the IMU location in read().
-      sensor_data.mj_site_id = mj_model_->sensor_objid[quat_id];
-      sensor_data.mj_site_objtype = mj_model_->sensor_objtype[quat_id];
+      sensor_data.linear_acceleration.mj_sensor_index = mj_model_->sensor_adr[accel_id];      
 
       imu_sensor_data_.push_back(sensor_data);
-
-      // Create a ground-truth odometry publisher for this IMU
-      ImuGroundTruthPublisher gt_pub;
-      gt_pub.msg.header.frame_id = "odom";
-      gt_pub.msg.child_frame_id = sensor_name;
-      const std::string gt_topic = "~/ground_truth/" + sensor_name;
-      gt_pub.publisher = get_node()->create_publisher<nav_msgs::msg::Odometry>(gt_topic, 100);
-      gt_pub.realtime_publisher =
-          std::make_shared<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>>(gt_pub.publisher);
-      imu_ground_truth_publishers_.push_back(std::move(gt_pub));
-      RCLCPP_INFO(get_logger(), "IMU '%s' ground-truth odometry will be published on '%s'",
-                  sensor_name.c_str(), gt_topic.c_str());
     }
     else
     {

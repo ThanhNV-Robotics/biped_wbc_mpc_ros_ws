@@ -31,7 +31,7 @@ find_package(sensor_msgs REQUIRED)
 
 # ── Library ────────────────────────────────────────────────────────────────
 add_library(${PROJECT_NAME} SHARED
-  src/StateEstimation.cpp
+  src/StateEstimationBase.cpp
   src/LinearKalmanFilter.cpp
   src/FromTopicEstimate.cpp
 )

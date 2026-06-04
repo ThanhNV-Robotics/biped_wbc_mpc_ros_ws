@@ -52,15 +52,6 @@ KalmanFilterEstimate::KalmanFilterEstimate(rclcpp::Node::SharedPtr node, Pinocch
       std::bind(&KalmanFilterEstimate::callback, this, std::placeholders::_1));
 }
 
-void KalmanFilterEstimate::resetXYposition (const nav_msgs::msg::Odometry& odom) {
-  // Reset the x and y position of the state estimate to match the odometry measurement, while keeping the z position and orientation unchanged.
-  vector_t pos(3);
-  pos << odom.pose.pose.position.x, odom.pose.pose.position.y, rbdState_.segment<3>(3)[2];
-  vector_t vel(3);
-  vel << odom.twist.twist.linear.x, odom.twist.twist.linear.y, rbdState_.segment<3>(info_.generalizedCoordinatesNum + 3)[2];
-  updateLinear(pos, vel);
-}
-
 vector_t KalmanFilterEstimate::update(const rclcpp::Time& time, const rclcpp::Duration& period) {
   scalar_t dt = period.seconds();
   a_.block(0, 3, 3, 3) = dt * matrix3_t::Identity();
@@ -69,6 +60,8 @@ vector_t KalmanFilterEstimate::update(const rclcpp::Time& time, const rclcpp::Du
   q_.block(0, 0, 3, 3) = (dt / 20.f) * matrix3_t::Identity();
   q_.block(3, 3, 3, 3) = (dt * 9.81f / 20.f) * matrix3_t::Identity();
   q_.block(6, 6, dimContacts_, dimContacts_) = dt * matrix_t::Identity(dimContacts_, dimContacts_);
+
+  elapsedTime_ += dt;
 
   const auto& model = pinocchioInterface_.getModel();
   auto& data = pinocchioInterface_.getData();
@@ -152,12 +145,38 @@ vector_t KalmanFilterEstimate::update(const rclcpp::Time& time, const rclcpp::Du
   //    p_.block(0, 0, 2, 2) /= 10.;
   //  }
 
-  if (topicUpdated_) {
-    updateFromTopic();
-    topicUpdated_ = false;
+  // if (topicUpdated_) {
+  //   updateFromTopic();
+  //   topicUpdated_ = false;
+  // }
+
+  // Calibration: accumulate post-update x,y estimates for biasInitDuration_ seconds,
+  // then subtract the mean offset from all subsequent position outputs.
+  Eigen::Vector3d estimatedPos = xHat_.segment<3>(0);
+  Eigen::Vector3d correctedPos = estimatedPos;
+
+  if (!biasInitialized_) {
+    positionBiasSum_ += estimatedPos;
+    biasSampleCount_++;
+
+    if (elapsedTime_ >= biasInitDuration_) {
+      positionBias_ = positionBiasSum_ / static_cast<double>(biasSampleCount_);
+      positionBias_.z() = 0.0;
+      biasInitialized_ = true;
+
+      RCLCPP_INFO(rclcpp::get_logger("state_estimator"),
+                  "Position bias initialized: [%.3f, %.3f] (%.0f samples over %.1fs)",
+                  positionBias_.x(), positionBias_.y(),
+                  static_cast<double>(biasSampleCount_), elapsedTime_);
+    }
   }
 
-  updateLinear(xHat_.segment<3>(0), xHat_.segment<3>(3));
+  if (biasInitialized_) {
+    correctedPos.x() -= positionBias_.x();
+    correctedPos.y() -= positionBias_.y();
+  }
+
+  updateLinear(correctedPos, xHat_.segment<3>(3)); //
 
   auto odom = getOdomMsg();
   odom.header.stamp = time;
@@ -168,6 +187,7 @@ vector_t KalmanFilterEstimate::update(const rclcpp::Time& time, const rclcpp::Du
   return rbdState_;
 }
 
+// This function is for correction from an external odometry topic, which is expected to be accurate in position
 void KalmanFilterEstimate::updateFromTopic() {
   auto* msg = buffer_.readFromRT();
 
@@ -209,7 +229,7 @@ void KalmanFilterEstimate::updateFromTopic() {
   pinocchio::forwardKinematics(model, data, qPino);
   pinocchio::updateFramePlacements(model, data);
 
-  xHat_.segment<3>(0) = newPos;
+  xHat_.segment<3>(0) = newPos; // correct the estimation of body position [x,y,z]
   for (size_t i = 0; i < numContacts_; ++i) {
     xHat_.segment<3>(6 + i * 3) = eeKinematics_->getPosition(vector_t())[i];
     xHat_(6 + i * 3 + 2) -= footRadius_;
@@ -231,9 +251,9 @@ void KalmanFilterEstimate::callback(const nav_msgs::msg::Odometry::SharedPtr msg
 
 nav_msgs::msg::Odometry KalmanFilterEstimate::getOdomMsg() {
   nav_msgs::msg::Odometry odom;
-  odom.pose.pose.position.x = xHat_.segment<3>(0)(0);
-  odom.pose.pose.position.y = xHat_.segment<3>(0)(1);
-  odom.pose.pose.position.z = xHat_.segment<3>(0)(2);
+  odom.pose.pose.position.x = xHat_(0) - (biasInitialized_ ? positionBias_.x() : 0.0);
+  odom.pose.pose.position.y = xHat_(1) - (biasInitialized_ ? positionBias_.y() : 0.0);
+  odom.pose.pose.position.z = xHat_(2);
   odom.pose.pose.orientation.x = quat_.x();
   odom.pose.pose.orientation.y = quat_.y();
   odom.pose.pose.orientation.z = quat_.z();

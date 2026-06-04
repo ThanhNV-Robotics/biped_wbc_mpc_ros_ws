@@ -10,6 +10,7 @@
 
 #include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
 #include <ocs2_centroidal_model/FactoryFunctions.h>
+#include <ocs2_core/misc/LoadData.h>
 #include <ocs2_legged_robot/common/ModelSettings.h>
 #include <ocs2_pinocchio_interface/PinocchioEndEffectorKinematics.h>
 
@@ -56,21 +57,28 @@ public:
     RCLCPP_INFO(get_logger(), "Loading model settings from task file: %s", taskFile.c_str());
     ModelSettings modelSettings = loadModelSettings(taskFile, "model_settings", /*verbose=*/false);
 
+    // Load joint/contact names directly from the task file so this node is not
+    // coupled to whichever fields ModelSettings::loadModelSettings() populates.
+    std::vector<std::string> jointNames, contactNames3DoF, contactNames6DoF;
+    loadData::loadStdVector(taskFile, "model_settings.jointNames", jointNames, /*verbose=*/false);
+    loadData::loadStdVector(taskFile, "model_settings.contactNames3DoF", contactNames3DoF, /*verbose=*/false);
+    loadData::loadStdVector(taskFile, "model_settings.contactNames6DoF", contactNames6DoF, /*verbose=*/false);
+
     if (jointNames_.empty()) {
-      jointNames_ = modelSettings.jointNames;
+      jointNames_ = jointNames;
     }
     numJoints_ = jointNames_.size();
     contactFlag_.fill(false);  // start with no contacts; updated heuristically
 
     PinocchioInterface pinocchioInterface =
-        centroidal_model::createPinocchioInterface(urdfFile, modelSettings.jointNames);
+        centroidal_model::createPinocchioInterface(urdfFile, jointNames);
 
     const CentroidalModelInfo centroidalModelInfo = centroidal_model::createCentroidalModelInfo(
         pinocchioInterface,
         centroidal_model::loadCentroidalType(taskFile),
         centroidal_model::loadDefaultJointState(pinocchioInterface.getModel().nq - 6, referenceFile),
-        modelSettings.contactNames3DoF,
-        modelSettings.contactNames6DoF);
+        contactNames3DoF,
+        contactNames6DoF);
 
     RCLCPP_INFO(get_logger(), "Pinocchio model: nq=%d, nv=%d, contacts=%zu",
                 pinocchioInterface.getModel().nq, pinocchioInterface.getModel().nv,
@@ -80,7 +88,7 @@ public:
     CentroidalModelPinocchioMapping pinocchioMapping(centroidalModelInfo);
     auto eeKinematics = std::make_shared<PinocchioEndEffectorKinematics>(
         pinocchioInterface, pinocchioMapping,
-        modelSettings.contactNames3DoF);
+        contactNames3DoF);
 
     // ── State estimator ─────────────────────────────────────────────────────
     estimator_ = std::make_shared<legged::KalmanFilterEstimate>(

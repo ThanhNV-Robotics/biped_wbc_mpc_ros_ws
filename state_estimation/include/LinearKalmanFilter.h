@@ -32,7 +32,6 @@ class KalmanFilterEstimate : public StateEstimateBase {
   void updateFromTopic();
 
   void callback(const nav_msgs::msg::Odometry::SharedPtr msg);
-  void resetXYposition (const nav_msgs::msg::Odometry& odom);
 
   nav_msgs::msg::Odometry getOdomMsg();
 
@@ -52,6 +51,21 @@ class KalmanFilterEstimate : public StateEstimateBase {
 
   matrix_t a_, b_, c_, q_, p_, r_;
   vector_t xHat_, ps_, vs_;
+  
+  // Intialization
+
+  bool biasInitialized_ = false;
+
+  double biasInitDuration_ = 10.0; // seconds
+  Eigen::Vector3d positionBias_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d positionBiasSum_ = Eigen::Vector3d::Zero();
+
+  size_t biasSampleCount_ = 0;
+
+  rclcpp::Time biasInitStartTime_;
+  double elapsedTime_ = 0.0;
+
+
 
   // Topic
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_;
@@ -61,6 +75,7 @@ class KalmanFilterEstimate : public StateEstimateBase {
   tf2::Transform world2odom_;
   std::string frameOdom_, frameGuess_;
   bool topicUpdated_;
+  bool initialized_ = false;
 };
 
 }  // namespace legged
