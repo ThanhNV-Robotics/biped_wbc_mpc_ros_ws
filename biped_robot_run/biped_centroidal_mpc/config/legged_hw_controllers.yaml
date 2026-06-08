@@ -1,0 +1,33 @@
+# Full path required so this section is loaded by the namespaced node /legged_hw/controller_manager.
+# A bare "controller_manager:" key only matches /controller_manager (root namespace).
+/legged_hw/controller_manager:
+  ros__parameters:
+    use_sim_time: true
+    update_rate: 500  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    imu_sensor_broadcaster:
+      type: imu_sensor_broadcaster/IMUSensorBroadcaster
+
+/legged_hw/joint_state_broadcaster:
+  ros__parameters:
+    joints:
+      - left_hip_pitch_joint
+      - left_hip_roll_joint
+      - left_hip_yaw_joint
+      - left_knee_pitch_joint
+      - left_ankle_roll_joint
+      - left_ankle_pitch_joint
+      - right_hip_pitch_joint
+      - right_hip_roll_joint
+      - right_hip_yaw_joint
+      - right_knee_pitch_joint
+      - right_ankle_roll_joint
+      - right_ankle_pitch_joint
+
+/legged_hw/imu_sensor_broadcaster:
+  ros__parameters:
+    sensor_name: torso_imu
+    frame_id: link0_torso

@@ -1,0 +1,14 @@
+<library path="legged_hw">
+  <class
+    name="legged_hw/LeggedHW"
+    type="legged_hw::LeggedHW"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ros2_control hardware interface for legged robot.
+      Receives RobotStatePacket (joint pos/vel/torque + IMU) via UDP.
+      Sends JointCommandPacket (pos/vel/torque_ff + kp/kd) via UDP.
+      Exposes standard ros2_control state and command interfaces so
+      joint_state_broadcaster and imu_sensor_broadcaster work out of the box.
+    </description>
+  </class>
+</library>
