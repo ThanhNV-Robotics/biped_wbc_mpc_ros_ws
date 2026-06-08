@@ -46,6 +46,7 @@
 #include <tinyxml2.h>
 #include <std_msgs/msg/string.hpp>
 #include <unordered_map>
+#include <yaml-cpp/yaml.h>
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #if !ROS_DISTRO_HUMBLE
@@ -670,18 +671,6 @@ MujocoSystemInterface::MujocoSystemInterface() = default;
 
 MujocoSystemInterface::~MujocoSystemInterface()
 {
-  // Stop camera rendering loop
-  if (cameras_)
-  {
-    cameras_->close();
-  }
-
-  // Stop lidar sensor loop
-  if (lidar_sensors_)
-  {
-    lidar_sensors_->close();
-  }
-
   // If sim_ is created and running, clean shut it down
   // We do this first to ensure that no other threads are accessing the model/data
   if (sim_)
@@ -779,13 +768,6 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   {
     RCLCPP_INFO(get_logger(), "No sim_speed set, using the setting from the UI");
   }
-
-  // Pull the camera publish rate out of the info, if present, otherwise default to 5 hz.
-  const auto camera_publish_rate =
-      std::stod(get_hardware_parameter(get_hardware_info(), "camera_publish_rate").value_or("5.0"));
-  // Pull the lidar publish rate out of the info, if present, otherwise default to 5 hz.
-  const auto lidar_publish_rate =
-      std::stod(get_hardware_parameter(get_hardware_info(), "lidar_publish_rate").value_or("5.0"));
 
   // Check for headless mode
   headless_ = hardware_interface::parse_bool(get_hardware_parameter(get_hardware_info(), "headless").value_or("false"));
@@ -950,6 +932,92 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     return hardware_interface::CallbackReturn::FAILURE;
   }
 
+  // Load PD gains from the YAML file pointed to by the "pids_config_file" hardware parameter.
+  // The YAML must have the structure:
+  //   pd_gains:
+  //     kp:
+  //       <joint_name>: <value>
+  //     kd:
+  //       <joint_name>: <value>
+  {
+    std::string pd_gains_file;
+    if (get_node()->has_parameter("pd_gains_file"))
+      pd_gains_file = get_node()->get_parameter("pd_gains_file").as_string();
+    // Trim any stray whitespace
+    pd_gains_file.erase(0, pd_gains_file.find_first_not_of(" \t\n\r\f\v"));
+    pd_gains_file.erase(pd_gains_file.find_last_not_of(" \t\n\r\f\v") + 1);
+
+    RCLCPP_INFO(get_logger(), "pd_gains_file = '%s'", pd_gains_file.c_str());
+
+    if (pd_gains_file.empty())
+    {
+      RCLCPP_WARN(get_logger(),
+                  "ROS2 parameter 'pd_gains_file' not set — internal PD mode disabled. "
+                  "Pass it from the launch file: parameters=[{\"pd_gains_file\": \"/path/to/gains.yaml\"}]");
+    }
+    else
+    {
+      try
+      {
+        YAML::Node config = YAML::LoadFile(pd_gains_file);
+
+        // Support two YAML layouts:
+        //   1. ROS2 parameter file  : /**:ros__parameters:pd_gains:kp:<joint>
+        //   2. Plain YAML           : pd_gains:kp:<joint>
+        YAML::Node pd_node;
+        if (config["/**"] && config["/**"]["ros__parameters"] &&
+            config["/**"]["ros__parameters"]["pd_gains"])
+        {
+          pd_node = config["/**"]["ros__parameters"]["pd_gains"];
+        }
+        else if (config["pd_gains"])
+        {
+          pd_node = config["pd_gains"];
+        }
+
+        if (!pd_node)
+        {
+          RCLCPP_ERROR(get_logger(),
+                       "Could not find 'pd_gains' in '%s' (expected under root or /**:ros__parameters)",
+                       pd_gains_file.c_str());
+        }
+        else
+        {
+        YAML::Node kp_node = pd_node["kp"];
+        YAML::Node kd_node = pd_node["kd"];
+        int loaded_count = 0;
+        for (auto& actuator : mujoco_actuator_data_)
+        {
+          if (actuator.actuator_type == ActuatorType::PASSIVE) continue;
+          if (kp_node && kp_node[actuator.joint_name])
+          {
+            actuator.pd_kp = kp_node[actuator.joint_name].as<double>();
+            actuator.has_pd_gains = true;
+          }
+          if (kd_node && kd_node[actuator.joint_name])
+            actuator.pd_kd = kd_node[actuator.joint_name].as<double>();
+          if (actuator.has_pd_gains)
+          {
+            RCLCPP_INFO(get_logger(), "PD gains for '%s': Kp=%.2f  Kd=%.4f",
+                        actuator.joint_name.c_str(), actuator.pd_kp, actuator.pd_kd);
+            ++loaded_count;
+          }
+        }
+        RCLCPP_INFO(get_logger(), "Loaded PD gains for %d/%zu actuators from '%s'",
+                    loaded_count,
+                    std::count_if(mujoco_actuator_data_.begin(), mujoco_actuator_data_.end(),
+                                  [](const auto& a){ return a.actuator_type != ActuatorType::PASSIVE; }),
+                    pd_gains_file.c_str());
+        }  // end else (pd_node found)
+      }
+      catch (const std::exception& e)  // catches YAML::Exception AND std::runtime_error (bad path)
+      {
+        RCLCPP_ERROR(get_logger(), "Failed to load PD gains from '%s': %s",
+                     pd_gains_file.c_str(), e.what());
+      }
+    }
+  }
+
   // Check for free joint
   std::string odom_free_joint_name =
       get_hardware_parameter_or(get_hardware_info(), "odom_free_joint_name", "floating_base_joint");
@@ -1058,20 +1126,6 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   RCLCPP_INFO(get_logger(), "Created step_simulation service at: %s/step_simulation",
               get_node()->get_fully_qualified_name());
 
-  // Ready cameras
-  RCLCPP_INFO(get_logger(), "Initializing cameras...");
-  cameras_ = std::make_unique<MujocoCameras>(get_node(), sim_mutex_, mj_data_, mj_model_, camera_publish_rate);
-  cameras_->register_cameras(get_hardware_info());
-
-  // Configure Lidar sensors
-  RCLCPP_INFO(get_logger(), "Initializing lidar...");
-  lidar_sensors_ = std::make_unique<MujocoLidar>(get_node(), sim_mutex_, mj_data_, mj_model_, lidar_publish_rate);
-  if (!lidar_sensors_->register_lidar(get_hardware_info()))
-  {
-    RCLCPP_INFO(get_logger(), "Failed to initialize lidar, exiting...");
-    return hardware_interface::CallbackReturn::FAILURE;
-  }
-
   // Disable the rangefinder flag at startup so that we don't get the yellow lines.
   // We can still turn this on manually if desired.
   sim_->opt.flags[mjVIS_RANGEFINDER] = false;
@@ -1128,6 +1182,32 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
 
   // Load MuJoCo ROS2 Control plugins
   this->load_mujoco_plugins();
+
+  // ── UDP bridge parameters ─────────────────────────────────────────────────
+  udp_enabled_ = hardware_interface::parse_bool(
+      get_hardware_parameter_or(get_hardware_info(), "use_udp", "false"));
+
+  if (udp_enabled_) {
+    const std::string controller_ip =
+        get_hardware_parameter_or(get_hardware_info(), "udp_controller_ip", "127.0.0.1");
+    const uint16_t state_port = static_cast<uint16_t>(
+        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_state_port", "9870")));
+    const uint16_t cmd_port = static_cast<uint16_t>(
+        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_cmd_port", "9871")));
+
+    if (!udp_send_socket_.open_sender(controller_ip, state_port)) {
+      RCLCPP_ERROR(get_logger(), "UDP: failed to open send socket to %s:%u",
+                   controller_ip.c_str(), state_port);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    if (!udp_recv_socket_.open_receiver(cmd_port)) {
+      RCLCPP_ERROR(get_logger(), "UDP: failed to bind recv socket on port %u", cmd_port);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    RCLCPP_INFO(get_logger(),
+                "UDP bridge enabled — sending state to %s:%u, receiving commands on :%u",
+                controller_ip.c_str(), state_port, cmd_port);
+  }
 
   RCLCPP_INFO(get_logger(), "on_init complete.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -1336,9 +1416,50 @@ hardware_interface::CallbackReturn MujocoSystemInterface::on_activate(const rclc
 {
   RCLCPP_INFO(get_logger(), "Activating MuJoCo hardware interface and starting Simulate threads...");
 
-  // Start camera and sensor rendering loops
-  cameras_->init();
-  lidar_sensors_->init();
+  if (udp_enabled_) {
+    udp_recv_running_ = true;
+    udp_recv_thread_  = std::thread(&MujocoSystemInterface::udpRecvLoop, this);
+    RCLCPP_INFO(get_logger(), "UDP recv thread started.");
+  }
+
+  // Enable internal PD hold-position for every actuator that has gains configured.
+  // This keeps the robot stable without requiring any ros2_control controller to be
+  // spawned. An external controller (e.g. via UDP or legged_controller) can override
+  // this by writing to the command interfaces or triggering perform_command_mode_switch.
+  int pd_count = 0;
+  for (auto& actuator : mujoco_actuator_data_) {
+    if (actuator.actuator_type == ActuatorType::PASSIVE) continue;
+    if (actuator.pd_kp == 0.0 && actuator.pd_kd == 0.0) continue;  // no gains loaded
+
+    actuator.is_position_control_enabled     = false;
+    actuator.is_velocity_control_enabled     = false;
+    actuator.is_effort_control_enabled       = false;
+    actuator.is_pd_impedance_control_enabled = true;
+
+    // Seed commands from the current physics state so there is no position error at t=0
+    const double q  = mj_data_->qpos[actuator.mj_pos_adr];
+    const double qd = mj_data_->qvel[actuator.mj_vel_adr];
+    actuator.position_interface.command_           = q;
+    actuator.velocity_interface.command_           = qd;
+    actuator.feedforward_effort_interface.command_ = 0.0;
+
+    // Also seed the joint command so joint_command_to_actuator_command() does not
+    // overwrite the actuator command with an uninitialised value each cycle.
+    auto joint_it = std::find_if(
+        urdf_joint_data_.begin(), urdf_joint_data_.end(),
+        [&actuator](const URDFJointData& j) { return j.name == actuator.joint_name; });
+    if (joint_it != urdf_joint_data_.end()) {
+      joint_it->position_interface.command_           = q;
+      joint_it->velocity_interface.command_           = qd;
+      joint_it->feedforward_effort_interface.command_ = 0.0;
+    }
+    ++pd_count;
+  }
+  if (pd_count > 0) {
+    RCLCPP_INFO(get_logger(),
+                "Internal PD hold-position mode activated for %d actuators (no external controller needed)",
+                pd_count);
+  }
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -1347,6 +1468,12 @@ hardware_interface::CallbackReturn
 MujocoSystemInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   RCLCPP_INFO(get_logger(), "Deactivating MuJoCo hardware interface and shutting down Simulate...");
+
+  if (udp_enabled_) {
+    udp_recv_running_ = false;
+    udp_recv_socket_.close();   // unblocks recvfrom
+    if (udp_recv_thread_.joinable()) udp_recv_thread_.join();
+  }
 
   // TODO: Should we shut MuJoCo things down here or in the destructor?
 
@@ -1574,6 +1701,38 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
     data.linear_acceleration.data.z() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index + 2];
   }
 
+  // ── UDP: send robot state to controller ──────────────────────────────────
+  if (udp_enabled_ && udp_send_socket_.is_open()) {
+    RobotStatePacket pkt{};
+    pkt.timestamp_ns = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    pkt.num_joints = static_cast<uint32_t>(
+        std::min(mujoco_actuator_data_.size(), static_cast<size_t>(UDP_MAX_JOINTS)));
+
+    for (uint32_t i = 0; i < pkt.num_joints; ++i) {
+      pkt.joint_pos   [i] = static_cast<float>(mujoco_actuator_data_[i].position_interface.state_);
+      pkt.joint_vel   [i] = static_cast<float>(mujoco_actuator_data_[i].velocity_interface.state_);
+      pkt.joint_torque[i] = static_cast<float>(mujoco_actuator_data_[i].effort_interface.state_);
+    }
+
+    if (!imu_sensor_data_.empty()) {
+      const auto& imu = imu_sensor_data_[0];
+      pkt.imu_quat[0] = static_cast<float>(imu.orientation.data.w());
+      pkt.imu_quat[1] = static_cast<float>(imu.orientation.data.x());
+      pkt.imu_quat[2] = static_cast<float>(imu.orientation.data.y());
+      pkt.imu_quat[3] = static_cast<float>(imu.orientation.data.z());
+      pkt.imu_gyro[0] = static_cast<float>(imu.angular_velocity.data.x());
+      pkt.imu_gyro[1] = static_cast<float>(imu.angular_velocity.data.y());
+      pkt.imu_gyro[2] = static_cast<float>(imu.angular_velocity.data.z());
+      pkt.imu_accel[0] = static_cast<float>(imu.linear_acceleration.data.x());
+      pkt.imu_accel[1] = static_cast<float>(imu.linear_acceleration.data.y());
+      pkt.imu_accel[2] = static_cast<float>(imu.linear_acceleration.data.z());
+    }
+
+    udp_send_socket_.send(&pkt, sizeof(pkt));
+  }
+
   // FT Sensor data
   for (auto& data : ft_sensor_data_)
   {
@@ -1650,6 +1809,50 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
           joint.mimic_multiplier * urdf_joint_data_.at(joint.mimicked_joint_index).velocity_interface.command_;
       joint.effort_interface.command_ =
           joint.mimic_multiplier * urdf_joint_data_.at(joint.mimicked_joint_index).effort_interface.command_;
+    }
+  }
+
+  // ── UDP: apply command packet from controller (overrides ros2_control path) ─
+  if (udp_enabled_) {
+    JointCommandPacket cmd{};
+    bool fresh = false;
+    {
+      std::lock_guard<std::mutex> lock(udp_cmd_mutex_);
+      if (udp_cmd_fresh_) {
+        // Check packet age: fall back if the controller has gone silent for > 50 ms
+        const uint64_t now_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+        const uint64_t age_ns = now_ns - udp_latest_cmd_.timestamp_ns;
+        if (age_ns > 50'000'000ULL) {  // 50 ms timeout
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+                               "UDP: no command for %.0f ms — falling back to ros2_control",
+                               static_cast<double>(age_ns) / 1e6);
+          udp_cmd_fresh_ = false;
+        } else {
+          cmd   = udp_latest_cmd_;
+          fresh = true;
+        }
+      }
+    }
+    if (fresh) {
+      const uint32_t n = std::min(
+          cmd.num_joints,
+          static_cast<uint32_t>(std::min(mujoco_actuator_data_.size(),
+                                         static_cast<size_t>(UDP_MAX_JOINTS))));
+      for (uint32_t i = 0; i < n; ++i) {
+        auto& actuator = mujoco_actuator_data_[i];
+        if (actuator.actuator_type == ActuatorType::PASSIVE) continue;
+
+        const double pos_err = cmd.pos_des[i] - mj_data_control_->qpos[actuator.mj_pos_adr];
+        const double vel_err = cmd.vel_des[i] - mj_data_control_->qvel[actuator.mj_vel_adr];
+        const double torque  = static_cast<double>(cmd.kp[i]) * pos_err
+                             + static_cast<double>(cmd.kd[i]) * vel_err
+                             + static_cast<double>(cmd.torque_ff[i]);
+        const double clamped = std::clamp(torque, -500.0, 500.0);
+        mj_data_control_->ctrl[actuator.mj_actuator_id] = clamped;
+      }
+      return hardware_interface::return_type::OK;
     }
   }
 
@@ -1916,68 +2119,6 @@ bool MujocoSystemInterface::register_mujoco_actuators()
       actuator_data.is_effort_control_enabled = true;
     }
 
-    // Load PD impedance gains if configured
-    RCLCPP_INFO(get_logger(), ">>> Attempting to load PD gains for actuator '%s' <<<", actuator_data.joint_name.c_str());
-    std::string kp_param_name = "pd_gains.kp." + actuator_data.joint_name;
-    std::string kd_param_name = "pd_gains.kd." + actuator_data.joint_name;
-    
-    RCLCPP_INFO(get_logger(), "Looking for params: '%s' and '%s'", kp_param_name.c_str(), kd_param_name.c_str());
-    
-    // Declare parameters with default value 0.0, then get the value
-    // If the parameter is set in the YAML file, it will override the default
-    try
-    {
-      RCLCPP_INFO(get_logger(), "Entering try block for '%s'", actuator_data.joint_name.c_str());
-      
-      if (!get_node()->has_parameter(kp_param_name))
-      {
-        RCLCPP_INFO(get_logger(), "Declaring parameter '%s' with default 0.0", kp_param_name.c_str());
-        get_node()->declare_parameter(kp_param_name, 0.0);
-      }
-      else
-      {
-        RCLCPP_INFO(get_logger(), "Parameter '%s' already exists", kp_param_name.c_str());
-        actuator_data.has_pd_gains = true;  // parameter was pre-loaded from YAML
-      }
-      
-      if (!get_node()->has_parameter(kd_param_name))
-      {
-        RCLCPP_INFO(get_logger(), "Declaring parameter '%s' with default 0.0", kd_param_name.c_str());
-        get_node()->declare_parameter(kd_param_name, 0.0);
-      }
-      else
-      {
-        RCLCPP_INFO(get_logger(), "Parameter '%s' already exists", kd_param_name.c_str());
-      }
-      
-      RCLCPP_INFO(get_logger(), "Getting parameter values...");
-      actuator_data.pd_kp = get_node()->get_parameter(kp_param_name).as_double();
-      actuator_data.pd_kd = get_node()->get_parameter(kd_param_name).as_double();
-      
-      RCLCPP_INFO(get_logger(), "Retrieved values: Kp=%.2f, Kd=%.2f", actuator_data.pd_kp, actuator_data.pd_kd);
-      
-      if (actuator_data.pd_kp > 0.0)
-      {
-        RCLCPP_INFO(get_logger(), "Loaded PD impedance gains for '%s': Kp=%.2f, Kd=%.2f", 
-                    actuator_data.joint_name.c_str(), actuator_data.pd_kp, actuator_data.pd_kd);
-      }
-      else
-      {
-        RCLCPP_DEBUG(get_logger(), "No PD impedance gains configured for '%s' (Kp=%.2f)", 
-                     actuator_data.joint_name.c_str(), actuator_data.pd_kp);
-      }
-    }
-    catch (const std::exception& e)
-    {
-      RCLCPP_WARN(get_logger(), "Failed to load PD gains for '%s': %s", 
-                  actuator_data.joint_name.c_str(), e.what());
-      actuator_data.pd_kp = 0.0;
-      actuator_data.pd_kd = 0.0;
-    }
-    
-    RCLCPP_INFO(get_logger(), "Finished loading PD gains for '%s': Kp=%.2f, Kd=%.2f", 
-                actuator_data.joint_name.c_str(), actuator_data.pd_kp, actuator_data.pd_kd);
-
     RCLCPP_DEBUG(get_logger(), "Successfully registered actuator '%s'", act_name);
   }
 
@@ -2227,10 +2368,10 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
           }
           else
           {
-            RCLCPP_ERROR(get_logger(),
-                           "Velocity command interface for the joint : %s is not supported with motor or custom actuator "
-                           "without defining the pd_gains",
-                           actuator_name.c_str());
+            RCLCPP_WARN(get_logger(),
+                        "Velocity command interface for joint '%s': no PD gains loaded yet "
+                        "(will be set to effort=0 unless 'pd_gains_file' ROS2 param is set)",
+                        actuator_name.c_str());
           }
         }
       }
@@ -3305,6 +3446,19 @@ void MujocoSystemInterface::load_mujoco_plugins()
   catch (const pluginlib::PluginlibException& ex)
   {
     RCLCPP_ERROR(get_logger(), "Failed to create plugin loader: %s", ex.what());
+  }
+}
+
+void MujocoSystemInterface::udpRecvLoop()
+{
+  JointCommandPacket pkt{};
+  while (udp_recv_running_) {
+    const ssize_t n = udp_recv_socket_.recv(&pkt, sizeof(pkt));
+    if (n != static_cast<ssize_t>(sizeof(pkt))) continue;  // timeout or wrong size
+
+    std::lock_guard<std::mutex> lock(udp_cmd_mutex_);
+    udp_latest_cmd_ = pkt;
+    udp_cmd_fresh_  = true;
   }
 }
 

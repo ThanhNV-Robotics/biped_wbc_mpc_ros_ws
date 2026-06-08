@@ -10,6 +10,12 @@ controller_manager:
     
     imu_sensor_broadcaster:
       type: imu_sensor_broadcaster/IMUSensorBroadcaster
+      
+imu_sensor_broadcaster:
+  ros__parameters:
+    sensor_name: torso_imu
+    frame_id: torso_imu
+
 
 # PD Impedance gains for MuJoCo hardware interface
 # Used when position + velocity + feedforward_effort interfaces are claimed
@@ -23,15 +29,15 @@ controller_manager:
         left_hip_roll_joint: 300.0
         left_hip_yaw_joint: 150.0
         left_knee_pitch_joint: 350.0
-        left_ankle_roll_joint: 150.0
-        left_ankle_pitch_joint: 150.0
+        left_ankle_roll_joint: 50.0
+        left_ankle_pitch_joint: 50.0
         # Right leg
         right_hip_pitch_joint: 350.0
         right_hip_roll_joint: 300.0
         right_hip_yaw_joint: 150.0
         right_knee_pitch_joint: 350.0
-        right_ankle_roll_joint: 150.0
-        right_ankle_pitch_joint: 150.0
+        right_ankle_roll_joint: 50.0
+        right_ankle_pitch_joint: 50.0
       
       kd:
         # Left leg
@@ -39,15 +45,15 @@ controller_manager:
         left_hip_roll_joint: 1.5
         left_hip_yaw_joint: 1.5
         left_knee_pitch_joint: 1.5
-        left_ankle_roll_joint: 1.25
-        left_ankle_pitch_joint: 1.25
+        left_ankle_roll_joint: 1.15
+        left_ankle_pitch_joint: 1.15
         # Right leg
         right_hip_pitch_joint: 1.5
         right_hip_roll_joint: 1.5
         right_hip_yaw_joint: 1.5
         right_knee_pitch_joint: 1.5
-        right_ankle_roll_joint: 1.25
-        right_ankle_pitch_joint: 1.25
+        right_ankle_roll_joint: 1.15
+        right_ankle_pitch_joint: 1.15
 
       # kp:
       #   # Left leg
@@ -113,11 +119,8 @@ pd_impedance_controller:
     # Verbose output
     verbose: true
 
-joint_state_broadcaster:
-  ros__parameters:
-    use_global_arguments: true
+# joint_state_broadcaster:
+#   ros__parameters:
+#     use_global_arguments: true
 
-imu_sensor_broadcaster:
-  ros__parameters:
-    sensor_name: torso_imu
-    frame_id: torso_imu
+

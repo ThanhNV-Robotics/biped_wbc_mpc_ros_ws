@@ -51,8 +51,7 @@
 #include "simulate.h"      // must be on your include path, handled by CMake
 
 #include "mujoco_ros2_control/data.hpp"
-#include "mujoco_ros2_control/mujoco_cameras.hpp"
-#include "mujoco_ros2_control/mujoco_lidar.hpp"
+#include "mujoco_ros2_control/udp_bridge.hpp"
 
 #include <pluginlib/class_list_macros.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -380,12 +379,6 @@ private:
   int free_joint_qpos_adr_ = -1;
   int free_joint_qvel_adr_ = -1;
 
-  // Containers for RGB-D cameras
-  std::unique_ptr<MujocoCameras> cameras_;
-
-  // Containers for LIDAR sensors
-  std::unique_ptr<MujocoLidar> lidar_sensors_;
-
   // Mutex used inside simulate.h for protecting model/data, we keep a reference
   // here to protect access to shared data.
   // TODO: It would be far better to put all relevant data into a single container with accessors
@@ -444,6 +437,25 @@ private:
   std::vector<mjtNum> initial_qvel_;
   std::vector<mjtNum> initial_ctrl_;
   std::string initial_keyframe_ = "";
+
+  // ── UDP bridge ──────────────────────────────────────────────────────────────
+  // When enabled via the "use_udp" hardware parameter, the interface sends a
+  // full robot-state snapshot over UDP on every read() and applies the most
+  // recently received JointCommandPacket in write() (overriding ros2_control
+  // command interfaces for the duration of that cycle).
+  bool       udp_enabled_  { false };
+  UdpSocket  udp_send_socket_;   // sim → controller  (state)
+  UdpSocket  udp_recv_socket_;   // controller → sim  (command)
+
+  // Latest command packet written by the recv thread, read by write().
+  JointCommandPacket  udp_latest_cmd_{};
+  std::mutex          udp_cmd_mutex_;
+  bool                udp_cmd_fresh_{ false };  // true once first packet arrives
+
+  std::thread       udp_recv_thread_;
+  std::atomic<bool> udp_recv_running_{ false };
+
+  void udpRecvLoop();   // background thread body
 };
 
 }  // namespace mujoco_ros2_control

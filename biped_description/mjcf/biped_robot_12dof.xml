@@ -21,9 +21,19 @@
         <default class="transparent">
             <geom contype="0" conaffinity="0" group="0" density="0" rgba="0.5 0.5 0.5 0.3" />
         </default>
+
         <default class="collision">
-            <geom group="0" rgba="0.7 0.7 0.7 1" />
+            <geom group="3" />
+            <default class="foot1">
+                <geom size="0.09 0.03 0.006" pos="0.04 0 -0.034" type="box" contype="1"
+                    conaffinity="1" />
+                <site size="0.09 0.03 0.006" pos="0.04 0 -0.034" type="box" />
+            </default>
+            <default class="foot2">
+                <geom size="0.027 0.0325" pos="0 9.61687e-05 0.0388277" type="cylinder" />
+            </default>
         </default>
+
     </default>
 
     <default>
@@ -143,6 +153,10 @@
                                                     <joint type="hinge" name="left_ankle_pitch_joint" axis="0 1 0" pos="0 0 0" range="-30 30" class = "AK606_actuator"/>
                                                     <geom name = "Left_Foot" type="mesh" friction="5.0 0.1 0.1" class="visual" mesh="left_ankle_pitch_link" />
                                                     <inertial pos="29.106E-3 0 -30.483E-3" mass="343.229E-3" fullinertia="1.546E-4 8.770E-4 9.434E-4 -9.97E-9 50230.908E-9 40.36E-9" />
+                                                
+                                                    <!-- This geom is for collision -->
+                                                    <geom name="l_foot1" class="foot1" />
+                                                
                                                 </body>
                                          </body>
                                 </body>
@@ -179,7 +193,8 @@
                                             <joint type="hinge" name="right_ankle_pitch_joint" axis="0 1 0" pos="0 0 0" range="-30 30" class = "AK606_actuator"/>
                                             <geom type="mesh" name = "Right_Foot" friction="5.0 0.1 0.1" class="visual" mesh="right_ankle_pitch_link" />
                                             <inertial pos="29.106E-3 0 -30.483E-3" mass="343.229E-3" fullinertia="1.546E-4 8.770E-4 9.434E-4 -9.97E-9 50230.908E-9 40.36E-9" />
-                                            <!-- <site name="Right_Force_Torque_Sensor" type = "box" pos="30E-3 0 0" euler="0 -90 -90" size="0.015 0.015 0.015" rgba="1 0 0 1"/> -->
+                                            <!-- This geom is for collision -->
+                                            <geom name="r_foot1" class="foot1" />
                                         </body>
                                     </body>
                                 </body>

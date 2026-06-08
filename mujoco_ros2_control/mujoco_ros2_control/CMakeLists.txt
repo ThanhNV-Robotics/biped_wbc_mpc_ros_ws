@@ -23,6 +23,7 @@ find_package(transmission_interface REQUIRED)
 find_package(backward_ros REQUIRED)
 find_package(tinyxml2_vendor QUIET)
 find_package(TinyXML2 REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 # Link MuJoCo via the vendor package
 find_package(mujoco_vendor REQUIRED)
@@ -187,8 +188,6 @@ endif()
 # MuJoCo ROS 2 control system interface (this package)
 add_library(mujoco_ros2_control SHARED
     src/mujoco_system_interface.cpp
-    src/mujoco_cameras.cpp
-    src/mujoco_lidar.cpp
 )
 # Ensure MuJoCo library can be found at runtime regardless of how it was installed above.
 # mujoco_vendor installs libmujoco.so under opt/mujoco_vendor/lib/ relative to the
@@ -218,6 +217,7 @@ PUBLIC
   fmt::fmt
   ${MUJOCO_LIB}
   Eigen3::Eigen
+  yaml-cpp
 PRIVATE
   mujoco_simulate
   Threads::Threads

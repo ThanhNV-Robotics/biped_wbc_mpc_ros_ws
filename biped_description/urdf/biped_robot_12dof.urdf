@@ -6,6 +6,10 @@
   <xacro:arg name="headless" default="false"/>
   <xacro:arg name="use_mjcf_from_topic" default="false"/>
   <xacro:arg name="use_transmissions" default="false"/>
+  <xacro:arg name="use_udp" default="false"/>
+  <xacro:arg name="udp_controller_ip" default="127.0.0.1"/>
+  <xacro:arg name="udp_state_port" default="9870"/>
+  <xacro:arg name="udp_cmd_port" default="9871"/>
 
 <mujoco>
 <compiler meshdir="meshes" discardvisual="false" fusestatic="false" />
@@ -319,11 +323,6 @@
     <hardware>
       <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
 
-      <!-- Conditional mujoco_model parameter based on use_pid -->
-      <xacro:if value="$(arg use_pid)">
-        <param name="pids_config_file">$(find biped_joint_pd_impedance_controller)/config/pd_impedance_controller.yaml</param>
-      </xacro:if>
-
       <xacro:unless value="$(arg use_mjcf_from_topic)">
         <param name="mujoco_model">$(find biped_description)/mjcf/biped_robot_12dof.xml</param>
       </xacro:unless>
@@ -339,6 +338,12 @@
 
       <!-- If set to true, will not launch the Simulate App window -->
       <param name="headless">$(arg headless)</param>
+
+      <!-- UDP bridge: sends robot state to external controller, receives joint commands -->
+      <param name="use_udp">$(arg use_udp)</param>
+      <param name="udp_controller_ip">$(arg udp_controller_ip)</param>
+      <param name="udp_state_port">$(arg udp_state_port)</param>
+      <param name="udp_cmd_port">$(arg udp_cmd_port)</param>
 
     </hardware>
     <joint name="left_hip_pitch_joint">

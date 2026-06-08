@@ -1,12 +1,3 @@
-from ament_index_python.packages import get_package_share_directory
-
-import launch
-from launch_ros.actions import Node
-
-# For mujoco_ros2_control
-
-import os
-
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, Shutdown
 from launch.substitutions import (
@@ -16,35 +7,37 @@ from launch.substitutions import (
     PathJoinSubstitution,
 )
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue, ParameterFile
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
-def launch_mujoco_ros2_control_setup(context, *args, **kwargs):
+def launch_setup(context, *_args, **_kwargs):
     biped_pkg_share = FindPackageShare("biped_description")
-    controller_pkg_share = FindPackageShare("biped_joint_pd_impedance_controller")
+    this_pkg_share = FindPackageShare("biped_centroidal_mpc")
 
-    # Build robot description for biped robot
-    # Note: use_pid is set to true to export velocity/effort command interfaces
-    # The MuJoCo interface will use custom PD impedance mode when all 3 interfaces are claimed
+    # Resolve the PD gains file path at launch time (overrideable via pd_gains_file:= CLI arg)
+    pd_gains_file = LaunchConfiguration("pd_gains_file").perform(context)
+
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution([biped_pkg_share, "urdf", "biped_robot_12dof.urdf"]),
-            " use_pid:=true",  # Export position, velocity, effort interfaces
-            " headless:=",
-            LaunchConfiguration("headless"),
+            " use_pid:=true",
+            " headless:=", LaunchConfiguration("headless"),
             " use_mjcf_from_topic:=false",
             " use_transmissions:=false",
+            " use_udp:=", LaunchConfiguration("use_udp"),
         ]
     )
-
     robot_description_str = robot_description_content.perform(context)
-    robot_description = {"robot_description": ParameterValue(value=robot_description_str, value_type=str)}
+    robot_description = {
+        "robot_description": ParameterValue(value=robot_description_str, value_type=str)
+    }
 
-    # Controller configuration file
-    parameters_file = PathJoinSubstitution([controller_pkg_share, "config", "pd_impedance_controller.yaml"])
+    legged_config = PathJoinSubstitution(
+        [this_pkg_share, "config", "legged_controller_test.yaml"]
+    )
 
     nodes = []
 
@@ -58,65 +51,82 @@ def launch_mujoco_ros2_control_setup(context, *args, **kwargs):
         )
     )
 
-    # Controller spawners
-    # Note: We spawn the PD impedance controller
-    controllers_to_spawn = ["joint_state_broadcaster", "pd_impedance_controller", "imu_sensor_broadcaster"]
-    for controller in controllers_to_spawn:
-        nodes.append(
-            Node(
-                package="controller_manager",
-                executable="spawner",
-                arguments=[controller, "--param-file", parameters_file],
-                output="both",
-            )
-        )
-
-    # ros2_control node with MuJoCo - PD gains loaded from config
+    # MuJoCo ros2_control node.
+    # pd_gains_file is read by MujocoSystemInterface as a ROS2 parameter on mujoco_ros2_control_node.
     nodes.append(
         Node(
             package="mujoco_ros2_control",
             executable="ros2_control_node",
             emulate_tty=True,
             output="both",
-            parameters=[
-                {"use_sim_time": True},
-                ParameterFile(parameters_file),
-            ],
-            # remappings removed to avoid duplicate URDF loading
+            parameters=[{"use_sim_time": True, "pd_gains_file": pd_gains_file}],
             on_exit=Shutdown(),
         )
     )
 
-    # Control actions server
-    nodes.append(
-        Node(
-            package="control_actions",
-            executable="control_actions_server_node",
-            output="both",
-            parameters=[{"use_sim_time": True}],
-        )
-    )
+    # # Spawn and activate pd_impedance_controller
+    # nodes.append(
+    #     Node(
+    #         package="controller_manager",
+    #         executable="spawner",
+    #         arguments=["pd_impedance_controller", "--param-file", pd_config],
+    #         output="both",
+    #     )
+    # )
+
+    # # Spawners — PD stack
+    # for controller in ["joint_state_broadcaster", "pd_impedance_controller", "imu_sensor_broadcaster"]:
+    #     nodes.append(
+    #         Node(
+    #             package="controller_manager",
+    #             executable="spawner",
+    #             arguments=[controller, "--param-file", pd_config],
+    #             output="both",
+    #         )
+    #     )
+
+    # # Spawner — legged controller (plugin under test)
+    # nodes.append(
+    #     Node(
+    #         package="controller_manager",
+    #         executable="spawner",
+    #         arguments=["legged_controller", "--param-file", legged_config],
+    #         output="both",
+    #     )
+    # )
+
+    # # Control actions server
+    # nodes.append(
+    #     Node(
+    #         package="control_actions",
+    #         executable="control_actions_server_node",
+    #         output="both",
+    #         parameters=[{"use_sim_time": True}],
+    #     )
+    # )
 
     return nodes
 
+
 def generate_launch_description():
-
-    # mujoco_ros2_control setup
-    headless = DeclareLaunchArgument(
-        "headless",
-        default_value="false",
-        description="Run simulation without visualization window",
+    default_pd_gains = PathJoinSubstitution(
+        [FindPackageShare("biped_centroidal_mpc"), "config", "pd_impedance_controller.yaml"]
     )
-
-    mujoco_ros2_control_launch_description  = LaunchDescription(
-        [
-            headless,
-            OpaqueFunction(function=launch_mujoco_ros2_control_setup),
-        ]
-    )
-
-    final_launch_description = LaunchDescription()
-
-    final_launch_description.add_action(mujoco_ros2_control_launch_description)
-
-    return final_launch_description
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            "headless",
+            default_value="false",
+            description="Run simulation without visualization window",
+        ),
+        DeclareLaunchArgument(
+            "pd_gains_file",
+            default_value=default_pd_gains,
+            description="Path to YAML file with PD gains for internal hold-position mode",
+        ),
+        DeclareLaunchArgument(
+            "use_udp",
+            default_value="false",
+            description="Enable UDP bridge (sends robot state, receives joint commands)",
+        ),
+        OpaqueFunction(function=launch_setup),
+    ])
