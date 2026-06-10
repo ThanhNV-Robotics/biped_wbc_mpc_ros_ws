@@ -84,7 +84,9 @@ private:
   RobotStatePacket latest_state_{};
   std::mutex       state_mutex_;
   bool             state_fresh_{false};
-  bool             hw_connected_{false};
+  bool             hw_connected_{false};   // set on first packet, never cleared
+  bool             link_lost_{false};      // set when packets stop after connection
+  std::chrono::steady_clock::time_point last_recv_time_{};
 
   bool        use_sim_{true};
   std::string target_ip_{UDP_DEFAULT_SIM_IP};  // resolved in on_init()

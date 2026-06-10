@@ -130,6 +130,15 @@ std::vector<hardware_interface::CommandInterface> LeggedHW::export_command_inter
 
 // ─────────────────────────────────────────────────────────────────────────────
 // on_activate / on_deactivate
+//
+// on_activate: opens two UDP sockets and starts background threads.
+//   recv_sock_ binds to state_port_ (INADDR_ANY) — receives RobotStatePackets
+//              from the robot or MuJoCo regardless of source IP.
+//   send_sock_ targets target_ip_:cmd_port_ — sends JointCommandPackets.
+//   recvLoop() and watchdogLoop() run until recv_running_ is cleared.
+//
+// on_deactivate: signals threads to stop, closes recv_sock_ to unblock the
+//   blocking recvfrom() call, then joins both threads before closing send_sock_.
 // ─────────────────────────────────────────────────────────────────────────────
 
 hardware_interface::CallbackReturn
@@ -176,6 +185,12 @@ LeggedHW::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // recvLoop — background thread
+//
+// Blocks on recvfrom() with a 100 ms socket timeout so the loop can exit
+// cleanly when recv_running_ is cleared.  On each valid packet:
+//   - copy into latest_state_ under state_mutex_ so read() sees a consistent snapshot
+//   - update last_recv_time_ for watchdog timeout detection
+//   - detect first-connect / reconnect-after-loss events and log them outside the lock
 // ─────────────────────────────────────────────────────────────────────────────
 
 void LeggedHW::recvLoop()
@@ -185,43 +200,95 @@ void LeggedHW::recvLoop()
     const ssize_t n = recv_sock_.recv(&pkt, sizeof(pkt));
     if (n != static_cast<ssize_t>(sizeof(pkt))) continue;  // timeout or bad size
 
-    std::lock_guard<std::mutex> lk(state_mutex_);
-    latest_state_ = pkt;
-    state_fresh_  = true;
-    if (!hw_connected_) {
-      hw_connected_ = true;
-      RCLCPP_INFO(rclcpp::get_logger("LeggedHW"), "Hardware connected — receiving UDP data.");
+    bool just_connected   = false;
+    bool just_reconnected = false;
+    {
+      std::lock_guard<std::mutex> lk(state_mutex_);
+      latest_state_   = pkt;
+      state_fresh_    = true;
+      last_recv_time_ = std::chrono::steady_clock::now();
+      if (!hw_connected_) {
+        hw_connected_  = true;
+        just_connected = true;
+      } else if (link_lost_) {
+        link_lost_       = false;
+        just_reconnected = true;
+      }
     }
+
+    if (just_connected)
+      RCLCPP_INFO(rclcpp::get_logger("LeggedHW"),
+                  "Hardware connected — receiving UDP data from %s.", target_ip_.c_str());
+    else if (just_reconnected)
+      RCLCPP_INFO(rclcpp::get_logger("LeggedHW"),
+                  "Hardware reconnected — UDP data resumed from %s.", target_ip_.c_str());
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// watchdogLoop — logs a warning every 2 s while no hardware data arrives
+// watchdogLoop — background thread
+//
+// Wakes every WARN_INTERVAL_S seconds and checks the connection state:
+//   - never connected          → WARN (waiting for first packet)
+//   - connected, gap > 500 ms  → ERROR once (link just lost), then WARN each interval
+//   - connected, gap <= 500 ms → silent (normal operation)
+// link_lost_ is set here and cleared by recvLoop() when packets resume.
 // ─────────────────────────────────────────────────────────────────────────────
 
 void LeggedHW::watchdogLoop()
 {
-  constexpr int WARN_INTERVAL_S = 2;
+  constexpr int  WARN_INTERVAL_S = 2;
+  constexpr auto LINK_TIMEOUT    = std::chrono::milliseconds(500);
+
   while (recv_running_) {
     for (int i = 0; i < WARN_INTERVAL_S * 10 && recv_running_; ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     if (!recv_running_) break;
 
-    bool connected = false;
+    bool connected  = false;
+    bool just_lost  = false;
+    bool still_lost = false;
     {
       std::lock_guard<std::mutex> lk(state_mutex_);
       connected = hw_connected_;
+      if (connected) {
+        const auto elapsed = std::chrono::steady_clock::now() - last_recv_time_;
+        if (elapsed > LINK_TIMEOUT) {
+          if (!link_lost_) {
+            link_lost_ = true;
+            just_lost  = true;
+          } else {
+            still_lost = true;
+          }
+        }
+      }
     }
-    if (!connected)
+
+    if (!connected) {
       RCLCPP_WARN(rclcpp::get_logger("LeggedHW"),
                   "No UDP data from hardware yet — waiting for %s:%u ...",
                   target_ip_.c_str(), state_port_);
+    } else if (just_lost) {
+      RCLCPP_ERROR(rclcpp::get_logger("LeggedHW"),
+                   "Hardware connection LOST — no UDP packets from %s:%u for >500 ms!",
+                   target_ip_.c_str(), state_port_);
+    } else if (still_lost) {
+      RCLCPP_WARN(rclcpp::get_logger("LeggedHW"),
+                  "Hardware still disconnected — waiting for %s:%u ...",
+                  target_ip_.c_str(), state_port_);
+    }
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // read — copy latest UDP state into ros2_control state interfaces
+//
+// Called every control cycle (500 Hz) by the controller_manager update loop.
+// Takes a snapshot of latest_state_ under the mutex, then unpacks it into the
+// state interface buffers.  Always returns OK — even before the hardware
+// connects — so the controller_manager keeps running and broadcasters activate
+// without timing out waiting for the first valid read cycle.
 // ─────────────────────────────────────────────────────────────────────────────
 
 hardware_interface::return_type
@@ -234,10 +301,9 @@ LeggedHW::read(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
     state_fresh_ = false;
   }
 
-  // Always write to state interfaces so ros2_control sees valid (possibly
-  // zero/stale) data even before the hardware connects.  Skipping this when
-  // no fresh packet arrived caused joint_state_broadcaster to time out on
-  // activation in Jazzy because it waited for at least one read cycle.
+  // Unpack joint state (position / velocity / effort) and IMU into the
+  // ros2_control state interface buffers.  Values stay at zero until the
+  // first UDP packet arrives, which is safe for the broadcasters.
   const uint32_t n = std::min(snap.num_joints, static_cast<uint32_t>(n_joints_));
   for (uint32_t i = 0; i < n; ++i) {
     pos_state_[i] = static_cast<double>(snap.joint_pos[i]);
@@ -263,15 +329,17 @@ LeggedHW::read(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // write — package command interfaces into JointCommandPacket and send via UDP
+//
+// Called every control cycle (500 Hz) after controller update.
+// Guards against sending when no motion controller is active: if all kp/kd
+// are zero (only broadcasters running), skip the send so the robot's internal
+// PD hold is not overridden by zero-gain packets.
 // ─────────────────────────────────────────────────────────────────────────────
 
 hardware_interface::return_type
 LeggedHW::write(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
 {
-  // Only send commands when at least one joint has non-zero gains.
-  // When running in observation-only mode (just broadcasters, no motion
-  // controller), all kp/kd stay at 0 and we leave MuJoCo's internal PD
-  // hold active instead of clobbering it with zero-torque packets.
+  // Skip sending if no motion controller has set non-zero gains.
   bool has_active_cmd = false;
   for (std::size_t i = 0; i < n_joints_; ++i) {
     if (kp_cmd_[i] != 0.0 || kd_cmd_[i] != 0.0) {
