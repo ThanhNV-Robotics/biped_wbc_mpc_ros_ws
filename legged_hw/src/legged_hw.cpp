@@ -41,10 +41,15 @@ LeggedHW::on_init(const hardware_interface::HardwareComponentInterfaceParams& pa
 
   const hardware_interface::HardwareInfo& hw_info = get_hardware_info();
 
-  // UDP config
-  sim_ip_     = hw_param(hw_info, "sim_ip",         "127.0.0.1");
-  state_port_ = static_cast<uint16_t>(std::stoi(hw_param(hw_info, "state_port", "9870")));
-  cmd_port_   = static_cast<uint16_t>(std::stoi(hw_param(hw_info, "cmd_port",   "9871")));
+  // UDP config — use_sim selects MuJoCo (sim_ip) or real hardware (hw_ip)
+  use_sim_ = hw_param(hw_info, "use_sim", "true") == "true";
+  const std::string sim_ip = hw_param(hw_info, "sim_ip", UDP_DEFAULT_SIM_IP);
+  const std::string hw_ip  = hw_param(hw_info, "hw_ip",  UDP_DEFAULT_HW_IP);
+  target_ip_  = use_sim_ ? sim_ip : hw_ip;
+  state_port_ = static_cast<uint16_t>(std::stoi(hw_param(hw_info, "state_port",
+                                                 std::to_string(UDP_DEFAULT_STATE_PORT))));
+  cmd_port_   = static_cast<uint16_t>(std::stoi(hw_param(hw_info, "cmd_port",
+                                                 std::to_string(UDP_DEFAULT_CMD_PORT))));
 
   // IMU sensor name
   if (!hw_info.sensors.empty())
@@ -66,8 +71,9 @@ LeggedHW::on_init(const hardware_interface::HardwareComponentInterfaceParams& pa
   kd_cmd_.assign(n_joints_, 0.0);
 
   RCLCPP_INFO(rclcpp::get_logger("LeggedHW"),
-              "Initialized %zu joints — UDP state:%s:%u  cmd port:%u",
-              n_joints_, sim_ip_.c_str(), state_port_, cmd_port_);
+              "Initialized %zu joints — mode:%s  target:%s  state_port:%u  cmd_port:%u",
+              n_joints_, use_sim_ ? "SIM" : "REAL_HW",
+              target_ip_.c_str(), state_port_, cmd_port_);
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -137,18 +143,21 @@ LeggedHW::on_activate(const rclcpp_lifecycle::State& /*previous_state*/)
   }
 
   // Open UDP send socket (commands TO sim/robot)
-  if (!send_sock_.open_sender(sim_ip_, cmd_port_)) {
+  if (!send_sock_.open_sender(target_ip_, cmd_port_)) {
     RCLCPP_ERROR(rclcpp::get_logger("LeggedHW"),
-                 "Failed to open UDP send socket to %s:%u", sim_ip_.c_str(), cmd_port_);
+                 "Failed to open UDP send socket to %s:%u", target_ip_.c_str(), cmd_port_);
     return hardware_interface::CallbackReturn::ERROR;
   }
 
   recv_running_ = true;
   recv_thread_  = std::thread(&LeggedHW::recvLoop, this);
+  watchdog_thread_ = std::thread(&LeggedHW::watchdogLoop, this);
 
   RCLCPP_INFO(rclcpp::get_logger("LeggedHW"),
               "LeggedHW activated — listening on :%u, sending to %s:%u",
-              state_port_, sim_ip_.c_str(), cmd_port_);
+              state_port_, target_ip_.c_str(), cmd_port_);
+  RCLCPP_INFO(rclcpp::get_logger("LeggedHW"),
+              "Waiting for hardware connection (UDP packets on port %u)...", state_port_);
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -157,7 +166,8 @@ LeggedHW::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   recv_running_ = false;
   recv_sock_.close();  // unblocks recvfrom
-  if (recv_thread_.joinable()) recv_thread_.join();
+  if (recv_thread_.joinable())    recv_thread_.join();
+  if (watchdog_thread_.joinable()) watchdog_thread_.join();
   send_sock_.close();
 
   RCLCPP_INFO(rclcpp::get_logger("LeggedHW"), "LeggedHW deactivated.");
@@ -178,6 +188,35 @@ void LeggedHW::recvLoop()
     std::lock_guard<std::mutex> lk(state_mutex_);
     latest_state_ = pkt;
     state_fresh_  = true;
+    if (!hw_connected_) {
+      hw_connected_ = true;
+      RCLCPP_INFO(rclcpp::get_logger("LeggedHW"), "Hardware connected — receiving UDP data.");
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// watchdogLoop — logs a warning every 2 s while no hardware data arrives
+// ─────────────────────────────────────────────────────────────────────────────
+
+void LeggedHW::watchdogLoop()
+{
+  constexpr int WARN_INTERVAL_S = 2;
+  while (recv_running_) {
+    for (int i = 0; i < WARN_INTERVAL_S * 10 && recv_running_; ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    if (!recv_running_) break;
+
+    bool connected = false;
+    {
+      std::lock_guard<std::mutex> lk(state_mutex_);
+      connected = hw_connected_;
+    }
+    if (!connected)
+      RCLCPP_WARN(rclcpp::get_logger("LeggedHW"),
+                  "No UDP data from hardware yet — waiting for %s:%u ...",
+                  target_ip_.c_str(), state_port_);
   }
 }
 
@@ -189,16 +228,16 @@ hardware_interface::return_type
 LeggedHW::read(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
 {
   RobotStatePacket snap{};
-  bool fresh = false;
   {
     std::lock_guard<std::mutex> lk(state_mutex_);
-    snap  = latest_state_;
-    fresh = state_fresh_;
+    snap         = latest_state_;
     state_fresh_ = false;
   }
 
-  if (!fresh) return hardware_interface::return_type::OK;
-
+  // Always write to state interfaces so ros2_control sees valid (possibly
+  // zero/stale) data even before the hardware connects.  Skipping this when
+  // no fresh packet arrived caused joint_state_broadcaster to time out on
+  // activation in Jazzy because it waited for at least one read cycle.
   const uint32_t n = std::min(snap.num_joints, static_cast<uint32_t>(n_joints_));
   for (uint32_t i = 0; i < n; ++i) {
     pos_state_[i] = static_cast<double>(snap.joint_pos[i]);
@@ -206,7 +245,6 @@ LeggedHW::read(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
     eff_state_[i] = static_cast<double>(snap.joint_torque[i]);
   }
 
-  // IMU — RobotStatePacket stores quat as w,x,y,z
   imu_orientation_[0] = static_cast<double>(snap.imu_quat[0]);  // w
   imu_orientation_[1] = static_cast<double>(snap.imu_quat[1]);  // x
   imu_orientation_[2] = static_cast<double>(snap.imu_quat[2]);  // y

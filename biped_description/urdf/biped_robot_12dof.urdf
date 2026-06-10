@@ -13,7 +13,10 @@
   <xacro:arg name="udp_cmd_port" default="9871"/>
   <!-- legged_hw: use instead of MujocoSystemInterface (real robot or UDP bridge) -->
   <xacro:arg name="use_legged_hw" default="false"/>
+  <!-- use_sim:=true → connect to MuJoCo (sim_ip); use_sim:=false → connect to STM32 (hw_ip) -->
+  <xacro:arg name="legged_hw_use_sim" default="true"/>
   <xacro:arg name="legged_hw_sim_ip" default="127.0.0.1"/>
+  <xacro:arg name="legged_hw_hw_ip" default="192.168.1.100"/>
   <xacro:arg name="legged_hw_state_port" default="9870"/>
   <xacro:arg name="legged_hw_cmd_port" default="9871"/>
 
@@ -571,7 +574,9 @@
   <ros2_control name="LeggedSystem" type="system">
     <hardware>
       <plugin>legged_hw/LeggedHW</plugin>
+      <param name="use_sim">$(arg legged_hw_use_sim)</param>
       <param name="sim_ip">$(arg legged_hw_sim_ip)</param>
+      <param name="hw_ip">$(arg legged_hw_hw_ip)</param>
       <param name="state_port">$(arg legged_hw_state_port)</param>
       <param name="cmd_port">$(arg legged_hw_cmd_port)</param>
     </hardware>

@@ -51,6 +51,7 @@ public:
 
 private:
   void recvLoop();
+  void watchdogLoop();
 
   // Per-joint state + command buffers (indexed by joint order in URDF)
   std::vector<std::string> joint_names_;
@@ -77,15 +78,18 @@ private:
   UdpSocket send_sock_;
 
   std::thread recv_thread_;
+  std::thread watchdog_thread_;
   std::atomic<bool> recv_running_{false};
 
   RobotStatePacket latest_state_{};
   std::mutex       state_mutex_;
   bool             state_fresh_{false};
+  bool             hw_connected_{false};
 
-  std::string sim_ip_{"127.0.0.1"};
-  uint16_t    state_port_{9870};
-  uint16_t    cmd_port_{9871};
+  bool        use_sim_{true};
+  std::string target_ip_{UDP_DEFAULT_SIM_IP};  // resolved in on_init()
+  uint16_t    state_port_{UDP_DEFAULT_STATE_PORT};
+  uint16_t    cmd_port_{UDP_DEFAULT_CMD_PORT};
 };
 
 }  // namespace legged_hw

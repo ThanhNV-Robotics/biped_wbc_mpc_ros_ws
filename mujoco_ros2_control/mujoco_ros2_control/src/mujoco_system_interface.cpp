@@ -1189,11 +1189,13 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
 
   if (udp_enabled_) {
     const std::string controller_ip =
-        get_hardware_parameter_or(get_hardware_info(), "udp_controller_ip", "127.0.0.1");
+        get_hardware_parameter_or(get_hardware_info(), "udp_controller_ip", UDP_DEFAULT_IP);
     const uint16_t state_port = static_cast<uint16_t>(
-        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_state_port", "9870")));
+        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_state_port",
+                                            std::to_string(UDP_DEFAULT_STATE_PORT))));
     const uint16_t cmd_port = static_cast<uint16_t>(
-        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_cmd_port", "9871")));
+        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_cmd_port",
+                                            std::to_string(UDP_DEFAULT_CMD_PORT))));
 
     if (!udp_send_socket_.open_sender(controller_ip, state_port)) {
       RCLCPP_ERROR(get_logger(), "UDP: failed to open send socket to %s:%u",

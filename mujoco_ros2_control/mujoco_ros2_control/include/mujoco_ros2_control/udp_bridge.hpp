@@ -14,7 +14,10 @@
 
 namespace mujoco_ros2_control {
 
-static constexpr uint32_t UDP_MAX_JOINTS = 32;
+static constexpr uint32_t    UDP_MAX_JOINTS          = 32;
+static constexpr const char* UDP_DEFAULT_IP           = "127.0.0.1";
+static constexpr uint16_t    UDP_DEFAULT_STATE_PORT   = 9870;
+static constexpr uint16_t    UDP_DEFAULT_CMD_PORT     = 9871;
 
 // Sent by MujocoSystemInterface to the controller (sim → controller).
 // Packed snapshot of the full robot state at one control cycle.

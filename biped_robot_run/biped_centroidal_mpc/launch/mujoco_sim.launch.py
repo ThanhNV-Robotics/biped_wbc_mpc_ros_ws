@@ -77,7 +77,9 @@ def launch_setup(context, *_args, **_kwargs):
                 " ",
                 PathJoinSubstitution([biped_pkg_share, "urdf", "biped_robot_12dof.urdf"]),
                 " use_legged_hw:=true",
+                " legged_hw_use_sim:=",    LaunchConfiguration("legged_hw_use_sim"),
                 " legged_hw_sim_ip:=",     LaunchConfiguration("legged_hw_sim_ip"),
+                " legged_hw_hw_ip:=",      LaunchConfiguration("legged_hw_hw_ip"),
                 " legged_hw_state_port:=", LaunchConfiguration("legged_hw_state_port"),
                 " legged_hw_cmd_port:=",   LaunchConfiguration("legged_hw_cmd_port"),
             ]
@@ -112,28 +114,28 @@ def launch_setup(context, *_args, **_kwargs):
                 output="both",
                 parameters=[
                     legged_hw_robot_description,
-                    {"use_sim_time": True},
                     ParameterFile(legged_hw_controllers, allow_substs=False),
+                    {"use_sim_time": True},   # must be LAST — overrides any stale value
                 ],
                 on_exit=Shutdown(),
             )
         )
 
-        # Spawners target /legged_hw/controller_manager.
-        # --param-file delivers per-controller config (sensor_name, joints, etc.)
-        for controller in ["joint_state_broadcaster", "imu_sensor_broadcaster"]:
-            nodes.append(
-                Node(
-                    package="controller_manager",
-                    executable="spawner",
-                    arguments=[
-                        controller,
-                        "--controller-manager", "/legged_hw/controller_manager",
-                        "--param-file", legged_hw_controllers,
-                    ],
-                    output="both",
-                )
+        # Single spawner activates both controllers atomically — avoids the
+        # switch_controller timeout that happens when two spawners race.
+        nodes.append(
+            Node(
+                package="controller_manager",
+                executable="spawner",
+                arguments=[
+                    "joint_state_broadcaster",
+                    "imu_sensor_broadcaster",
+                    "--controller-manager", "/legged_hw/controller_manager",
+                    "--param-file", legged_hw_controllers,
+                ],
+                output="both",
             )
+        )
 
     return nodes
 
@@ -160,13 +162,23 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "use_legged_hw",
-            default_value="false",
+            default_value="true",
             description="Start legged_hw ros2_control node alongside MuJoCo (enables UDP automatically)",
+        ),
+        DeclareLaunchArgument(
+            "legged_hw_use_sim",
+            default_value="true",
+            description="true: legged_hw connects to MuJoCo (sim_ip); false: connects to real STM32 (hw_ip)",
         ),
         DeclareLaunchArgument(
             "legged_hw_sim_ip",
             default_value="127.0.0.1",
-            description="IP of the machine running MuJoCo (legged_hw sends commands here)",
+            description="IP of the MuJoCo machine (used when legged_hw_use_sim:=true)",
+        ),
+        DeclareLaunchArgument(
+            "legged_hw_hw_ip",
+            default_value="192.168.1.100",
+            description="IP of the STM32 board (used when legged_hw_use_sim:=false)",
         ),
         DeclareLaunchArgument(
             "legged_hw_state_port",
