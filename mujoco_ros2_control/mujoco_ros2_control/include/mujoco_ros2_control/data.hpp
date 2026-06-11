@@ -90,6 +90,10 @@ struct MuJoCoActuatorData
   InterfaceData velocity_interface{ hardware_interface::HW_IF_VELOCITY };
   InterfaceData effort_interface{ hardware_interface::HW_IF_EFFORT };
   InterfaceData feedforward_effort_interface{ "feedforward_effort" };
+  // Per-cycle variable gains (HybridJoint pattern). NaN until claimed/written by a controller,
+  // at which point they override the static pd_kp/pd_kd loaded from YAML.
+  InterfaceData kp_interface_{ "kp" };
+  InterfaceData kd_interface_{ "kd" };
   double pd_kp{ 0.0 };
   double pd_kd{ 0.0 };
   ActuatorType actuator_type{ ActuatorType::UNKNOWN };
@@ -216,6 +220,24 @@ struct IMUSensorData
   std::vector<double> orientation_covariance;
   std::vector<double> angular_velocity_covariance;
   std::vector<double> linear_acceleration_covariance;
+};
+
+/**
+ * Data for a contact sensor mapped to a MuJoCo body.
+ * Exposed as a state interface "<name>/contact" (1.0 = in contact, 0.0 = not in contact).
+ *
+ * URDF xacro declaration:
+ *   <sensor name="<NAME>">
+ *     <state_interface name="contact"/>
+ *     <param name="mujoco_type">contact</param>
+ *     <param name="mujoco_body_name"><BODY_NAME></param>
+ *   </sensor>
+ */
+struct ContactSensorData
+{
+  std::string name;
+  double contact_state{ 0.0 };
+  int mj_body_id{ -1 };
 };
 
 }  // namespace mujoco_ros2_control

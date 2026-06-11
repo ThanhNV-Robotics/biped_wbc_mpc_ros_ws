@@ -15,6 +15,9 @@
   <depend>controller_interface</depend>
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
+  <depend>legged_estimation</depend>
+  <depend>legged_interface</depend>
+
 
   <!-- TODO(step2): uncomment as each dependency is ported to ROS2
   <depend>legged_common</depend>

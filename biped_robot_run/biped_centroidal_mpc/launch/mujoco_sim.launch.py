@@ -12,14 +12,14 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def launch_setup(context, *_args, **_kwargs):
-    biped_pkg_share = FindPackageShare("biped_description")
-    this_pkg_share  = FindPackageShare("biped_centroidal_mpc")
+    biped_pkg_share  = FindPackageShare("biped_description")
+    this_pkg_share   = FindPackageShare("biped_centroidal_mpc")
 
-    pd_gains_file  = LaunchConfiguration("pd_gains_file").perform(context)
-    use_legged_hw  = LaunchConfiguration("use_legged_hw").perform(context) == "true"
-
-    # When legged_hw is active the sim must broadcast state via UDP.
-    udp_flag = "true" if use_legged_hw else LaunchConfiguration("use_udp").perform(context)
+    pd_gains_file    = LaunchConfiguration("pd_gains_file").perform(context)
+    headless         = LaunchConfiguration("headless").perform(context)
+    controllers_yaml = PathJoinSubstitution(
+        [this_pkg_share, "config", "mujoco_controllers.yaml"]
+    ).perform(context)
 
     # ── MuJoCo robot description (MujocoSystemInterface plugin) ──────────────
     mujoco_robot_desc_str = Command(
@@ -28,11 +28,11 @@ def launch_setup(context, *_args, **_kwargs):
             " ",
             PathJoinSubstitution([biped_pkg_share, "urdf", "biped_robot_12dof.urdf"]),
             " use_pid:=true",
-            " headless:=",         LaunchConfiguration("headless"),
+            " headless:=",          headless,
             " use_mjcf_from_topic:=false",
             " use_transmissions:=false",
-            " use_udp:=",          udp_flag,
             " use_legged_hw:=false",
+            " pd_gains_file:=",     pd_gains_file,
         ]
     ).perform(context)
 
@@ -40,104 +40,40 @@ def launch_setup(context, *_args, **_kwargs):
         "robot_description": ParameterValue(value=mujoco_robot_desc_str, value_type=str)
     }
 
-    nodes = []
-
-    # ── Robot state publisher ─────────────────────────────────────────────────
-    nodes.append(
+    return [
+        # ── Robot state publisher ─────────────────────────────────────────────
         Node(
             package="robot_state_publisher",
             executable="robot_state_publisher",
             output="both",
             parameters=[robot_description, {"use_sim_time": True}],
-        )
-    )
-
-    # ── MuJoCo ros2_control node ──────────────────────────────────────────────
-    # pd_gains_file is read by MujocoSystemInterface as a ROS2 parameter.
-    nodes.append(
+        ),
+        # ── MuJoCo ros2_control node ──────────────────────────────────────────
+        # robot_description comes from /robot_description topic.
+        # pd_gains_file is a URDF hardware parameter — passed via xacro above.
         Node(
             package="mujoco_ros2_control",
             executable="ros2_control_node",
             emulate_tty=True,
             output="both",
-            parameters=[{"use_sim_time": True, "pd_gains_file": pd_gains_file}],
+            parameters=[
+                ParameterFile(controllers_yaml, allow_substs=False),
+                {"use_sim_time": True},  # must be last — overrides any stale value
+            ],
             on_exit=Shutdown(),
-        )
-    )
-
-    # ── legged_hw: separate ros2_control node that bridges UDP → ros2_control ─
-    if use_legged_hw:
-        legged_hw_controllers = PathJoinSubstitution(
-            [this_pkg_share, "config", "legged_hw_controllers.yaml"]
-        ).perform(context)
-
-        legged_hw_robot_desc_str = Command(
-            [
-                PathJoinSubstitution([FindExecutable(name="xacro")]),
-                " ",
-                PathJoinSubstitution([biped_pkg_share, "urdf", "biped_robot_12dof.urdf"]),
-                " use_legged_hw:=true",
-                " legged_hw_use_sim:=",    LaunchConfiguration("legged_hw_use_sim"),
-                " legged_hw_sim_ip:=",     LaunchConfiguration("legged_hw_sim_ip"),
-                " legged_hw_hw_ip:=",      LaunchConfiguration("legged_hw_hw_ip"),
-                " legged_hw_state_port:=", LaunchConfiguration("legged_hw_state_port"),
-                " legged_hw_cmd_port:=",   LaunchConfiguration("legged_hw_cmd_port"),
-            ]
-        ).perform(context)
-
-        legged_hw_robot_description = {
-            "robot_description": ParameterValue(
-                value=legged_hw_robot_desc_str, value_type=str
-            )
-        }
-
-        # Jazzy controller_manager waits for robot_description on the topic, not
-        # just the parameter.  A namespaced robot_state_publisher publishes to
-        # /legged_hw/robot_description which the namespaced controller_manager finds.
-        nodes.append(
-            Node(
-                package="robot_state_publisher",
-                executable="robot_state_publisher",
-                namespace="legged_hw",
-                output="both",
-                parameters=[legged_hw_robot_description, {"use_sim_time": True}],
-            )
-        )
-
-        # Standard controller_manager node — legged_hw namespace avoids conflicts
-        # with the MuJoCo controller_manager.
-        nodes.append(
-            Node(
-                package="controller_manager",
-                executable="ros2_control_node",
-                namespace="legged_hw",
-                output="both",
-                parameters=[
-                    legged_hw_robot_description,
-                    ParameterFile(legged_hw_controllers, allow_substs=False),
-                    {"use_sim_time": True},   # must be LAST — overrides any stale value
-                ],
-                on_exit=Shutdown(),
-            )
-        )
-
-        # Single spawner activates both controllers atomically — avoids the
-        # switch_controller timeout that happens when two spawners race.
-        nodes.append(
-            Node(
-                package="controller_manager",
-                executable="spawner",
-                arguments=[
-                    "joint_state_broadcaster",
-                    "imu_sensor_broadcaster",
-                    "--controller-manager", "/legged_hw/controller_manager",
-                    "--param-file", legged_hw_controllers,
-                ],
-                output="both",
-            )
-        )
-
-    return nodes
+        ),
+        # ── Controller spawner ────────────────────────────────────────────────
+        Node(
+            package="controller_manager",
+            executable="spawner",
+            arguments=[
+                "joint_state_broadcaster",
+                "imu_sensor_broadcaster",
+                "--param-file", controllers_yaml,
+            ],
+            output="both",
+        ),
+    ]
 
 
 def generate_launch_description():
@@ -154,41 +90,6 @@ def generate_launch_description():
             "pd_gains_file",
             default_value=default_pd_gains,
             description="Path to YAML file with PD gains for MuJoCo internal hold-position mode",
-        ),
-        DeclareLaunchArgument(
-            "use_udp",
-            default_value="false",
-            description="Enable MuJoCo UDP state bridge (auto-enabled when use_legged_hw:=true)",
-        ),
-        DeclareLaunchArgument(
-            "use_legged_hw",
-            default_value="true",
-            description="Start legged_hw ros2_control node alongside MuJoCo (enables UDP automatically)",
-        ),
-        DeclareLaunchArgument(
-            "legged_hw_use_sim",
-            default_value="true",
-            description="true: legged_hw connects to MuJoCo (sim_ip); false: connects to real STM32 (hw_ip)",
-        ),
-        DeclareLaunchArgument(
-            "legged_hw_sim_ip",
-            default_value="127.0.0.1",
-            description="IP of the MuJoCo machine (used when legged_hw_use_sim:=true)",
-        ),
-        DeclareLaunchArgument(
-            "legged_hw_hw_ip",
-            default_value="192.168.1.100",
-            description="IP of the STM32 board (used when legged_hw_use_sim:=false)",
-        ),
-        DeclareLaunchArgument(
-            "legged_hw_state_port",
-            default_value="9870",
-            description="UDP port legged_hw listens on for state packets from MuJoCo",
-        ),
-        DeclareLaunchArgument(
-            "legged_hw_cmd_port",
-            default_value="9871",
-            description="UDP port legged_hw sends command packets to MuJoCo",
         ),
         OpaqueFunction(function=launch_setup),
     ])

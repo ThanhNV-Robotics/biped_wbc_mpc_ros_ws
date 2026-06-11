@@ -5,18 +5,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake REQUIRED)
+find_package(Boost REQUIRED COMPONENTS system filesystem log_setup log)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(controller_interface REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(legged_estimation REQUIRED)
+find_package(legged_interface REQUIRED)
+find_package(ocs2_centroidal_model REQUIRED)
+find_package(ocs2_core REQUIRED)
+find_package(ocs2_mpc REQUIRED)
+find_package(ocs2_legged_robot_ros REQUIRED)
 
-# TODO(step2): uncomment as each dependency is ported to ROS2
-# find_package(legged_common REQUIRED)
-# find_package(legged_interface REQUIRED)
-# find_package(legged_estimation REQUIRED)
 # find_package(legged_wbc REQUIRED)
-# find_package(ocs2_legged_robot_ros REQUIRED)
 # find_package(ocs2_self_collision_visualization REQUIRED)
 # find_package(angles REQUIRED)
 
@@ -35,6 +37,12 @@ ament_target_dependencies(${PROJECT_NAME}
   controller_interface
   hardware_interface
   pluginlib
+  legged_estimation
+  legged_interface
+  ocs2_centroidal_model
+  ocs2_core
+  ocs2_mpc
+  ocs2_legged_robot_ros
 )
 
 pluginlib_export_plugin_description_file(controller_interface legged_controllers_plugins.xml)
@@ -61,6 +69,7 @@ ament_export_dependencies(
   controller_interface
   hardware_interface
   pluginlib
+  legged_estimation
 )
 
 ament_package()

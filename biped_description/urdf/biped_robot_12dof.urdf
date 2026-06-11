@@ -4,13 +4,10 @@
   <!-- For ros2_control: Whether or not to use PID control -->
   <xacro:arg name="use_pid" default="false"/>
   <xacro:arg name="headless" default="false"/>
+  <!-- Path to YAML file with PD gains for MuJoCo internal hold-position mode -->
+  <xacro:arg name="pd_gains_file" default=""/>
   <xacro:arg name="use_mjcf_from_topic" default="false"/>
   <xacro:arg name="use_transmissions" default="false"/>
-  <!-- MuJoCo UDP bridge (mujoco_ros2_control → external controller) -->
-  <xacro:arg name="use_udp" default="false"/>
-  <xacro:arg name="udp_controller_ip" default="127.0.0.1"/>
-  <xacro:arg name="udp_state_port" default="9870"/>
-  <xacro:arg name="udp_cmd_port" default="9871"/>
   <!-- legged_hw: use instead of MujocoSystemInterface (real robot or UDP bridge) -->
   <xacro:arg name="use_legged_hw" default="false"/>
   <!-- use_sim:=true → connect to MuJoCo (sim_ip); use_sim:=false → connect to STM32 (hw_ip) -->
@@ -349,11 +346,10 @@
       <!-- If set to true, will not launch the Simulate App window -->
       <param name="headless">$(arg headless)</param>
 
-      <!-- UDP bridge: sends robot state to external controller, receives joint commands -->
-      <param name="use_udp">$(arg use_udp)</param>
-      <param name="udp_controller_ip">$(arg udp_controller_ip)</param>
-      <param name="udp_state_port">$(arg udp_state_port)</param>
-      <param name="udp_cmd_port">$(arg udp_cmd_port)</param>
+      <!-- Path to PD gains YAML for internal hold-position mode (empty = disabled) -->
+      <param name="pd_gains_file">$(arg pd_gains_file)</param>
+
+
 
     </hardware>
     <joint name="left_hip_pitch_joint">

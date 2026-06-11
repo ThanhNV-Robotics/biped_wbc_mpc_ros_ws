@@ -32,9 +32,6 @@
 #include <hardware_interface/hardware_info.hpp>
 #include <hardware_interface/system_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
-#include <mujoco_ros2_control_msgs/srv/reset_world.hpp>
-#include <mujoco_ros2_control_msgs/srv/set_pause.hpp>
-#include <mujoco_ros2_control_msgs/srv/step_simulation.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/macros.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -42,7 +39,6 @@
 #include <rclcpp_lifecycle/state.hpp>
 #include <realtime_tools/realtime_publisher.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
-#include <sensor_msgs/msg/joint_state.hpp>
 
 #include <mujoco/mujoco.h>
 
@@ -51,7 +47,6 @@
 #include "simulate.h"      // must be on your include path, handled by CMake
 
 #include "mujoco_ros2_control/data.hpp"
-#include "mujoco_ros2_control/udp_bridge.hpp"
 
 #include <pluginlib/class_list_macros.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -274,21 +269,6 @@ private:
   void reset_simulation_state(bool fill_initial_state);
 
   /**
-   * @brief Service callback for reset_world service.
-   *
-   * This method resets all joints to their initial positions and velocities,
-   * and resets all free bodies (objects) to their spawned positions.
-   */
-  void reset_world_callback(const std::shared_ptr<mujoco_ros2_control_msgs::srv::ResetWorld::Request> request,
-                            std::shared_ptr<mujoco_ros2_control_msgs::srv::ResetWorld::Response> response);
-
-  void set_pause_callback(const std::shared_ptr<mujoco_ros2_control_msgs::srv::SetPause::Request> request,
-                          std::shared_ptr<mujoco_ros2_control_msgs::srv::SetPause::Response> response);
-
-  void step_simulation_callback(const std::shared_ptr<mujoco_ros2_control_msgs::srv::StepSimulation::Request> request,
-                                std::shared_ptr<mujoco_ros2_control_msgs::srv::StepSimulation::Response> response);
-
-  /**
    * @brief Spins the physics simulation for the Simulate Application
    */
   void PhysicsLoop();
@@ -331,6 +311,9 @@ private:
 
   // Data container for control data
   mjData* mj_data_control_{ nullptr };
+  // Protects mj_data_control_ between the physics thread, read(), and write().
+  // Never held across mj_step() so the physics step itself runs lock-free.
+  std::mutex control_data_mutex_;
 
   // For rendering
   mjvCamera cam_;
@@ -350,28 +333,28 @@ private:
   // Primary simulate object
   std::unique_ptr<mujoco::Simulate> sim_;
 
-  // Threads for rendering physics, the UI simulation, and the ROS node
+  // Threads for rendering physics and the UI simulation
   std::thread physics_thread_;
   std::thread ui_thread_;
 
-  // Provides access to ROS interfaces for elements that require it
-  std::shared_ptr<rclcpp::Node> mujoco_node_;
-  std::unique_ptr<rclcpp::executors::MultiThreadedExecutor> executor_;
-  std::thread executor_thread_;
+  // Minimal ROS node used only for the /clock publisher (sim time).
+  // Added to the controller_manager's executor on Jazzy; owns a single-threaded
+  // executor on Humble.  No services, no monitoring publishers live here.
+  std::shared_ptr<rclcpp::Node> clock_node_;
+#if ROS_DISTRO_HUMBLE
+  std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> clock_executor_;
+  std::thread clock_executor_thread_;
+#else
+  rclcpp::Executor::WeakPtr cm_executor_;
+#endif
 
   // Primary clock publisher for the world
   std::shared_ptr<rclcpp::Publisher<rosgraph_msgs::msg::Clock>> clock_publisher_;
   realtime_tools::RealtimePublisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_realtime_publisher_;
 
-  // Actuators state publisher
-  std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::JointState>> actuator_state_publisher_ = nullptr;
-  realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>::SharedPtr actuator_state_realtime_publisher_ =
-      nullptr;
-  sensor_msgs::msg::JointState actuator_state_msg_;
-
-  // Floating base state publisher
-  std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> floating_base_publisher_ = nullptr;
-  realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>::SharedPtr floating_base_realtime_publisher_ = nullptr;
+  // Floating-base odometry publisher (only created when a free joint is present)
+  std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> floating_base_publisher_;
+  realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>::SharedPtr floating_base_realtime_publisher_;
   nav_msgs::msg::Odometry floating_base_msg_;
 
   // Free joint data
@@ -407,21 +390,10 @@ private:
 
   std::vector<FTSensorData> ft_sensor_data_;
   std::vector<IMUSensorData> imu_sensor_data_;
+  std::vector<ContactSensorData> contact_sensor_data_;
 
   bool override_mujoco_actuator_positions_{ false };
   bool override_urdf_joint_positions_{ false };
-
-  // Reset world service
-  rclcpp::CallbackGroup::SharedPtr reset_world_cb_group_;
-  rclcpp::Service<mujoco_ros2_control_msgs::srv::ResetWorld>::SharedPtr reset_world_service_;
-
-  // Set pause service
-  rclcpp::CallbackGroup::SharedPtr set_pause_cb_group_;
-  rclcpp::Service<mujoco_ros2_control_msgs::srv::SetPause>::SharedPtr set_pause_service_;
-
-  // Step simulation service
-  rclcpp::CallbackGroup::SharedPtr step_simulation_cb_group_;
-  rclcpp::Service<mujoco_ros2_control_msgs::srv::StepSimulation>::SharedPtr step_simulation_service_;
 
   // Pending steps to execute while paused, and synchronization for blocking callers
   std::atomic<uint32_t> pending_steps_{ 0 };
@@ -438,24 +410,6 @@ private:
   std::vector<mjtNum> initial_ctrl_;
   std::string initial_keyframe_ = "";
 
-  // ── UDP bridge ──────────────────────────────────────────────────────────────
-  // When enabled via the "use_udp" hardware parameter, the interface sends a
-  // full robot-state snapshot over UDP on every read() and applies the most
-  // recently received JointCommandPacket in write() (overriding ros2_control
-  // command interfaces for the duration of that cycle).
-  bool       udp_enabled_  { false };
-  UdpSocket  udp_send_socket_;   // sim → controller  (state)
-  UdpSocket  udp_recv_socket_;   // controller → sim  (command)
-
-  // Latest command packet written by the recv thread, read by write().
-  JointCommandPacket  udp_latest_cmd_{};
-  std::mutex          udp_cmd_mutex_;
-  bool                udp_cmd_fresh_{ false };  // true once first packet arrives
-
-  std::thread       udp_recv_thread_;
-  std::atomic<bool> udp_recv_running_{ false };
-
-  void udpRecvLoop();   // background thread body
 };
 
 }  // namespace mujoco_ros2_control

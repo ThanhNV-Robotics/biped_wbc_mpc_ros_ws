@@ -56,7 +56,25 @@ controller_interface::CallbackReturn LeggedCheaterController::on_init()
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
-}  // namespace legged
+void LeggedController::updateStatesEstimatate(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/)
+{
+  // TODO(step3): update state estimation (e.g., using a complementary filter or a Kalman filter)
+}
+
+void LeggedController::setupStateEstimate(const std::string& taskFile, bool verbose)
+{
+  // TODO(step3): set up state estimation (e.g., subscribe to IMU and joint state topics)
+  // This function ready to be called in taskfile.info which include the Kalman filter parameters and initilize the robot state estimation
+
+  // step 1: init the Kalman filter state estimation
+   stateEstimate_ = std::make_shared<KalmanFilterEstimate>(legged_interface_->getPinocchioInterface(),
+                                                          legged_interface_->getCentroidalModelInfo(), *eeKinematicsPtr_);
+  // step 2: load the Kalman filter parameters from the task file
+  dynamic_cast<KalmanFilterEstimate&>(*stateEstimate_).loadSettings(taskFile, verbose);
+  currentObservation_.time = 0;
+}
+
+}// namespace legged
 
 PLUGINLIB_EXPORT_CLASS(legged::LeggedController, controller_interface::ControllerInterface)
 PLUGINLIB_EXPORT_CLASS(legged::LeggedCheaterController, controller_interface::ControllerInterface)

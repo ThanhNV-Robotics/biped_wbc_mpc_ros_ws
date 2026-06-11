@@ -688,12 +688,16 @@ MujocoSystemInterface::~MujocoSystemInterface()
     }
   }
 
-  // Stop ROS
-  if (executor_)
+#if ROS_DISTRO_HUMBLE
+  if (clock_executor_)
   {
-    executor_->cancel();
-    executor_thread_.join();
+    clock_executor_->cancel();
+    clock_executor_thread_.join();
   }
+#else
+  if (auto exec = cm_executor_.lock())
+    exec->remove_node(clock_node_);
+#endif
 
   // Remove all transmission instances
   transmission_instances_.clear();
@@ -863,22 +867,29 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   // Load the model and data prior to hw registration and starting the physics thread
   sim_->LoadMessage(model_path_.c_str());
 
-  // Construct and start the ROS node spinning
+  // Minimal clock node — publishes /clock and hosts plugin parameters.
+  // No services, no monitoring publishers.
   rclcpp::NodeOptions node_options;
-  node_options.append_parameter_override("use_sim_time", rclcpp::ParameterValue(true));
+  node_options.append_parameter_override("use_sim_time", rclcpp::ParameterValue(false));
   node_options.automatically_declare_parameters_from_overrides(true);
   node_options.allow_undeclared_parameters(true);
-  RCLCPP_INFO(get_logger(), "Constructing node and executor...");
-  executor_ = std::make_unique<rclcpp::executors::MultiThreadedExecutor>();
-  mujoco_node_ = std::make_shared<rclcpp::Node>("mujoco_ros2_control_node", node_options);
-  executor_->add_node(mujoco_node_);
-  executor_thread_ = std::thread([this]() { executor_->spin(); });
-  RCLCPP_INFO(get_logger(), "Executor thread started.");
+  RCLCPP_INFO(get_logger(), "Constructing clock node...");
+  clock_node_ = std::make_shared<rclcpp::Node>("mujoco_clock", node_options);
+#if ROS_DISTRO_HUMBLE
+  clock_executor_ = std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
+  clock_executor_->add_node(clock_node_);
+  clock_executor_thread_ = std::thread([this]() { clock_executor_->spin(); });
+  RCLCPP_INFO(get_logger(), "Clock executor thread started.");
+#else
+  cm_executor_ = params.executor;
+  if (auto exec = cm_executor_.lock())
+    exec->add_node(clock_node_);
+#endif
 
   const std::string mujoco_model_topic =
       get_hardware_parameter_or(get_hardware_info(), "mujoco_model_topic", "/mujoco_robot_description");
   RCLCPP_INFO(get_logger(), "Loading model...");
-  mj_model_ = LoadModel(model_path_.c_str(), mujoco_model_topic, *sim_, get_node());
+  mj_model_ = LoadModel(model_path_.c_str(), mujoco_model_topic, *sim_, clock_node_);
   if (!mj_model_)
   {
     RCLCPP_FATAL(get_logger(), "MuJoCo failed to load the model");
@@ -896,16 +907,11 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     return hardware_interface::CallbackReturn::ERROR;
   }
 
-  // Time publisher will be pushed from the physics_thread_
-  RCLCPP_INFO(get_logger(), "Constructing publishers.");
-  clock_publisher_ = get_node()->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 1);
+  // Clock publisher — pushed from the physics_thread_ each step.
+  RCLCPP_INFO(get_logger(), "Constructing clock publisher.");
+  clock_publisher_ = clock_node_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 1);
   clock_realtime_publisher_ =
       std::make_shared<realtime_tools::RealtimePublisher<rosgraph_msgs::msg::Clock>>(clock_publisher_);
-
-  actuator_state_publisher_ =
-      get_node()->create_publisher<sensor_msgs::msg::JointState>("/mujoco_actuators_states", 100);
-  actuator_state_realtime_publisher_ =
-      std::make_shared<realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>>(actuator_state_publisher_);
 
   // We explicitly check to make sure that all joints have names, otherwise stuff down the line won't work
   int num_joints_without_name = 0;
@@ -940,9 +946,7 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   //     kd:
   //       <joint_name>: <value>
   {
-    std::string pd_gains_file;
-    if (get_node()->has_parameter("pd_gains_file"))
-      pd_gains_file = get_node()->get_parameter("pd_gains_file").as_string();
+    std::string pd_gains_file = get_hardware_parameter_or(get_hardware_info(), "pd_gains_file", "");
     // Trim any stray whitespace
     pd_gains_file.erase(0, pd_gains_file.find_first_not_of(" \t\n\r\f\v"));
     pd_gains_file.erase(pd_gains_file.find_last_not_of(" \t\n\r\f\v") + 1);
@@ -952,8 +956,8 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     if (pd_gains_file.empty())
     {
       RCLCPP_WARN(get_logger(),
-                  "ROS2 parameter 'pd_gains_file' not set — internal PD mode disabled. "
-                  "Pass it from the launch file: parameters=[{\"pd_gains_file\": \"/path/to/gains.yaml\"}]");
+                  "URDF hardware param 'pd_gains_file' not set — internal PD mode disabled. "
+                  "Add <param name=\"pd_gains_file\">/path/to/gains.yaml</param> to the ros2_control block.");
     }
     else
     {
@@ -1048,7 +1052,7 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     // Odometry publisher
     std::string odom_topic_name =
         get_hardware_parameter_or(get_hardware_info(), "odom_topic", "/simulator/floating_base_state");
-    floating_base_publisher_ = get_node()->create_publisher<nav_msgs::msg::Odometry>(odom_topic_name, 100);
+    floating_base_publisher_ = clock_node_->create_publisher<nav_msgs::msg::Odometry>(odom_topic_name, 100);
     floating_base_realtime_publisher_ =
         std::make_shared<realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>>(floating_base_publisher_);
 
@@ -1083,48 +1087,6 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     initial_qvel_.assign(mj_data_->qvel, mj_data_->qvel + mj_model_->nv);
     initial_ctrl_.assign(mj_data_->ctrl, mj_data_->ctrl + mj_model_->nu);
   }
-
-  // Changed services history QoS to keep all so we don't lose any client service calls
-  // \note The versions conditioning is added here to support the source-compatibility with Humble
-#if RCLCPP_VERSION_MAJOR >= 17
-  rclcpp::QoS qos_services =
-      rclcpp::QoS(rclcpp::QoSInitialization(RMW_QOS_POLICY_HISTORY_KEEP_ALL, 1)).reliable().durability_volatile();
-#else
-  const rmw_qos_profile_t qos_services = { RMW_QOS_POLICY_HISTORY_KEEP_ALL,
-                                           1,  // message queue depth
-                                           RMW_QOS_POLICY_RELIABILITY_RELIABLE,
-                                           RMW_QOS_POLICY_DURABILITY_VOLATILE,
-                                           RMW_QOS_DEADLINE_DEFAULT,
-                                           RMW_QOS_LIFESPAN_DEFAULT,
-                                           RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT,
-                                           RMW_QOS_LIVELINESS_LEASE_DURATION_DEFAULT,
-                                           false };
-#endif
-  reset_world_cb_group_ = get_node()->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  set_pause_cb_group_ = get_node()->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  step_simulation_cb_group_ = get_node()->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-
-  // Create reset_world service
-  reset_world_service_ = get_node()->create_service<mujoco_ros2_control_msgs::srv::ResetWorld>(
-      "~/reset_world",
-      std::bind(&MujocoSystemInterface::reset_world_callback, this, std::placeholders::_1, std::placeholders::_2),
-      qos_services, reset_world_cb_group_);
-  RCLCPP_INFO(get_logger(), "Created reset_world service at: %s/reset_world", get_node()->get_fully_qualified_name());
-
-  // Create set_pause service
-  set_pause_service_ = get_node()->create_service<mujoco_ros2_control_msgs::srv::SetPause>(
-      "~/set_pause",
-      std::bind(&MujocoSystemInterface::set_pause_callback, this, std::placeholders::_1, std::placeholders::_2),
-      qos_services, set_pause_cb_group_);
-  RCLCPP_INFO(get_logger(), "Created set_pause service at: %s/set_pause", get_node()->get_fully_qualified_name());
-
-  // Create step_simulation service
-  step_simulation_service_ = get_node()->create_service<mujoco_ros2_control_msgs::srv::StepSimulation>(
-      "~/step_simulation",
-      std::bind(&MujocoSystemInterface::step_simulation_callback, this, std::placeholders::_1, std::placeholders::_2),
-      qos_services, step_simulation_cb_group_);
-  RCLCPP_INFO(get_logger(), "Created step_simulation service at: %s/step_simulation",
-              get_node()->get_fully_qualified_name());
 
   // Disable the rangefinder flag at startup so that we don't get the yellow lines.
   // We can still turn this on manually if desired.
@@ -1174,42 +1136,8 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     PhysicsLoop();
   });
 
-  actuator_state_msg_.name.clear();
-  for (const auto& actuator : mujoco_actuator_data_)
-  {
-    actuator_state_msg_.name.push_back(actuator.joint_name);
-  }
-
   // Load MuJoCo ROS2 Control plugins
   this->load_mujoco_plugins();
-
-  // ── UDP bridge parameters ─────────────────────────────────────────────────
-  udp_enabled_ = hardware_interface::parse_bool(
-      get_hardware_parameter_or(get_hardware_info(), "use_udp", "false"));
-
-  if (udp_enabled_) {
-    const std::string controller_ip =
-        get_hardware_parameter_or(get_hardware_info(), "udp_controller_ip", UDP_DEFAULT_IP);
-    const uint16_t state_port = static_cast<uint16_t>(
-        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_state_port",
-                                            std::to_string(UDP_DEFAULT_STATE_PORT))));
-    const uint16_t cmd_port = static_cast<uint16_t>(
-        std::stoi(get_hardware_parameter_or(get_hardware_info(), "udp_cmd_port",
-                                            std::to_string(UDP_DEFAULT_CMD_PORT))));
-
-    if (!udp_send_socket_.open_sender(controller_ip, state_port)) {
-      RCLCPP_ERROR(get_logger(), "UDP: failed to open send socket to %s:%u",
-                   controller_ip.c_str(), state_port);
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-    if (!udp_recv_socket_.open_receiver(cmd_port)) {
-      RCLCPP_ERROR(get_logger(), "UDP: failed to bind recv socket on port %u", cmd_port);
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-    RCLCPP_INFO(get_logger(),
-                "UDP bridge enabled — sending state to %s:%u, receiving commands on :%u",
-                controller_ip.c_str(), state_port, cmd_port);
-  }
 
   RCLCPP_INFO(get_logger(), "on_init complete.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -1361,6 +1289,12 @@ std::vector<hardware_interface::StateInterface> MujocoSystemInterface::export_st
     }
   }
 
+  // Contact sensor state interfaces
+  for (auto& contact : contact_sensor_data_)
+  {
+    new_state_interfaces.emplace_back(contact.name, "contact", &contact.contact_state);
+  }
+
   return new_state_interfaces;
 }
 
@@ -1401,13 +1335,15 @@ std::vector<hardware_interface::CommandInterface> MujocoSystemInterface::export_
     }
   }
 
-  // Actuator command interfaces - add feedforward_effort for PD impedance control
+  // Actuator command interfaces - feedforward_effort, kp, kd for HybridJoint PD impedance control
   for (auto& actuator : mujoco_actuator_data_)
   {
     if (actuator.actuator_type != ActuatorType::PASSIVE)
     {
       new_command_interfaces.emplace_back(actuator.joint_name, "feedforward_effort",
                                           &actuator.feedforward_effort_interface.command_);
+      new_command_interfaces.emplace_back(actuator.joint_name, "kp", &actuator.kp_interface_.command_);
+      new_command_interfaces.emplace_back(actuator.joint_name, "kd", &actuator.kd_interface_.command_);
     }
   }
 
@@ -1417,12 +1353,6 @@ std::vector<hardware_interface::CommandInterface> MujocoSystemInterface::export_
 hardware_interface::CallbackReturn MujocoSystemInterface::on_activate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   RCLCPP_INFO(get_logger(), "Activating MuJoCo hardware interface and starting Simulate threads...");
-
-  if (udp_enabled_) {
-    udp_recv_running_ = true;
-    udp_recv_thread_  = std::thread(&MujocoSystemInterface::udpRecvLoop, this);
-    RCLCPP_INFO(get_logger(), "UDP recv thread started.");
-  }
 
   // Enable internal PD hold-position for every actuator that has gains configured.
   // This keeps the robot stable without requiring any ros2_control controller to be
@@ -1444,6 +1374,8 @@ hardware_interface::CallbackReturn MujocoSystemInterface::on_activate(const rclc
     actuator.position_interface.command_           = q;
     actuator.velocity_interface.command_           = qd;
     actuator.feedforward_effort_interface.command_ = 0.0;
+    actuator.kp_interface_.command_                = actuator.pd_kp;
+    actuator.kd_interface_.command_                = actuator.pd_kd;
 
     // Also seed the joint command so joint_command_to_actuator_command() does not
     // overwrite the actuator command with an uninitialised value each cycle.
@@ -1470,12 +1402,6 @@ hardware_interface::CallbackReturn
 MujocoSystemInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   RCLCPP_INFO(get_logger(), "Deactivating MuJoCo hardware interface and shutting down Simulate...");
-
-  if (udp_enabled_) {
-    udp_recv_running_ = false;
-    udp_recv_socket_.close();   // unblocks recvfrom
-    if (udp_recv_thread_.joinable()) udp_recv_thread_.join();
-  }
 
   // TODO: Should we shut MuJoCo things down here or in the destructor?
 
@@ -1527,6 +1453,15 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
 
     if (enabled)
     {
+      // kp/kd are supplementary gain interfaces — they don't select a control mode, so
+      // don't touch the mode flags when they are claimed.
+      if (interface_type == "kp" || interface_type == "kd")
+      {
+        RCLCPP_INFO(get_logger(), "Joint %s: %s interface enabled (variable gain)", joint_name.c_str(),
+                    interface_type.c_str());
+        return;
+      }
+
       // Only one type of control mode can be active at a time, so stop everything first then enable the
       // requested command interface.
 
@@ -1635,11 +1570,14 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
         actuator.position_interface.command_ = mj_data_->qpos[actuator.mj_pos_adr];
         actuator.velocity_interface.command_ = mj_data_->qvel[actuator.mj_vel_adr];
         actuator.feedforward_effort_interface.command_ = 0.0;
-        
+        // Seed kp/kd from YAML; the controller will override per-cycle once active.
+        if (!std::isfinite(actuator.kp_interface_.command_)) actuator.kp_interface_.command_ = actuator.pd_kp;
+        if (!std::isfinite(actuator.kd_interface_.command_)) actuator.kd_interface_.command_ = actuator.pd_kd;
+
         // Also initialize the corresponding joint commands
         auto joint_it = std::find_if(urdf_joint_data_.begin(), urdf_joint_data_.end(),
-                                     [&actuator](const URDFJointData& joint) { 
-                                       return joint.name == actuator.joint_name; 
+                                     [&actuator](const URDFJointData& joint) {
+                                       return joint.name == actuator.joint_name;
                                      });
         if (joint_it != urdf_joint_data_.end())
         {
@@ -1660,130 +1598,113 @@ MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string
 
 hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& time, const rclcpp::Duration& /*period*/)
 {
-  // Joint states
-  actuator_state_msg_.header.stamp = time;
-  actuator_state_msg_.position.clear();
-  actuator_state_msg_.velocity.clear();
-  actuator_state_msg_.effort.clear();
-  for (auto& actuator_state : mujoco_actuator_data_)
+  // All reads from mj_data_control_ are protected against concurrent writes
+  // from the physics thread (which calls mj_copyData under control_data_mutex_).
   {
-    actuator_state.position_interface.state_ = mj_data_control_->qpos[actuator_state.mj_pos_adr];
-    actuator_state.velocity_interface.state_ = mj_data_control_->qvel[actuator_state.mj_vel_adr];
-    actuator_state.effort_interface.state_ = mj_data_control_->qfrc_actuator[actuator_state.mj_vel_adr];
-    actuator_state_msg_.position.push_back(actuator_state.position_interface.state_);
-    actuator_state_msg_.velocity.push_back(actuator_state.velocity_interface.state_);
-    actuator_state_msg_.effort.push_back(actuator_state.effort_interface.state_);
-  }
-  // Publish actuator states
-  if (actuator_state_realtime_publisher_)
-  {
-#if ROS_DISTRO_HUMBLE
-    actuator_state_realtime_publisher_->tryPublish(actuator_state_msg_);
-#else
-    actuator_state_realtime_publisher_->try_publish(actuator_state_msg_);
-#endif
-  }
+    std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+
+    for (auto& actuator_state : mujoco_actuator_data_)
+    {
+      actuator_state.position_interface.state_ = mj_data_control_->qpos[actuator_state.mj_pos_adr];
+      actuator_state.velocity_interface.state_ = mj_data_control_->qvel[actuator_state.mj_vel_adr];
+      actuator_state.effort_interface.state_ = mj_data_control_->qfrc_actuator[actuator_state.mj_vel_adr];
+    }
+
+    // IMU Sensor data
+    for (auto& data : imu_sensor_data_)
+    {
+      data.orientation.data.w() = mj_data_control_->sensordata[data.orientation.mj_sensor_index];
+      data.orientation.data.x() = mj_data_control_->sensordata[data.orientation.mj_sensor_index + 1];
+      data.orientation.data.y() = mj_data_control_->sensordata[data.orientation.mj_sensor_index + 2];
+      data.orientation.data.z() = mj_data_control_->sensordata[data.orientation.mj_sensor_index + 3];
+
+      data.angular_velocity.data.x() = mj_data_control_->sensordata[data.angular_velocity.mj_sensor_index];
+      data.angular_velocity.data.y() = mj_data_control_->sensordata[data.angular_velocity.mj_sensor_index + 1];
+      data.angular_velocity.data.z() = mj_data_control_->sensordata[data.angular_velocity.mj_sensor_index + 2];
+
+      data.linear_acceleration.data.x() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index];
+      data.linear_acceleration.data.y() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index + 1];
+      data.linear_acceleration.data.z() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index + 2];
+    }
+  }  // release control_data_mutex_
 
   actuator_state_to_joint_state();
 
-  // IMU Sensor data
-  for (auto& data : imu_sensor_data_)
   {
-    data.orientation.data.w() = mj_data_control_->sensordata[data.orientation.mj_sensor_index];
-    data.orientation.data.x() = mj_data_control_->sensordata[data.orientation.mj_sensor_index + 1];
-    data.orientation.data.y() = mj_data_control_->sensordata[data.orientation.mj_sensor_index + 2];
-    data.orientation.data.z() = mj_data_control_->sensordata[data.orientation.mj_sensor_index + 3];
+    std::lock_guard<std::mutex> data_lock(control_data_mutex_);
 
-    data.angular_velocity.data.x() = mj_data_control_->sensordata[data.angular_velocity.mj_sensor_index];
-    data.angular_velocity.data.y() = mj_data_control_->sensordata[data.angular_velocity.mj_sensor_index + 1];
-    data.angular_velocity.data.z() = mj_data_control_->sensordata[data.angular_velocity.mj_sensor_index + 2];
+    // FT Sensor data
+    for (auto& data : ft_sensor_data_)
+    {
+      data.force.data.x() = -mj_data_control_->sensordata[data.force.mj_sensor_index];
+      data.force.data.y() = -mj_data_control_->sensordata[data.force.mj_sensor_index + 1];
+      data.force.data.z() = -mj_data_control_->sensordata[data.force.mj_sensor_index + 2];
 
-    data.linear_acceleration.data.x() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index];
-    data.linear_acceleration.data.y() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index + 1];
-    data.linear_acceleration.data.z() = mj_data_control_->sensordata[data.linear_acceleration.mj_sensor_index + 2];
-  }
-
-  // ── UDP: send robot state to controller ──────────────────────────────────
-  if (udp_enabled_ && udp_send_socket_.is_open()) {
-    RobotStatePacket pkt{};
-    pkt.timestamp_ns = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()).count());
-    pkt.num_joints = static_cast<uint32_t>(
-        std::min(mujoco_actuator_data_.size(), static_cast<size_t>(UDP_MAX_JOINTS)));
-
-    for (uint32_t i = 0; i < pkt.num_joints; ++i) {
-      pkt.joint_pos   [i] = static_cast<float>(mujoco_actuator_data_[i].position_interface.state_);
-      pkt.joint_vel   [i] = static_cast<float>(mujoco_actuator_data_[i].velocity_interface.state_);
-      pkt.joint_torque[i] = static_cast<float>(mujoco_actuator_data_[i].effort_interface.state_);
+      data.torque.data.x() = -mj_data_control_->sensordata[data.torque.mj_sensor_index];
+      data.torque.data.y() = -mj_data_control_->sensordata[data.torque.mj_sensor_index + 1];
+      data.torque.data.z() = -mj_data_control_->sensordata[data.torque.mj_sensor_index + 2];
     }
 
-    if (!imu_sensor_data_.empty()) {
-      const auto& imu = imu_sensor_data_[0];
-      pkt.imu_quat[0] = static_cast<float>(imu.orientation.data.w());
-      pkt.imu_quat[1] = static_cast<float>(imu.orientation.data.x());
-      pkt.imu_quat[2] = static_cast<float>(imu.orientation.data.y());
-      pkt.imu_quat[3] = static_cast<float>(imu.orientation.data.z());
-      pkt.imu_gyro[0] = static_cast<float>(imu.angular_velocity.data.x());
-      pkt.imu_gyro[1] = static_cast<float>(imu.angular_velocity.data.y());
-      pkt.imu_gyro[2] = static_cast<float>(imu.angular_velocity.data.z());
-      pkt.imu_accel[0] = static_cast<float>(imu.linear_acceleration.data.x());
-      pkt.imu_accel[1] = static_cast<float>(imu.linear_acceleration.data.y());
-      pkt.imu_accel[2] = static_cast<float>(imu.linear_acceleration.data.z());
+    // Odometry reads (populate floating_base_msg_ under the lock)
+    if (free_joint_id_ != -1 && floating_base_realtime_publisher_)
+    {
+      floating_base_msg_.header.stamp = time;
+
+      floating_base_msg_.pose.pose.position.x = mj_data_control_->qpos[free_joint_qpos_adr_];
+      floating_base_msg_.pose.pose.position.y = mj_data_control_->qpos[free_joint_qpos_adr_ + 1];
+      floating_base_msg_.pose.pose.position.z = mj_data_control_->qpos[free_joint_qpos_adr_ + 2];
+
+      floating_base_msg_.pose.pose.orientation.w = mj_data_control_->qpos[free_joint_qpos_adr_ + 3];
+      floating_base_msg_.pose.pose.orientation.x = mj_data_control_->qpos[free_joint_qpos_adr_ + 4];
+      floating_base_msg_.pose.pose.orientation.y = mj_data_control_->qpos[free_joint_qpos_adr_ + 5];
+      floating_base_msg_.pose.pose.orientation.z = mj_data_control_->qpos[free_joint_qpos_adr_ + 6];
+
+      floating_base_msg_.twist.twist.linear.x = mj_data_control_->qvel[free_joint_qvel_adr_];
+      floating_base_msg_.twist.twist.linear.y = mj_data_control_->qvel[free_joint_qvel_adr_ + 1];
+      floating_base_msg_.twist.twist.linear.z = mj_data_control_->qvel[free_joint_qvel_adr_ + 2];
+
+      floating_base_msg_.twist.twist.angular.x = mj_data_control_->qvel[free_joint_qvel_adr_ + 3];
+      floating_base_msg_.twist.twist.angular.y = mj_data_control_->qvel[free_joint_qvel_adr_ + 4];
+      floating_base_msg_.twist.twist.angular.z = mj_data_control_->qvel[free_joint_qvel_adr_ + 5];
     }
 
-    udp_send_socket_.send(&pkt, sizeof(pkt));
-  }
+    // Contact sensors — scan active contacts and flag matching bodies
+    if (!contact_sensor_data_.empty())
+    {
+      for (auto& contact : contact_sensor_data_)
+      {
+        contact.contact_state = 0.0;
+      }
+      for (int ci = 0; ci < mj_data_control_->ncon; ++ci)
+      {
+        const mjContact& c = mj_data_control_->contact[ci];
+        const int body1 = mj_model_->geom_bodyid[c.geom1];
+        const int body2 = mj_model_->geom_bodyid[c.geom2];
+        for (auto& contact : contact_sensor_data_)
+        {
+          if (body1 == contact.mj_body_id || body2 == contact.mj_body_id)
+          {
+            contact.contact_state = 1.0;
+          }
+        }
+      }
+    }
 
-  // FT Sensor data
-  for (auto& data : ft_sensor_data_)
-  {
-    data.force.data.x() = -mj_data_control_->sensordata[data.force.mj_sensor_index];
-    data.force.data.y() = -mj_data_control_->sensordata[data.force.mj_sensor_index + 1];
-    data.force.data.z() = -mj_data_control_->sensordata[data.force.mj_sensor_index + 2];
+    // Plugins pass mj_data_control_ directly — keep inside the lock
+    for (auto& plugin : plugin_instances_)
+    {
+      plugin->update(mj_model_, mj_data_control_);
+    }
+  }  // release control_data_mutex_
 
-    data.torque.data.x() = -mj_data_control_->sensordata[data.torque.mj_sensor_index];
-    data.torque.data.y() = -mj_data_control_->sensordata[data.torque.mj_sensor_index + 1];
-    data.torque.data.z() = -mj_data_control_->sensordata[data.torque.mj_sensor_index + 2];
-  }
-
-  // Publish Odometry
+  // Publish odometry (outside lock — try_publish uses its own trylock)
   if (free_joint_id_ != -1 && floating_base_realtime_publisher_)
   {
-    floating_base_msg_.header.stamp = time;
-
-    // Position
-    floating_base_msg_.pose.pose.position.x = mj_data_control_->qpos[free_joint_qpos_adr_];
-    floating_base_msg_.pose.pose.position.y = mj_data_control_->qpos[free_joint_qpos_adr_ + 1];
-    floating_base_msg_.pose.pose.position.z = mj_data_control_->qpos[free_joint_qpos_adr_ + 2];
-
-    // Orientation (MuJoCo is w, x, y, z)
-    floating_base_msg_.pose.pose.orientation.w = mj_data_control_->qpos[free_joint_qpos_adr_ + 3];
-    floating_base_msg_.pose.pose.orientation.x = mj_data_control_->qpos[free_joint_qpos_adr_ + 4];
-    floating_base_msg_.pose.pose.orientation.y = mj_data_control_->qpos[free_joint_qpos_adr_ + 5];
-    floating_base_msg_.pose.pose.orientation.z = mj_data_control_->qpos[free_joint_qpos_adr_ + 6];
-
-    // Linear Velocity
-    floating_base_msg_.twist.twist.linear.x = mj_data_control_->qvel[free_joint_qvel_adr_];
-    floating_base_msg_.twist.twist.linear.y = mj_data_control_->qvel[free_joint_qvel_adr_ + 1];
-    floating_base_msg_.twist.twist.linear.z = mj_data_control_->qvel[free_joint_qvel_adr_ + 2];
-
-    // Angular Velocity
-    floating_base_msg_.twist.twist.angular.x = mj_data_control_->qvel[free_joint_qvel_adr_ + 3];
-    floating_base_msg_.twist.twist.angular.y = mj_data_control_->qvel[free_joint_qvel_adr_ + 4];
-    floating_base_msg_.twist.twist.angular.z = mj_data_control_->qvel[free_joint_qvel_adr_ + 5];
-
 #if ROS_DISTRO_HUMBLE
     floating_base_realtime_publisher_->tryPublish(floating_base_msg_);
 #else
     floating_base_realtime_publisher_->try_publish(floating_base_msg_);
 #endif
-  }
-
-  // Update plugins
-  for (auto& plugin : plugin_instances_)
-  {
-    plugin->update(mj_model_, mj_data_control_);
   }
 
   return hardware_interface::return_type::OK;
@@ -1795,7 +1716,7 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
   // Guard against invalid period (negative or too small)
   if (period.seconds() <= 0.0)
   {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                          "write() called with invalid period: %.6f seconds, skipping", period.seconds());
     return hardware_interface::return_type::OK;
   }
@@ -1814,54 +1735,13 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
     }
   }
 
-  // ── UDP: apply command packet from controller (overrides ros2_control path) ─
-  if (udp_enabled_) {
-    JointCommandPacket cmd{};
-    bool fresh = false;
-    {
-      std::lock_guard<std::mutex> lock(udp_cmd_mutex_);
-      if (udp_cmd_fresh_) {
-        // Check packet age: fall back if the controller has gone silent for > 50 ms
-        const uint64_t now_ns = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()).count());
-        const uint64_t age_ns = now_ns - udp_latest_cmd_.timestamp_ns;
-        if (age_ns > 50'000'000ULL) {  // 50 ms timeout
-          RCLCPP_WARN_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
-                               "UDP: no command for %.0f ms — falling back to ros2_control",
-                               static_cast<double>(age_ns) / 1e6);
-          udp_cmd_fresh_ = false;
-        } else {
-          cmd   = udp_latest_cmd_;
-          fresh = true;
-        }
-      }
-    }
-    if (fresh) {
-      const uint32_t n = std::min(
-          cmd.num_joints,
-          static_cast<uint32_t>(std::min(mujoco_actuator_data_.size(),
-                                         static_cast<size_t>(UDP_MAX_JOINTS))));
-      for (uint32_t i = 0; i < n; ++i) {
-        auto& actuator = mujoco_actuator_data_[i];
-        if (actuator.actuator_type == ActuatorType::PASSIVE) continue;
-
-        const double pos_err = cmd.pos_des[i] - mj_data_control_->qpos[actuator.mj_pos_adr];
-        const double vel_err = cmd.vel_des[i] - mj_data_control_->qvel[actuator.mj_vel_adr];
-        const double torque  = static_cast<double>(cmd.kp[i]) * pos_err
-                             + static_cast<double>(cmd.kd[i]) * vel_err
-                             + static_cast<double>(cmd.torque_ff[i]);
-        const double clamped = std::clamp(torque, -500.0, 500.0);
-        mj_data_control_->ctrl[actuator.mj_actuator_id] = clamped;
-      }
-      return hardware_interface::return_type::OK;
-    }
-  }
-
   joint_command_to_actuator_command();
 
-  // Joint commands
+  // Joint commands — write ctrl under the lock so PhysicsLoop's mju_copy sees a
+  // consistent set of commands and read() never sees a partially-written ctrl array.
   // TODO: Support command limits. For now those ranges can be limited in the MuJoCo actuators themselves.
+  {
+  std::lock_guard<std::mutex> data_lock(control_data_mutex_);
   for (auto& actuator : mujoco_actuator_data_)
   {
     if (actuator.actuator_type == ActuatorType::PASSIVE)
@@ -1887,7 +1767,7 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       // // DEBUG: Print PD impedance values at 1 Hz for left_hip_pitch_joint
       // if (actuator.joint_name == "left_hip_pitch_joint")
       // {
-      //   RCLCPP_INFO_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+      //   RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
       //                        "[MJ write PD] %s: ff_cmd=%.4f pos_cmd=%.4f vel_cmd=%.4f "
       //                        "q=%.4f qd=%.4f pd_torque=%.4f total=%.4f",
       //                        actuator.joint_name.c_str(), ff_cmd, pos_cmd, vel_cmd,
@@ -1904,9 +1784,13 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       const double vel_des = std::isfinite(vel_cmd) ? vel_cmd : 0.0;
       const double ff_effort = std::isfinite(ff_cmd) ? ff_cmd : 0.0;
       
+      // HybridJoint: use per-cycle gains if the controller wrote them; fall back to YAML defaults.
+      const double kp = std::isfinite(actuator.kp_interface_.command_) ? actuator.kp_interface_.command_ : actuator.pd_kp;
+      const double kd = std::isfinite(actuator.kd_interface_.command_) ? actuator.kd_interface_.command_ : actuator.pd_kd;
+
       const double pos_error = pos_des - mj_data_->qpos[actuator.mj_pos_adr];
       const double vel_error = vel_des - mj_data_->qvel[actuator.mj_vel_adr];
-      const double pd_torque = actuator.pd_kp * pos_error + actuator.pd_kd * vel_error;
+      const double pd_torque = kp * pos_error + kd * vel_error;
       const double total_torque = pd_torque + ff_effort;
       
       // Clamp to reasonable limits (e.g., ±500 Nm for safety)
@@ -1915,7 +1799,7 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       
       if (std::abs(total_torque) > max_torque)
       {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_node()->get_clock(), 1000,
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                              "Joint %s: Torque %.2f Nm exceeds limit, clamping to %.2f Nm",
                              actuator.joint_name.c_str(), total_torque, clamped_torque);
       }
@@ -1927,6 +1811,7 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       mj_data_control_->ctrl[actuator.mj_actuator_id] = actuator.effort_interface.command_;
     }
   }
+  }  // release control_data_mutex_
 
   return hardware_interface::return_type::OK;
 }
@@ -1989,7 +1874,7 @@ void MujocoSystemInterface::joint_command_to_actuator_command()
         // if (actuator_interface.joint_name == "left_hip_pitch_joint")
         // {
         //   RCLCPP_INFO_THROTTLE(rclcpp::get_logger("MujocoSystemInterface"),
-        //                        *get_node()->get_clock(), 1000,
+        //                        *get_clock(), 1000,
         //                        "[MJ j2a] left_hip_pitch: ff_actuator=%.4f joint_ff=%.4f pos_cmd=%.4f",
         //                        actuator_interface.feedforward_effort_interface.command_,
         //                        joint.feedforward_effort_interface.command_,
@@ -2743,6 +2628,29 @@ void MujocoSystemInterface::register_sensors(const hardware_interface::HardwareI
 
       imu_sensor_data_.push_back(sensor_data);
     }
+    else if (mujoco_type == "contact")
+    {
+      ContactSensorData contact_data;
+      contact_data.name = sensor_name;
+
+      std::string body_name = mujoco_sensor_name;
+      if (sensor.parameters.count("mujoco_body_name") > 0)
+      {
+        body_name = sensor.parameters.at("mujoco_body_name");
+      }
+
+      contact_data.mj_body_id = mj_name2id(mj_model_, mjOBJ_BODY, body_name.c_str());
+      if (contact_data.mj_body_id == -1)
+      {
+        RCLCPP_ERROR_STREAM(get_logger(), "Contact sensor '" << sensor_name
+                                                             << "': body '" << body_name << "' not found in MuJoCo model");
+        continue;
+      }
+
+      RCLCPP_INFO_STREAM(get_logger(), "Contact sensor '" << sensor_name << "' mapped to body '" << body_name
+                                                          << "' (id=" << contact_data.mj_body_id << ")");
+      contact_sensor_data_.push_back(contact_data);
+    }
     else
     {
       RCLCPP_ERROR_STREAM(get_logger(), "Invalid mujoco_type passed to the MuJoCo hardware interface: " << mujoco_type);
@@ -2931,135 +2839,6 @@ void MujocoSystemInterface::reset_simulation_state(bool fill_initial_state)
   }
 }
 
-void MujocoSystemInterface::reset_world_callback(
-    const std::shared_ptr<mujoco_ros2_control_msgs::srv::ResetWorld::Request> request,
-    std::shared_ptr<mujoco_ros2_control_msgs::srv::ResetWorld::Response> response)
-{
-  RCLCPP_INFO_EXPRESSION(get_logger(), !request->keyframe.empty(), "Reset world service called with keyframe: '%s'",
-                         request->keyframe.c_str());
-  RCLCPP_INFO_EXPRESSION(get_logger(), request->keyframe.empty(),
-                         "Reset world service called. Resetting to initial keyframe...");
-  const std::unique_lock<std::recursive_mutex> lock(*sim_mutex_);
-
-  bool fill_initial_state = request->keyframe.empty();
-  if (!fill_initial_state)
-  {
-    if (!apply_keyframe(request->keyframe))
-    {
-      response->message = "Failed to apply keyframe: '" + request->keyframe + "'. Not resetting world.";
-      RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
-      response->success = false;
-      return;
-    }
-  }
-
-  reset_simulation_state(fill_initial_state);
-  response->success = true;
-  const std::string keyframe_str = fill_initial_state ? "initial" : ("'" + request->keyframe + "'");
-  response->message = "Successfully reset the MuJoCo world to the " + keyframe_str + " state.";
-
-  RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
-}
-
-void MujocoSystemInterface::set_pause_callback(
-    const std::shared_ptr<mujoco_ros2_control_msgs::srv::SetPause::Request> request,
-    std::shared_ptr<mujoco_ros2_control_msgs::srv::SetPause::Response> response)
-{
-  const bool currently_paused = !sim_->run;
-  if (currently_paused == request->paused)
-  {
-    response->success = true;
-    response->message = std::string("Simulation is already ") + (request->paused ? "paused." : "running.");
-    RCLCPP_DEBUG(get_logger(), "%s", response->message.c_str());
-    return;
-  }
-
-  sim_->run = !request->paused;
-
-  if (!request->paused)
-  {
-    // Force timing re-sync so the physics loop doesn't try to catch up on
-    // accumulated wall-clock time that elapsed while paused.
-    sim_->speed_changed = true;
-
-    // If step_simulation is currently blocking with pending steps, abort those steps
-    // immediately rather than waiting for the physics loop to detect the transition.
-    // This ensures step_simulation_callback unblocks and frees its executor thread
-    // without any additional latency.
-    const uint32_t pending = pending_steps_.load();
-    if (pending > 0)
-    {
-      RCLCPP_WARN(get_logger(), "Resuming simulation while %u step(s) were pending; aborting.", pending);
-      pending_steps_.store(0);
-      steps_interrupted_.store(true);
-      steps_cv_.notify_all();
-    }
-  }
-
-  response->success = true;
-  response->message = std::string("Simulation ") + (request->paused ? "paused." : "resumed.");
-  RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
-}
-
-void MujocoSystemInterface::step_simulation_callback(
-    const std::shared_ptr<mujoco_ros2_control_msgs::srv::StepSimulation::Request> request,
-    std::shared_ptr<mujoco_ros2_control_msgs::srv::StepSimulation::Response> response)
-{
-  if (sim_->run)
-  {
-    response->success = false;
-    response->message = "Cannot step simulation: simulation is not paused.";
-    RCLCPP_WARN(get_logger(), "%s", response->message.c_str());
-    return;
-  }
-
-  if (request->steps == 0)
-  {
-    response->success = false;
-    response->message = "Number of steps must be positive, got: 0";
-    RCLCPP_WARN(get_logger(), "%s", response->message.c_str());
-    return;
-  }
-
-  // Reset the divergence/interrupt flags and queue steps.
-  step_diverged_.store(false);
-  steps_interrupted_.store(false);
-  pending_steps_.fetch_add(request->steps);
-
-  // Block until all steps are executed or the timeout expires.
-  // Timeout: at least 30 s, or 10 ms per step (whichever is larger).
-  const auto timeout =
-      std::chrono::milliseconds(std::max(static_cast<uint64_t>(30000), static_cast<uint64_t>(request->steps) * 10));
-
-  std::unique_lock<std::mutex> lock(steps_cv_mutex_);
-  const bool completed = steps_cv_.wait_for(lock, timeout, [this] { return pending_steps_.load() == 0; });
-
-  if (!completed)
-  {
-    response->success = false;
-    response->message = "Timeout waiting for " + std::to_string(request->steps) + " simulation step(s).";
-    RCLCPP_WARN(get_logger(), "%s", response->message.c_str());
-  }
-  else if (steps_interrupted_.load())
-  {
-    response->success = false;
-    response->message = "Steps aborted: simulation was resumed while steps were pending.";
-    RCLCPP_WARN(get_logger(), "%s", response->message.c_str());
-  }
-  else if (step_diverged_.load())
-  {
-    response->success = false;
-    response->message = "Steps aborted: simulation diverged.";
-    RCLCPP_WARN(get_logger(), "%s", response->message.c_str());
-  }
-  else
-  {
-    response->success = true;
-    response->message = "Completed " + std::to_string(request->steps) + " simulation step(s).";
-    RCLCPP_DEBUG(get_logger(), "%s", response->message.c_str());
-  }
-}
-
 // simulate in background thread (while rendering in main thread)
 void MujocoSystemInterface::PhysicsLoop()
 {
@@ -3153,9 +2932,12 @@ void MujocoSystemInterface::PhysicsLoop()
             syncSim = mj_data_->time;
             sim_->speed_changed = false;
 
-            // Copy data to the control
-            mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
-            mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+            // Snapshot commands from control thread (brief lock, physics step runs without it)
+            {
+              std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+              mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
+              mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+            }
             // run single step, let next iteration deal with timing
             mj_step(mj_model_, mj_data_);
 
@@ -3205,9 +2987,12 @@ void MujocoSystemInterface::PhysicsLoop()
               sim_->InjectNoise(-1);
 #endif
 
-              // Copy data to the control
-              mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
-              mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+              // Snapshot commands from control thread (brief lock, physics step runs without it)
+              {
+                std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+                mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
+                mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+              }
               // call mj_step
               mj_step(mj_model_, mj_data_);
 
@@ -3240,8 +3025,11 @@ void MujocoSystemInterface::PhysicsLoop()
           // save current state to history buffer
           if (stepped)
           {
-            // Update the control's read buffers if the data has changed
-            mj_copyData(mj_data_control_, mj_model_, mj_data_);
+            // Publish fresh physics state to the control thread (brief lock only)
+            {
+              std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+              mj_copyData(mj_data_control_, mj_model_, mj_data_);
+            }
 
             sim_->AddToHistory();
             update_sim_display();
@@ -3383,7 +3171,7 @@ rclcpp::Logger MujocoSystemInterface::get_logger() const
 
 rclcpp::Node::SharedPtr MujocoSystemInterface::get_node() const
 {
-  return mujoco_node_;
+  return clock_node_;
 }
 
 void MujocoSystemInterface::load_mujoco_plugins()
@@ -3448,19 +3236,6 @@ void MujocoSystemInterface::load_mujoco_plugins()
   catch (const pluginlib::PluginlibException& ex)
   {
     RCLCPP_ERROR(get_logger(), "Failed to create plugin loader: %s", ex.what());
-  }
-}
-
-void MujocoSystemInterface::udpRecvLoop()
-{
-  JointCommandPacket pkt{};
-  while (udp_recv_running_) {
-    const ssize_t n = udp_recv_socket_.recv(&pkt, sizeof(pkt));
-    if (n != static_cast<ssize_t>(sizeof(pkt))) continue;  // timeout or wrong size
-
-    std::lock_guard<std::mutex> lock(udp_cmd_mutex_);
-    udp_latest_cmd_ = pkt;
-    udp_cmd_fresh_  = true;
   }
 }
 
