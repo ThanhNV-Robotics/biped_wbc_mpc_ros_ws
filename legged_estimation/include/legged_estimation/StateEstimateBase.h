@@ -24,7 +24,8 @@ using namespace legged_robot;
 
 class StateEstimateBase {
  public:
-  StateEstimateBase(PinocchioInterface pinocchioInterface, CentroidalModelInfo info,
+  StateEstimateBase(rclcpp::Node::SharedPtr node,
+                    PinocchioInterface pinocchioInterface, CentroidalModelInfo info,
                     const PinocchioEndEffectorKinematics& eeKinematics);
 
   // virtual methods to be overridden by derived classes.

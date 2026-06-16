@@ -11,9 +11,10 @@
 namespace legged {
 using namespace legged_robot;
 
-StateEstimateBase::StateEstimateBase(PinocchioInterface pinocchioInterface, CentroidalModelInfo info,
+StateEstimateBase::StateEstimateBase(rclcpp::Node::SharedPtr node,
+                                     PinocchioInterface pinocchioInterface, CentroidalModelInfo info,
                                      const PinocchioEndEffectorKinematics& eeKinematics)
-    : node_(std::make_shared<rclcpp::Node>("state_estimator")),
+    : node_(std::move(node)),
       logger_(node_->get_logger()),
       clock_(node_->get_clock()),
       pinocchioInterface_(std::move(pinocchioInterface)),

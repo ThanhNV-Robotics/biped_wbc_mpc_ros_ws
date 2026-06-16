@@ -92,6 +92,7 @@ public:
 
     // ── State estimator ─────────────────────────────────────────────────────
     estimator_ = std::make_shared<legged::KalmanFilterEstimate>(
+        shared_from_this(),
         pinocchioInterface,
         centroidalModelInfo,
         *eeKinematics);

@@ -21,7 +21,8 @@ using namespace ocs2;
 // This class inherits from StateEstimateBase and implements a linear Kalman filter for state estimation. It also subscribes to an odometry topic to get measurements for the filter update. The estimated state is published as an odometry message.
 class KalmanFilterEstimate : public StateEstimateBase {
  public:
-  KalmanFilterEstimate(PinocchioInterface pinocchioInterface, CentroidalModelInfo info,
+  KalmanFilterEstimate(rclcpp::Node::SharedPtr node,
+                       PinocchioInterface pinocchioInterface, CentroidalModelInfo info,
                        const PinocchioEndEffectorKinematics& eeKinematics);
 
   vector_t update(const rclcpp::Time& time, const rclcpp::Duration& period) override;

@@ -1,6 +1,3 @@
-import os
-
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -48,8 +45,8 @@ def generate_launch_description():
 
     update_rate_arg = DeclareLaunchArgument(
         "update_rate",
-        default_value="250.0",
-        description="State estimator update rate in Hz",
+        default_value="500.0",
+        description="State estimator update rate in Hz (should match controller_manager update_rate)",
     )
 
     use_sim_time_arg = DeclareLaunchArgument(
@@ -60,7 +57,7 @@ def generate_launch_description():
 
     # ── State estimator node ────────────────────────────────────────────────
     state_estimator_node = Node(
-        package="state_estimation",
+        package="legged_estimation",
         executable="state_estimator_node",
         name="state_estimator_node",
         output="both",
@@ -92,7 +89,3 @@ def generate_launch_description():
 
 
 
-def launch_state_estimator(context, *args, **kwargs):
-    biped_description_pkg = FindPackageShare("biped_description")
-    biped_config_pkg = FindPackageShare("biped_centroidal_mpc")
-    

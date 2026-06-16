@@ -5,10 +5,11 @@
 #include <legged_estimation/FromTopicEstimate.h>
 
 namespace legged {
-FromTopicStateEstimate::FromTopicStateEstimate(PinocchioInterface pinocchioInterface,
+FromTopicStateEstimate::FromTopicStateEstimate(rclcpp::Node::SharedPtr node,
+                                               PinocchioInterface pinocchioInterface,
                                                CentroidalModelInfo info,
                                                const PinocchioEndEffectorKinematics& eeKinematics)
-    : StateEstimateBase(std::move(pinocchioInterface), std::move(info), eeKinematics) {
+    : StateEstimateBase(std::move(node), std::move(pinocchioInterface), std::move(info), eeKinematics) {
   sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
       "/ground_truth/state", 10,
       std::bind(&FromTopicStateEstimate::callback, this, std::placeholders::_1));

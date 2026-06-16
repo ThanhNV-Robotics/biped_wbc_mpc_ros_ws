@@ -12,10 +12,11 @@
 
 namespace legged {
 
-KalmanFilterEstimate::KalmanFilterEstimate(PinocchioInterface pinocchioInterface,
+KalmanFilterEstimate::KalmanFilterEstimate(rclcpp::Node::SharedPtr node,
+                                           PinocchioInterface pinocchioInterface,
                                            CentroidalModelInfo info,
                                            const PinocchioEndEffectorKinematics& eeKinematics)
-    : StateEstimateBase(std::move(pinocchioInterface), std::move(info), eeKinematics),
+    : StateEstimateBase(std::move(node), std::move(pinocchioInterface), std::move(info), eeKinematics),
       numContacts_(info_.numThreeDofContacts + info_.numSixDofContacts),
       dimContacts_(3 * numContacts_),
       numState_(6 + dimContacts_),
