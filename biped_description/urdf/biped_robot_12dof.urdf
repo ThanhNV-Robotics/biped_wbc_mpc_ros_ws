@@ -563,7 +563,7 @@
     </sensor>
 
   </ros2_control>
-  </xacro:unless>
+  </xacro:unless> <!-- use_legged_hw -->
 
   <!-- ── legged_hw: UDP bridge to real robot or MuJoCo sim ──────────────── -->
   <xacro:if value="$(arg use_legged_hw)">

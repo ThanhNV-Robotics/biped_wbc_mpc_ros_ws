@@ -12,7 +12,6 @@
 
 #include <ocs2_centroidal_model/CentroidalModelRbdConversions.h>
 #include <ocs2_core/misc/Benchmark.h>
-#include <ocs2_legged_robot_ros/visualization/LeggedRobotVisualizer.h>
 #include <ocs2_mpc/MPC_MRT_Interface.h>
 
 #include <legged_estimation/StateEstimateBase.h>
@@ -84,19 +83,6 @@ protected:
     //   friend void swap(SystemObservation& a, SystemObservation& b) noexcept;
     // };
 
-};
-
-
-
-
-
-class LeggedCheaterController : public LeggedController
-{
-public:
-  LeggedCheaterController() = default;
-  ~LeggedCheaterController() override = default;
-
-  controller_interface::CallbackReturn on_init() override;
 };
 
 }  // namespace legged

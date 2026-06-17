@@ -16,7 +16,6 @@ find_package(legged_interface REQUIRED)
 find_package(ocs2_centroidal_model REQUIRED)
 find_package(ocs2_core REQUIRED)
 find_package(ocs2_mpc REQUIRED)
-find_package(ocs2_legged_robot_ros REQUIRED)
 
 # find_package(legged_wbc REQUIRED)
 # find_package(ocs2_self_collision_visualization REQUIRED)
@@ -42,7 +41,6 @@ ament_target_dependencies(${PROJECT_NAME}
   ocs2_centroidal_model
   ocs2_core
   ocs2_mpc
-  ocs2_legged_robot_ros
 )
 
 pluginlib_export_plugin_description_file(controller_interface legged_controllers_plugins.xml)
@@ -60,6 +58,14 @@ install(DIRECTORY include/
 
 install(FILES legged_controllers_plugins.xml
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
+
+install(DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
 )
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)

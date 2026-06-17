@@ -13,12 +13,12 @@ from launch_ros.substitutions import FindPackageShare
 
 def launch_setup(context, *_args, **_kwargs):
     biped_pkg_share  = FindPackageShare("biped_description")
-    this_pkg_share   = FindPackageShare("biped_centroidal_mpc")
+    this_pkg_share   = FindPackageShare("legged_controllers")
 
     pd_gains_file    = LaunchConfiguration("pd_gains_file").perform(context)
     headless         = LaunchConfiguration("headless").perform(context)
     controllers_yaml = PathJoinSubstitution(
-        [this_pkg_share, "config", "mujoco_controllers.yaml"]
+        [this_pkg_share, "config", "main_controllers.yaml"]
     ).perform(context)
 
     # ── MuJoCo robot description (MujocoSystemInterface plugin) ──────────────
@@ -78,7 +78,7 @@ def launch_setup(context, *_args, **_kwargs):
 
 def generate_launch_description():
     default_pd_gains = PathJoinSubstitution(
-        [FindPackageShare("biped_centroidal_mpc"), "config", "pd_impedance_controller.yaml"]
+        [FindPackageShare("legged_controllers"), "config", "mujoco_interface_pd_gains.yaml"]
     )
     return LaunchDescription([
         DeclareLaunchArgument(
