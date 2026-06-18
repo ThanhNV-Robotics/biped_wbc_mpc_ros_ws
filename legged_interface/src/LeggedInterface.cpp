@@ -206,28 +206,13 @@ std::shared_ptr<GaitSchedule> LeggedInterface::loadGaitSchedule(const std::strin
 /******************************************************************************************************/
 /******************************************************************************************************/
 matrix_t LeggedInterface::initializeInputCostWeight(const std::string& taskFile, const CentroidalModelInfo& info) {
-  const size_t totalContactDim = 3 * info.numThreeDofContacts;
-
-  const auto& model = pinocchioInterfacePtr_->getModel();
-  auto& data = pinocchioInterfacePtr_->getData();
-  const auto q = centroidal_model::getGeneralizedCoordinates(initialState_, centroidalModelInfo_);
-  pinocchio::computeJointJacobians(model, data, q);
-  pinocchio::updateFramePlacements(model, data);
-
-  matrix_t base2feetJac(totalContactDim, info.actuatedDofNum);
-  for (size_t i = 0; i < info.numThreeDofContacts; i++) {
-    matrix_t jac = matrix_t::Zero(6, info.generalizedCoordinatesNum);
-    pinocchio::getFrameJacobian(model, data, model.getBodyId(modelSettings_.contactNames3DoF[i]), pinocchio::LOCAL_WORLD_ALIGNED, jac);
-    base2feetJac.block(3 * i, 0, 3, info.actuatedDofNum) = jac.block(0, 6, 3, info.actuatedDofNum);
-  }
-
-  matrix_t rTaskspace(info.inputDim, info.inputDim);
-  loadData::loadEigenMatrix(taskFile, "R", rTaskspace);
-  matrix_t r = rTaskspace;
-  // Joint velocities
-  r.block(totalContactDim, totalContactDim, info.actuatedDofNum, info.actuatedDofNum) =
-      base2feetJac.transpose() * rTaskspace.block(totalContactDim, totalContactDim, info.actuatedDofNum, info.actuatedDofNum) *
-      base2feetJac;
+  // R is defined directly in input space: [contact forces (3*numContacts), joint velocities (actuatedDof)].
+  // The original go1 code applied a Jacobian transformation (J^T * R_taskspace * J) to convert
+  // Cartesian foot velocity costs to joint space. That formula assumed totalContactDim == actuatedDofNum
+  // (true for go1: 4 feet × 3 = 12 joints = 12), which fails for robots where these differ.
+  // We load R directly — task.info must lay out R as (inputDim × inputDim) with explicit joint costs.
+  matrix_t r(info.inputDim, info.inputDim);
+  loadData::loadEigenMatrix(taskFile, "R", r);
   return r;
 }
 

@@ -35,8 +35,12 @@ model_settings
   phaseTransitionStanceTime       0.0
 
   verboseCppAd                  true
+  ; Set to true on first run (or after changing robot model) to regenerate CppAD code.
+  ; Set to false after the libraries are compiled to skip recompilation on startup.
   recompileLibrariesCppAd       false
-  modelFolderCppAd              build/centroidal_mpc_cppad_autocode_gen
+  ; Absolute path — relative paths resolve from the ros2_control_node working
+  ; directory which is unpredictable and causes stale-library loading issues.
+  modelFolderCppAd              /home/vanthanhnguyen/Documents/Programs/biped_wbc_mpc_ws/cppad_generated/biped_robot_12dof
 
   ; Active joints included in the MPC model (all others in URDF will be fixed)
   jointNames
@@ -213,37 +217,34 @@ Q
 }
 
 ; control weight matrix
+; Layout: inputDim = 3*numContacts3DoF + actuatedDof = 3*2 + 12 = 18
+;   (0,0)-(5,5)   : 3-DoF contact forces, 2 feet × [fx, fy, fz]
+;   (6,6)-(17,17) : 12 joint velocities
 R
 {
   scaling 1e-3
 
-  ;; Feet Contact Forces: kept for QP regularization ;;
-  (0,0)   0.1       ; left_force_x
-  (1,1)   0.1       ; left_force_y
-  (2,2)   0.1       ; left_force_z
-  (3,3)   0.1       ; left_moment_x
-  (4,4)   0.1       ; left_moment_y
-  (5,5)   0.1        ; left_moment_z
-  (6,6)   0.1       ; right_force_x
-  (7,7)   0.1       ; right_force_y
-  (8,8)   0.1       ; right_force_z
-  (9,9)   0.1       ; right_moment_x
-  (10,10) 0.1       ; right_moment_y
-  (11,11) 0.1        ; right_moment_z
+  ;; 3-DoF Contact Forces: 2 feet × 3 = 6 entries ;;
+  (0,0)   0.1       ; left_foot  fx
+  (1,1)   0.1       ; left_foot  fy
+  (2,2)   0.1       ; left_foot  fz
+  (3,3)   0.1       ; right_foot fx
+  (4,4)   0.1       ; right_foot fy
+  (5,5)   0.1       ; right_foot fz
 
-  ;; Joint Velocities - small regularization to keep QP well-conditioned ;;
-  (12,12) 0.1     ;    left_hip_pitch_joint
-  (13,13) 0.1     ;    left_hip_roll_joint
-  (14,14) 0.1     ;    left_hip_yaw_joint
-  (15,15) 0.1     ;    left_knee_pitch_joint
-  (16,16) 0.1     ;    left_ankle_roll_joint
-  (17,17) 0.1     ;    left_ankle_pitch_joint
-  (18,18) 0.1     ;    right_hip_pitch_joint
-  (19,19) 0.1     ;    right_hip_roll_joint
-  (20,20) 0.1     ;    right_hip_yaw_joint
-  (21,21) 0.1     ;    right_knee_pitch_joint
-  (22,22) 0.1     ;    right_ankle_roll_joint
-  (23,23) 0.1     ;    right_ankle_pitch_joint
+  ;; Joint Velocities: 12 joints (entries 6-17) ;;
+  (6,6)   0.1     ;    left_hip_pitch_joint
+  (7,7)   0.1     ;    left_hip_roll_joint
+  (8,8)   0.1     ;    left_hip_yaw_joint
+  (9,9)   0.1     ;    left_knee_pitch_joint
+  (10,10) 0.1     ;    left_ankle_roll_joint
+  (11,11) 0.1     ;    left_ankle_pitch_joint
+  (12,12) 0.1     ;    right_hip_pitch_joint
+  (13,13) 0.1     ;    right_hip_roll_joint
+  (14,14) 0.1     ;    right_hip_yaw_joint
+  (15,15) 0.1     ;    right_knee_pitch_joint
+  (16,16) 0.1     ;    right_ankle_roll_joint
+  (17,17) 0.1     ;    right_ankle_pitch_joint
 }
 
 terminalCostScaling       3.0

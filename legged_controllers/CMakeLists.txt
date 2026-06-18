@@ -16,8 +16,13 @@ find_package(legged_interface REQUIRED)
 find_package(ocs2_centroidal_model REQUIRED)
 find_package(ocs2_core REQUIRED)
 find_package(ocs2_mpc REQUIRED)
+find_package(ocs2_pinocchio_interface REQUIRED)
+find_package(ocs2_sqp REQUIRED)
+find_package(ocs2_legged_robot_ros REQUIRED)
+find_package(ocs2_ros_interfaces REQUIRED)
+find_package(ocs2_msgs REQUIRED)
 
-# find_package(legged_wbc REQUIRED)
+# find_package(legged_wbc REQUIRED)       # TODO(step3e): enable once legged_wbc is ported
 # find_package(ocs2_self_collision_visualization REQUIRED)
 # find_package(angles REQUIRED)
 
@@ -41,6 +46,11 @@ ament_target_dependencies(${PROJECT_NAME}
   ocs2_centroidal_model
   ocs2_core
   ocs2_mpc
+  ocs2_pinocchio_interface
+  ocs2_sqp
+  ocs2_legged_robot_ros
+  ocs2_ros_interfaces
+  ocs2_msgs
 )
 
 pluginlib_export_plugin_description_file(controller_interface legged_controllers_plugins.xml)
