@@ -269,12 +269,12 @@ controller_interface::CallbackReturn LeggedController::on_activate(const rclcpp_
   setThreadPriority(legged_interface_->sqpSettings().threadPriority, mpcThread_);
   RCLCPP_INFO(get_node()->get_logger(), "STEP 1: MPC disabled — position-hold only. No advanceMpc() calls.");
 
-  // ── 6. Seed standing-pose commands before first update() tick ───────────────
-  // Command the standing joint angles (not current measured angles) so the PD
-  // controller has a non-zero error to work against from the very first step.
+  // ── 6. Seed zero-position commands before first update() tick ───────────────
+  // Hold all joints at 0 (straight posture). The MPC will take over once its
+  // first policy is ready and smoothly drive to the planned configuration.
   const size_t nJoints = jointNames_.size();
   for (size_t i = 0; i < nJoints; ++i) {
-    command_interfaces_[3 * i + 0].set_value(defaultJointAngles_(i));
+    command_interfaces_[3 * i + 0].set_value(0.0);
     command_interfaces_[3 * i + 1].set_value(0.0);
     command_interfaces_[3 * i + 2].set_value(0.0);
   }
@@ -303,6 +303,7 @@ controller_interface::CallbackReturn LeggedController::on_deactivate(const rclcp
 controller_interface::return_type LeggedController::update(const rclcpp::Time& time, const rclcpp::Duration& period)
 {
   using namespace ocs2;
+  using namespace centroidal_model;
 
   // ── 1. State estimation ───────────────────────────────────────────────────
   updateStatesEstimatate(time, period);
@@ -310,23 +311,23 @@ controller_interface::return_type LeggedController::update(const rclcpp::Time& t
   // ── 2. Synchronise current observation with the MPC ──────────────────────
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
 
-  // ── 3. Poll latest MPC policy (non-blocking, keeps the background solve in sync) ──
+  // ── 3. Poll latest MPC policy (non-blocking) ─────────────────────────────
   mpcMrtInterface_->updatePolicy();
 
-  // ── 4. Write standing-pose PD commands ───────────────────────────────────
-  // Hold joints at the nominal standing configuration. The MuJoCo PD actuator
-  // computes: τ = kp*(q_ref - q) + kd*(0 - qdot) + ff.
-  // Commanding the current measured position gives zero error → zero torque;
-  // commanding the standing angles gives a restoring force toward the pose.
-  // TODO: replace with evaluatePolicy() + WBC once standing is verified.
+  // ── 4. Compute and apply joint commands ──────────────────────────────────
   const size_t nJoints = jointNames_.size();
+  const auto& info = legged_interface_->getCentroidalModelInfo();
+
+  // MPC runs in background and observation is published for monitoring, but its
+  // output is not used for commands. Hold joints at zero (straight upright).
+  // TODO: re-enable evaluatePolicy() + feedforward once state estimation is verified.
   for (size_t j = 0; j < nJoints; ++j) {
-    command_interfaces_[3 * j + 0].set_value(defaultJointAngles_(j));
+    command_interfaces_[3 * j + 0].set_value(0.0);
     command_interfaces_[3 * j + 1].set_value(0.0);
     command_interfaces_[3 * j + 2].set_value(0.0);
   }
 
-  // ── 6. Publish observation for monitoring / command interface ─────────────
+  // ── 5. Publish observation ────────────────────────────────────────────────
   observationPublisher_->publish(
       ocs2::ros_msg_conversions::createObservationMsg(currentObservation_));
 

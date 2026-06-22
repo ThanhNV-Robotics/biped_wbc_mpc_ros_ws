@@ -156,6 +156,52 @@ IMU (`torso_imu` by default):
 
 ---
 
+## OCS2 centroidal state vector
+
+The 24-dimensional state vector used by the MPC and published on `/legged_robot_mpc_observation`:
+
+```
+x = [ normalized_centroidal_momentum(6) | base_pose(6) | joint_angles(12) ]
+```
+
+| Index | Symbol | Meaning |
+|---|---|---|
+| 0 | h_x / m | Normalized centroidal linear momentum x ≈ base velocity x |
+| 1 | h_y / m | Normalized centroidal linear momentum y ≈ base velocity y |
+| 2 | h_z / m | Normalized centroidal linear momentum z ≈ base velocity z |
+| 3 | L_x / m | Normalized centroidal angular momentum x ≈ base angular velocity x |
+| 4 | L_y / m | Normalized centroidal angular momentum y ≈ base angular velocity y |
+| 5 | L_z / m | Normalized centroidal angular momentum z ≈ base angular velocity z |
+| 6 | p_x | Base position x (world frame) |
+| 7 | p_y | Base position y (world frame) |
+| 8 | p_z | Base position z (world frame, ~0.75 m when standing) |
+| 9 | θ_z | Base **yaw** (ZYX Euler, first rotation) |
+| 10 | θ_y | Base **pitch** (ZYX Euler, second rotation) |
+| 11 | θ_x | Base **roll** (ZYX Euler, third rotation) |
+| 12 | q_0 | left_hip_pitch_joint |
+| 13 | q_1 | left_hip_roll_joint |
+| 14 | q_2 | left_hip_yaw_joint |
+| 15 | q_3 | left_knee_pitch_joint |
+| 16 | q_4 | left_ankle_roll_joint |
+| 17 | q_5 | left_ankle_pitch_joint |
+| 18 | q_6 | right_hip_pitch_joint |
+| 19 | q_7 | right_hip_roll_joint |
+| 20 | q_8 | right_hip_yaw_joint |
+| 21 | q_9 | right_knee_pitch_joint |
+| 22 | q_10 | right_ankle_roll_joint |
+| 23 | q_11 | right_ankle_pitch_joint |
+
+The Q matrix entries in `task.info` reference these indices directly — e.g. `(8,8)=500` penalises base height error, `(10,10)=200` and `(11,11)=200` penalise pitch/roll tilt, and `(12,12)–(23,23)=5` lightly penalise joint angle deviation from the reference.
+
+Accessor functions from `ocs2_centroidal_model/AccessHelperFunctions.h`:
+```cpp
+centroidal_model::getJointAngles(state, info)      // state[12:24]
+centroidal_model::getJointVelocities(input, info)  // input[6:18]  (input = [GRFs(6), joint_vel(12)])
+centroidal_model::getContactForces(input, i, info) // input[3*i : 3*i+3]
+```
+
+---
+
 ## Lifecycle methods
 
 ### `on_init()`
