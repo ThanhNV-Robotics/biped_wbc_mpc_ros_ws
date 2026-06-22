@@ -29,10 +29,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#include <ocs2_centroidal_model/AccessHelperFunctions.h>
 #include <ocs2_centroidal_model/CentroidalModelInfo.h>
 #include <ocs2_core/cost/QuadraticStateCost.h>
 #include <ocs2_core/cost/QuadraticStateInputCost.h>
-#include <ocs2_legged_robot/common/utils.h>
 
 #include "legged_interface/SwitchedModelReferenceManager.h"
 
@@ -58,7 +58,18 @@ class LeggedRobotStateInputQuadraticCost final : public QuadraticStateInputCost 
                                                        const TargetTrajectories& targetTrajectories) const override {
     const auto contactFlags = referenceManagerPtr_->getContactFlags(time);
     const vector_t xNominal = targetTrajectories.getDesiredState(time);
-    const vector_t uNominal = weightCompensatingInput(info_, contactFlags);
+    // weightCompensatingInput from ocs2 iterates contactFlags.size()=4 (legacy quadruped) which corrupts
+    // joint torques for robots with fewer contacts. Inline a fixed version here.
+    const size_t numContacts = info_.numThreeDofContacts + info_.numSixDofContacts;
+    size_t numActive = 0;
+    for (size_t i = 0; i < numContacts; ++i) { if (contactFlags[i]) ++numActive; }
+    vector_t uNominal = vector_t::Zero(info_.inputDim);
+    if (numActive > 0) {
+      const scalar_t fz = info_.robotMass * 9.81 / static_cast<scalar_t>(numActive);
+      for (size_t i = 0; i < numContacts; ++i) {
+        if (contactFlags[i]) centroidal_model::getContactForces(uNominal, i, info_)[2] = fz;
+      }
+    }
     return {state - xNominal, input - uNominal};
   }
 

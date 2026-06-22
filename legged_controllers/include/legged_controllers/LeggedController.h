@@ -89,6 +89,10 @@ protected:
   // Current MPC observation: mode, time, centroidal state + input.
   SystemObservation currentObservation_;
 
+  // Standing joint angles loaded from reference.info defaultJointState.
+  // Used as the PD position setpoint so the robot holds the nominal standing pose.
+  ocs2::vector_t defaultJointAngles_;
+
   // ── MPC background thread ────────────────────────────────────────────────
   std::thread mpcThread_;
   std::atomic_bool controllerRunning_{false};

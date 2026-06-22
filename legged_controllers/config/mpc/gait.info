@@ -21,7 +21,7 @@ stance
  {
    modeSequence
    {
-     [0]     STANCE
+     [0]     LF_RF
    }
    switchingTimes
    {
@@ -136,9 +136,9 @@ walk
   modeSequence
   {
     [0]     LF
-    [1]     STANCE
+    [1]     LF_RF
     [2]     RF
-    [3]     STANCE
+    [3]     LF_RF
   }
   switchingTimes
   {
@@ -155,9 +155,9 @@ fast_walk
   modeSequence
   {
     [0]     LF
-    [1]     STANCE
+    [1]     LF_RF
     [2]     RF
-    [3]     STANCE
+    [3]     LF_RF
   }
   switchingTimes
   {
@@ -174,9 +174,9 @@ slow_walk
   modeSequence
   {
     [0]     LF
-    [1]     STANCE
+    [1]     LF_RF
     [2]     RF
-    [3]     STANCE
+    [3]     LF_RF
   }
   switchingTimes
   {
@@ -194,9 +194,9 @@ very_slow_walk
   modeSequence
   {
     [0]     RF
-    [1]     STANCE
+    [1]     LF_RF
     [2]     LF
-    [3]     STANCE
+    [3]     LF_RF
   }
   switchingTimes
   {
@@ -273,7 +273,7 @@ jump
 {
   modeSequence
   {
-    [0]     STANCE
+    [0]     LF_RF
     [1]     FLY
   }
   switchingTimes

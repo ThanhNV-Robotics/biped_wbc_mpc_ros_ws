@@ -157,8 +157,9 @@ void LeggedInterface::setupModel(const std::string& taskFile, const std::string&
 /******************************************************************************************************/
 void LeggedInterface::setupReferenceManager(const std::string& taskFile, const std::string& urdfFile, const std::string& referenceFile,
                                             bool verbose) {
+  const size_t numContacts = centroidalModelInfo_.numThreeDofContacts + centroidalModelInfo_.numSixDofContacts;
   auto swingTrajectoryPlanner =
-      std::make_unique<SwingTrajectoryPlanner>(loadSwingTrajectorySettings(taskFile, "swing_trajectory_config", verbose), 4);
+      std::make_unique<SwingTrajectoryPlanner>(loadSwingTrajectorySettings(taskFile, "swing_trajectory_config", verbose), numContacts);
   referenceManagerPtr_ =
       std::make_shared<SwitchedModelReferenceManager>(loadGaitSchedule(referenceFile, verbose), std::move(swingTrajectoryPlanner));
 }

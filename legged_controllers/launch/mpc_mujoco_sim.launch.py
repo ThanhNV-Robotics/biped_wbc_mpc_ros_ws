@@ -43,7 +43,7 @@ def launch_setup(context):
             " ",
             PathJoinSubstitution([FindPackageShare("biped_description"), "urdf", "biped_robot_12dof.urdf"]),
             " use_pid:=true",
-            " headless:=true",
+            " headless:=false",
             " use_mjcf_from_topic:=false",
             " use_transmissions:=false",
             " use_legged_hw:=false",
@@ -75,8 +75,8 @@ def launch_setup(context):
     param_file.close()
 
     return [
-        # robot_state_publisher is required so ros2_control_node can read
-        # /robot_description before trying to load the hardware interface.
+        # # robot_state_publisher is required so ros2_control_node can read
+        # # /robot_description before trying to load the hardware interface.
         Node(
             package="robot_state_publisher",
             executable="robot_state_publisher",

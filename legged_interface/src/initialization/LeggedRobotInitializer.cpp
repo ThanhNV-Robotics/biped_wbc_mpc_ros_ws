@@ -30,7 +30,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "legged_interface/initialization/LeggedRobotInitializer.h"
 
 #include <ocs2_centroidal_model/AccessHelperFunctions.h>
-#include <ocs2_legged_robot/common/utils.h>
 
 namespace ocs2 {
 namespace legged_robot {
@@ -54,7 +53,19 @@ LeggedRobotInitializer* LeggedRobotInitializer::clone() const {
 /******************************************************************************************************/
 void LeggedRobotInitializer::compute(scalar_t time, const vector_t& state, scalar_t nextTime, vector_t& input, vector_t& nextState) {
   const auto contactFlags = referenceManagerPtr_->getContactFlags(time);
-  input = weightCompensatingInput(info_, contactFlags);
+  // weightCompensatingInput from ocs2 iterates over contactFlags.size()=4 (legacy quadruped size).
+  // For robots with fewer contacts this writes GRFs beyond the model's contact slots, corrupting joint
+  // torques in the input vector. Reimplement here iterating only over the model's actual contacts.
+  const size_t numContacts = info_.numThreeDofContacts + info_.numSixDofContacts;
+  size_t numActive = 0;
+  for (size_t i = 0; i < numContacts; ++i) { if (contactFlags[i]) ++numActive; }
+  input = vector_t::Zero(info_.inputDim);
+  if (numActive > 0) {
+    const scalar_t fz = info_.robotMass * 9.81 / static_cast<scalar_t>(numActive);
+    for (size_t i = 0; i < numContacts; ++i) {
+      if (contactFlags[i]) centroidal_model::getContactForces(input, i, info_)[2] = fz;
+    }
+  }
   nextState = state;
   if (!extendNormalizedMomentum_) {
     centroidal_model::getNormalizedMomentum(nextState, info_).setZero();

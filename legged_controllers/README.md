@@ -10,15 +10,16 @@ ROS 2 control plugin implementing a Whole-Body Control + Model Predictive Contro
 Controller Manager
     │
     ├─ on_init()        ← declare parameters, load file paths
-    ├─ on_configure()   ← build OCS2 problem, MPC, state estimator, WBC
-    ├─ on_activate()    ← initialize observation, start MPC thread
+    ├─ on_configure()   ← build OCS2 problem, MPC, Kalman filter state estimator
+    ├─ on_activate()    ← seed observation, run first MPC solve, start MPC thread
     │
     └─ update() @ 500 Hz
-           ├─ updateStateEstimation()   reads joints + IMU → centroidal state
-           ├─ MPC_MRT_Interface         query latest MPC policy
-           ├─ WeightedWbc               solve WBC QP for joint torques
-           ├─ SafetyChecker             abort if unsafe
-           └─ write joint commands      position + velocity + effort
+           ├─ updateStatesEstimatate()  joints + IMU → Kalman filter → centroidal state
+           ├─ MPC_MRT_Interface         poll latest MPC policy (background thread @ 80 Hz)
+           ├─ evaluatePolicy()          desired joint positions + velocities
+           ├─ WeightedWbc               [TODO] WBC QP → feedforward joint torques
+           ├─ SafetyChecker             [TODO] abort if unsafe
+           └─ write joint commands      position + velocity + effort (effort=0 until WBC)
 ```
 
 The controller is built on top of the [OCS2](https://leggedrobotics.github.io/ocs2/) framework.  
@@ -160,41 +161,54 @@ IMU (`torso_imu` by default):
 ### `on_init()`
 Declares and validates all ROS 2 parameters. Returns `FAILURE` if any required path is empty.
 
-### `on_configure()` *(TODO — step 3)*
+### `on_configure()`
 Runs all one-time setup in order:
-1. `setupLeggedInterface()` — builds the OCS2 optimal control problem via Pinocchio
+1. `setupLeggedInterface()` — builds the OCS2 optimal control problem via Pinocchio + CppAD libraries
 2. `setupMpc()` — creates `SqpMpc`, attaches `GaitReceiver` and `RosReferenceManager`
-3. `setupMrt()` — creates `MPC_MRT_Interface`, initializes rollout (does **not** start the thread)
+3. `setupMrt()` — creates `MPC_MRT_Interface`, initializes rollout (does **not** start the MPC thread)
 4. `setupStateEstimate()` — creates `KalmanFilterEstimate` on a dedicated `rclcpp::Node`
-5. Setup `WeightedWbc` and `SafetyChecker`
+5. WBC + SafetyChecker — pending (commented out until `legged_wbc` is ported to ROS 2)
 
-### `on_activate()` *(TODO — step 3)*
-1. Reads current joint positions to seed the initial observation
-2. Calls `mpcMrtInterface_->advanceMpc()` in a loop until the first policy is received
-3. Launches the background MPC thread at `mpcDesiredFrequency` Hz
+### `on_activate()`
+1. Zero-initializes `currentObservation_` (state, input, time)
+2. Calls `updateStatesEstimatate()` once with a 2 ms dummy period to seed the Kalman filter from hardware
+3. Sends a hold-in-place `TargetTrajectories` (current state, zero input) to the MPC reference manager
+4. Starts the background MPC thread — thread **idles** while `mpcRunning_ = false`
+5. Blocks calling `advanceMpc()` synchronously until `initialPolicyReceived()` returns true (typically one SQP solve, ~10–50 ms)
+6. Sets `mpcRunning_ = true` — hands off continuous solving to the background thread
+7. Seeds position-hold commands (`pos = measured`, `vel = 0`, `effort = 0`) to prevent free-fall on the first tick
 
-### `update()` @ 500 Hz *(TODO — step 3)*
+### `update()` @ 500 Hz
 ```
-updateStateEstimation()
-  ├─ read jointNames_[i]/position, /velocity, /effort
-  ├─ read torso_imu/orientation, angular_velocity, linear_acceleration
+updateStatesEstimatate(time, period)
+  ├─ read state_interfaces_[3*i+0/1] → jointPos/jointVel (12 joints)
+  ├─ read state_interfaces_[3*12+0..9] → IMU orientation(xyzw), ang_vel, lin_accel
+  ├─ contact_flag_t{true, true, false, false}  (both feet always in contact — TODO: force sensors)
   ├─ stateEstimate_->updateJointStates() / updateContact() / updateImu()
-  ├─ stateEstimate_->update() → measuredRbdState_
-  └─ rbdConversions_->computeCentroidalState() → currentObservation_.state
+  ├─ measuredRbdState_ = stateEstimate_->update()   (Kalman predict + correct)
+  └─ currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel()
+       yaw unwrapped with std::remainder() to avoid ±π discontinuities
 
 mpcMrtInterface_->setCurrentObservation(currentObservation_)
-mpcMrtInterface_->updatePolicy()
-mpcMrtInterface_->evaluatePolicy() → desiredState, desiredInput
+mpcMrtInterface_->updatePolicy()          (non-blocking: swaps buffer if new policy ready)
+mpcMrtInterface_->evaluatePolicy()        → optimizedState, optimizedInput, plannedMode
 
-wbc_->update() → jointTorques
+posDes = centroidal_model::getJointAngles(optimizedState, info)
+velDes = centroidal_model::getJointVelocities(optimizedInput, info)
 
-safetyChecker_->check()
+write command_interfaces_[3*j+0] = posDes[j]   (MuJoCo PD target position)
+      command_interfaces_[3*j+1] = velDes[j]   (MuJoCo PD target velocity)
+      command_interfaces_[3*j+2] = 0.0          (feedforward torque — zero until WBC added)
 
-write jointNames_[i]/position, /velocity, /effort
+observationPublisher_->publish(createObservationMsg(currentObservation_))
 ```
 
-### `on_deactivate()` *(TODO — step 3)*
-Sets `controllerRunning_ = false`, joins the MPC thread.
+> **Note:** WBC feedforward torque is currently zero. The robot is held by MuJoCo's built-in PD
+> control tracking the MPC-desired joint positions. Once `legged_wbc` is integrated, replace the
+> `0.0` effort command with the WBC output torques.
+
+### `on_deactivate()`
+Sets `mpcRunning_ = false` then `controllerRunning_ = false`, joins the MPC thread.
 
 ---
 
@@ -257,10 +271,51 @@ OCS2-level rates. `mrtDesiredFrequency` **must equal** `update_rate` — that is
 
 ---
 
+## CppAD pre-compilation
+
+OCS2's SQP solver requires exact Jacobians and Hessians of the dynamics and foot-kinematics constraints at every iteration. Rather than computing these by hand, OCS2 uses **CppAD-CodeGen**: it traces each function symbolically, generates optimised C++ code for the function and all its derivatives, and compiles that code into a native shared library (`.so`). The resulting libraries load in milliseconds at startup and run at full native speed during the MPC solve.
+
+### Generated libraries
+
+The compiled files are written to the absolute path set by `modelFolderCppAd` in `task.info`. For the biped there are seven:
+
+| Library | What it computes |
+|---|---|
+| `dynamics_systemFlowMap` | Centroidal dynamics `ẋ = f(x, u)` — state evolution over the MPC horizon. Provides `∂f/∂x` and `∂f/∂u` to the SQP at every shooting node |
+| `left_ankle_pitch_link_position` | Left foot position `p(x)` in world frame — foot placement constraint (zero velocity during stance) |
+| `left_ankle_pitch_link_velocity` | Left foot velocity `ṗ(x, u)` — zero-velocity contact constraint |
+| `left_ankle_pitch_link_orientation` | Left foot orientation `R(x)` — foot orientation constraint |
+| `right_ankle_pitch_link_{position,velocity,orientation}` | Same three functions for the right foot |
+
+### Workflow
+
+Compilation takes 2–5 minutes because the generated C++ code for each Jacobian is thousands of lines compiled with `-O3`. Subsequent runs load the pre-built `.so` files in seconds.
+
+```bash
+# Step 1 — first run or after changing robot model, URDF, or contact frames:
+#   Set recompileLibrariesCppAd = true in config/mpc/task.info, then:
+ros2 launch legged_controllers precompile_cppad.launch.py
+# Wait for: "[legged_controller]: LeggedController configured successfully"
+
+# Step 2 — set recompileLibrariesCppAd = false in task.info and rebuild:
+colcon build --packages-select legged_controllers
+```
+
+### When to recompile
+
+Set `recompileLibrariesCppAd = true` and re-run `precompile_cppad.launch.py` whenever:
+- The URDF changes (joint count, link masses, inertias)
+- `contactNames3DoF` changes (different foot frame names = different kinematics functions)
+- `modelFolderCppAd` path changes
+- After a clean workspace rebuild (`rm -rf build install`)
+
+---
+
 ## Launch files
 
 | File | Purpose |
 |---|---|
+| `launch/precompile_cppad.launch.py` | One-shot CppAD library compilation. Run once after any robot model change. |
 | `launch/test_load_mpc_controller.launch.py` | Full simulation stack: `robot_state_publisher` + MuJoCo + broadcasters + `legged_controller`. Use this to verify the complete lifecycle. |
 | `launch/mujoco_sim.launch.py` | MuJoCo simulation without the legged controller (broadcasters only). |
 | `launch/real_hw.launch.py` | Real hardware launch using the `legged_hw` backend. |
@@ -301,8 +356,10 @@ ros2 launch legged_controllers test_load_mpc_controller.launch.py pd_gains_file:
 | `on_init()` — parameter loading | Done |
 | `command_interface_configuration()` | Done |
 | `state_interface_configuration()` | Done |
-| `on_configure()` — OCS2 setup | TODO (step 3) |
-| `on_activate()` — start MPC thread | TODO (step 3) |
-| `update()` — full control loop | TODO (step 3) |
-| `on_deactivate()` — thread cleanup | TODO (step 3) |
+| `on_configure()` — OCS2 setup + CppAD | Done |
+| `on_activate()` — seed observation, initial MPC solve, start thread | Done |
+| `update()` — state estimation + MPC query + PD position tracking | Done |
+| `on_deactivate()` — thread cleanup | Done |
+| WBC feedforward torque in `update()` | TODO — add `legged_wbc` package |
+| Contact detection (force sensors) | TODO — replace constant-contact assumption |
 | `LeggedCheaterController` | TODO (post-core) |

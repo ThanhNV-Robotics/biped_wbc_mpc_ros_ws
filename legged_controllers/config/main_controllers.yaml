@@ -8,7 +8,7 @@ controller_manager:
     imu_sensor_broadcaster:
       type: imu_sensor_broadcaster/IMUSensorBroadcaster
 
-    legged_controller:
+    legged_controller: # controller plug in for MPC controller
       type: legged/LeggedController
 
 joint_state_broadcaster:
