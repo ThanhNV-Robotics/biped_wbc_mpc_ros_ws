@@ -140,7 +140,7 @@ mpc
 
   debugPrint                      false
 
-  mpcDesiredFrequency             80  ; [Hz]
+  mpcDesiredFrequency             100  ; [Hz]
   mrtDesiredFrequency             500 ; [Hz]
 }
 
@@ -180,40 +180,41 @@ initialState ;; only used as the cold-start guess for the MPC optimizer on first
 }
 
 ; standard state weight matrix
+; Effective weight = scaling × diagonal value
 Q
 {
-  scaling 1e+0
+  scaling 0.1e+0
 
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
-  (0,0)   5.0     ; h_com_x / robotMass
-  (1,1)   5.0     ; h_com_y / robotMass
-  (2,2)   50.0    ; h_com_z / robotMass
-  (3,3)   0.5     ; L_x / robotMass
-  (4,4)   0.5     ; L_y / robotMass
-  (5,5)   0.5     ; L_z / robotMass
+  (0,0)   8.0     ; h_com_x / robotMass
+  (1,1)   8.0     ; h_com_y / robotMass
+  (2,2)   15.0     ; h_com_z / robotMass
+  (3,3)   15.0     ; L_x / robotMass
+  (4,4)   15.0     ; L_y / robotMass
+  (5,5)   4.0     ; L_z / robotMass
 
   ;; Base Pose: [position, orientation] ;;
-  (6,6)   10.0   ; p_base_x
-  (7,7)   10.0   ; p_base_y
-  (8,8)   500.0  ; p_base_z
+  (6,6)   0.0    ; p_base_x   — not tracking xy for now
+  (7,7)   0.0    ; p_base_y
+  (8,8)   15.0  ; p_base_z   — height tracking (effective = 50)
   ; euler angles for base to world rotation
-  (9,9)   100.0  ; theta_base_z  (yaw)
-  (10,10) 200.0  ; theta_base_y  (pitch)
-  (11,11) 200.0  ; theta_base_x  (roll)
+  (9,9)   0.0    ; theta_base_z  (yaw)   — not tracking heading for now
+  (10,10) 5.0  ; theta_base_y  (pitch) — keep base level (effective = 20)
+  (11,11) 5.0  ; theta_base_x  (roll)  — keep base level (effective = 20)
 
   ;; Joint Positions ;;
-  (12,12) 5.0   ;    left_hip_pitch_joint
-  (13,13) 5.0   ;    left_hip_roll_joint
-  (14,14) 5.0   ;    left_hip_yaw_joint
-  (15,15) 5.0   ;    left_knee_pitch_joint
-  (16,16) 5.0   ;    left_ankle_roll_joint
-  (17,17) 5.0   ;    left_ankle_pitch_joint
-  (18,18) 5.0   ;    right_hip_pitch_joint
-  (19,19) 5.0   ;    right_hip_roll_joint
-  (20,20) 5.0   ;    right_hip_yaw_joint
-  (21,21) 5.0   ;    right_knee_pitch_joint
-  (22,22) 5.0   ;    right_ankle_roll_joint
-  (23,23) 5.0   ;    right_ankle_pitch_joint
+  (12,12) 0.02   ;    left_hip_pitch_joint
+  (13,13) 0.06   ;    left_hip_roll_joint
+  (14,14) 4.0   ;    left_hip_yaw_joint
+  (15,15) 0.02   ;    left_knee_pitch_joint
+  (16,16) 0.01   ;    left_ankle_roll_joint
+  (17,17) 0.01   ;    left_ankle_pitch_joint
+  (18,18) 0.02   ;    right_hip_pitch_joint
+  (19,19) 0.06   ;    right_hip_roll_joint
+  (20,20) 4.0   ;    right_hip_yaw_joint
+  (21,21) 0.02   ;    right_knee_pitch_joint
+  (22,22) 0.01   ;    right_ankle_roll_joint
+  (23,23) 0.01   ;    right_ankle_pitch_joint
 }
 
 ; control weight matrix
@@ -225,63 +226,63 @@ R
   scaling 1e-3
 
   ;; 3-DoF Contact Forces: 2 feet × 3 = 6 entries ;;
-  (0,0)   0.1       ; left_foot  fx
-  (1,1)   0.1       ; left_foot  fy
-  (2,2)   0.1       ; left_foot  fz
-  (3,3)   0.1       ; right_foot fx
-  (4,4)   0.1       ; right_foot fy
-  (5,5)   0.1       ; right_foot fz
+  (0,0)   0.05       ; left_foot  fx
+  (1,1)   0.05       ; left_foot  fy
+  (2,2)   0.01       ; left_foot  fz
+  (3,3)   0.05       ; right_foot fx
+  (4,4)   0.05       ; right_foot fy
+  (5,5)   0.2        ; right_foot fz
 
   ;; Joint Velocities: 12 joints (entries 6-17) ;;
-  (6,6)   0.1     ;    left_hip_pitch_joint
-  (7,7)   0.1     ;    left_hip_roll_joint
-  (8,8)   0.1     ;    left_hip_yaw_joint
-  (9,9)   0.1     ;    left_knee_pitch_joint
-  (10,10) 0.1     ;    left_ankle_roll_joint
-  (11,11) 0.1     ;    left_ankle_pitch_joint
-  (12,12) 0.1     ;    right_hip_pitch_joint
-  (13,13) 0.1     ;    right_hip_roll_joint
-  (14,14) 0.1     ;    right_hip_yaw_joint
-  (15,15) 0.1     ;    right_knee_pitch_joint
-  (16,16) 0.1     ;    right_ankle_roll_joint
-  (17,17) 0.1     ;    right_ankle_pitch_joint
+  (6,6)   10     ;    left_hip_pitch_joint
+  (7,7)   10     ;    left_hip_roll_joint
+  (8,8)   10     ;    left_hip_yaw_joint
+  (9,9)   10     ;    left_knee_pitch_joint
+  (10,10) 10     ;    left_ankle_roll_joint
+  (11,11) 10     ;    left_ankle_pitch_joint
+  (12,12) 10     ;    right_hip_pitch_joint
+  (13,13) 10     ;    right_hip_roll_joint
+  (14,14) 10     ;    right_hip_yaw_joint
+  (15,15) 10     ;    right_knee_pitch_joint
+  (16,16) 10     ;    right_ankle_roll_joint
+  (17,17) 10     ;    right_ankle_pitch_joint
 }
 
-terminalCostScaling       3.0
+terminalCostScaling       1.0
 Q_final
 {
   scaling 1e+0
 
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
-  (0,0)   5.0     ; h_com_x / robotMass
-  (1,1)   5.0     ; h_com_y / robotMass
-  (2,2)   50.0    ; h_com_z / robotMass
-  (3,3)   0.5     ; L_x / robotMass
-  (4,4)   0.5     ; L_y / robotMass
-  (5,5)   0.5     ; L_z / robotMass
+  (0,0)   25.0     ; h_com_x / robotMass
+  (1,1)   25.0     ; h_com_y / robotMass
+  (2,2)   25.0     ; h_com_z / robotMass
+  (3,3)   25.0     ; L_x / robotMass
+  (4,4)   25.0     ; L_y / robotMass
+  (5,5)   25.0     ; L_z / robotMass
 
   ;; Base Pose: [position, orientation] ;;
-  (6,6)   10.0   ; p_base_x
-  (7,7)   10.0   ; p_base_y
-  (8,8)   500.0  ; p_base_z
+  (6,6)   0.0    ; p_base_x
+  (7,7)   0.0    ; p_base_y
+  (8,8)   20.0  ; p_base_z   — height tracking (effective = 500)
   ; euler angles for base to world rotation
-  (9,9)   100.0  ; theta_base_z  (yaw)
-  (10,10) 200.0  ; theta_base_y  (pitch)
-  (11,11) 200.0  ; theta_base_x  (roll)
+  (9,9)   0.0    ; theta_base_z  (yaw)
+  (10,10) 5.0  ; theta_base_y  (pitch) — keep base level (effective = 200)
+  (11,11) 5.0  ; theta_base_x  (roll)  — keep base level (effective = 200)
 
   ;; Joint Positions ;;
-  (12,12) 5.0   ;    left_hip_pitch_joint
-  (13,13) 5.0   ;    left_hip_roll_joint
-  (14,14) 5.0   ;    left_hip_yaw_joint
-  (15,15) 5.0   ;    left_knee_pitch_joint
-  (16,16) 5.0   ;    left_ankle_roll_joint
-  (17,17) 5.0   ;    left_ankle_pitch_joint
-  (18,18) 5.0   ;    right_hip_pitch_joint
-  (19,19) 5.0   ;    right_hip_roll_joint
-  (20,20) 5.0   ;    right_hip_yaw_joint
-  (21,21) 5.0   ;    right_knee_pitch_joint
-  (22,22) 5.0   ;    right_ankle_roll_joint
-  (23,23) 5.0   ;    right_ankle_pitch_joint
+  (12,12) 0.02   ;    left_hip_pitch_joint
+  (13,13) 0.06   ;    left_hip_roll_joint
+  (14,14) 8.0   ;    left_hip_yaw_joint
+  (15,15) 0.02   ;    left_knee_pitch_joint
+  (16,16) 0.01   ;    left_ankle_roll_joint
+  (17,17) 0.01   ;    left_ankle_pitch_joint
+  (18,18) 0.02   ;    right_hip_pitch_joint
+  (19,19) 0.06   ;    right_hip_roll_joint
+  (20,20) 8.0   ;    right_hip_yaw_joint
+  (21,21) 0.02   ;    right_knee_pitch_joint
+  (22,22) 0.01   ;    right_ankle_roll_joint
+  (23,23) 0.01   ;    right_ankle_pitch_joint
 }
 
 icp_cost_weights

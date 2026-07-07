@@ -17,19 +17,12 @@ def launch_setup(context, *args, **kwargs):
     biped_pkg_share = FindPackageShare("biped_description")
     controller_pkg_share = FindPackageShare("biped_joint_pd_impedance_controller")
 
-    # Build robot description for biped robot
-    # Note: use_pid is set to true to export velocity/effort command interfaces
-    # The MuJoCo interface will use custom PD impedance mode when all 3 interfaces are claimed
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution([biped_pkg_share, "urdf", "biped_robot_12dof.urdf"]),
-            " use_pid:=true",  # Export position, velocity, effort interfaces
-            " headless:=",
-            LaunchConfiguration("headless"),
             " use_mjcf_from_topic:=false",
-            " use_transmissions:=false",
         ]
     )
 
@@ -86,15 +79,8 @@ def launch_setup(context, *args, **kwargs):
 
 
 def generate_launch_description():
-    headless = DeclareLaunchArgument(
-        "headless",
-        default_value="false",
-        description="Run simulation without visualization window",
-    )
-
     return LaunchDescription(
         [
-            headless,
             OpaqueFunction(function=launch_setup),
         ]
     )

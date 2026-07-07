@@ -21,6 +21,7 @@ find_package(ocs2_sqp REQUIRED)
 find_package(ocs2_legged_robot_ros REQUIRED)
 find_package(ocs2_ros_interfaces REQUIRED)
 find_package(ocs2_msgs REQUIRED)
+find_package(humanoid_mpc_msgs REQUIRED)
 
 # find_package(legged_wbc REQUIRED)       # TODO(step3e): enable once legged_wbc is ported
 # find_package(ocs2_self_collision_visualization REQUIRED)
@@ -28,6 +29,8 @@ find_package(ocs2_msgs REQUIRED)
 
 add_library(${PROJECT_NAME} SHARED
   src/LeggedController.cpp
+  src/InverseDynamics.cpp
+  src/command/TargetTrajectoriesCalculator.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -51,6 +54,7 @@ ament_target_dependencies(${PROJECT_NAME}
   ocs2_legged_robot_ros
   ocs2_ros_interfaces
   ocs2_msgs
+  humanoid_mpc_msgs
 )
 
 pluginlib_export_plugin_description_file(controller_interface legged_controllers_plugins.xml)

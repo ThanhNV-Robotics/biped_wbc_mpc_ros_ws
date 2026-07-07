@@ -5,7 +5,10 @@
 #pragma once
 
 #include <atomic>
+#include <mutex>
 #include <thread>
+
+#include <humanoid_mpc_msgs/msg/walking_velocity_command.hpp>
 
 #include <controller_interface/controller_interface.hpp>
 #include <pluginlib/class_list_macros.hpp>
@@ -18,11 +21,15 @@
 #include <ocs2_mpc/MPC_BASE.h>
 #include <ocs2_mpc/MPC_MRT_Interface.h>
 #include <ocs2_msgs/msg/mpc_observation.hpp>
+#include <ocs2_ros_interfaces/command/TargetTrajectoriesRosPublisher.h>
 
 #include <legged_estimation/StateEstimateBase.h>
 #include <legged_estimation/LinearKalmanFilter.h>
 
+#include <ocs2_pinocchio_interface/PinocchioInterface.h>
+
 #include <legged_interface/LeggedInterface.h>
+#include "legged_controllers/command/TargetTrajectoriesCalculator.h"
 
 namespace legged {
 
@@ -80,6 +87,9 @@ protected:
   // returns LifecycleNode::SharedPtr which is incompatible with Node::SharedPtr.
   rclcpp::Node::SharedPtr mpcNode_;
   rclcpp::Publisher<ocs2_msgs::msg::MpcObservation>::SharedPtr observationPublisher_;
+  // Publishes the MPC optimal state+input evaluated at current time for debugging.
+  // Topic: /legged_robot_mpc_policy  (same message type as /legged_robot_mpc_observation)
+  rclcpp::Publisher<ocs2_msgs::msg::MpcObservation>::SharedPtr optimalObservationPublisher_;
 
   // ── State estimation ─────────────────────────────────────────────────────
   std::shared_ptr<ocs2::PinocchioEndEffectorKinematics> eeKinematicsPtr_;
@@ -97,6 +107,17 @@ protected:
   std::thread mpcThread_;
   std::atomic_bool controllerRunning_{false};
   std::atomic_bool mpcRunning_{false};
+
+  // ── Walking velocity command → MPC reference trajectories ───────────────
+  std::unique_ptr<TargetTrajectoriesCalculator> targetTrajCalculator_;
+  // Publishes to /legged_robot_mpc_target; RosReferenceManager subscribes and
+  // calls setTargetTrajectories() internally — makes the topic visible for debugging.
+  std::unique_ptr<ocs2::TargetTrajectoriesRosPublisher> targetTrajPublisher_;
+  rclcpp::Subscription<humanoid_mpc_msgs::msg::WalkingVelocityCommand>::SharedPtr walkingVelCmdSub_;
+
+  // Dedicated pinocchio instance for inverse-dynamics computation in update().
+  // Must NOT be shared with the MPC thread — crba/nonLinearEffects overwrite Data.
+  std::unique_ptr<ocs2::PinocchioInterface> pinocchioForID_;
 
   // ── Benchmarking ─────────────────────────────────────────────────────────
   ocs2::benchmark::RepeatedTimer mpcTimer_;

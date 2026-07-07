@@ -1,27 +1,32 @@
 """
-Precompile CppAD libraries for the biped MPC controller.
+Full MuJoCo simulation with MPC locomotion controller and remote control GUI.
 
-Run this ONCE after changing the robot model (URDF, joint count, contact frames)
-or after a clean build. It loads the controller configuration without starting
-the MuJoCo simulation, triggering OCS2 to regenerate and compile the CppAD
-auto-differentiation libraries.
-
-CppAD compilation typically takes 2-5 minutes. Once done, set
-  recompileLibrariesCppAd = false
-in config/mpc/task.info to skip recompilation on subsequent launches.
+Launches:
+  1. robot_state_publisher    — publishes /robot_description
+  2. mujoco_ros2_control node — MuJoCo physics + controller_manager
+  3. joint_state_broadcaster + imu_sensor_broadcaster
+  4. legged_controller        — MPC + state estimator
+  5. base_velocity_controller_gui (remote_control) — GUI for pelvis height and
+     base velocity commands, publishes to /humanoid/walking_velocity_command
 
 Usage:
-    ros2 launch legged_controllers precompile_cppad.launch.py
+    ros2 launch legged_controllers mpc_mujoco_sim.launch.py
+    ros2 launch legged_controllers mpc_mujoco_sim.launch.py pd_gains_file:=/path/to/gains.yaml
 """
 
 import os
 import tempfile
-import yaml
 
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import OpaqueFunction, Shutdown, LogInfo
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, Shutdown
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterFile, ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -31,26 +36,19 @@ def launch_setup(context):
     biped_share  = get_package_share_directory("biped_description")
     legged_share = get_package_share_directory("legged_controllers")
 
+    pd_gains_file = LaunchConfiguration("pd_gains_file").perform(context)
     controllers_yaml = PathJoinSubstitution(
         [FindPackageShare("legged_controllers"), "config", "main_controllers.yaml"]
     ).perform(context)
 
-    # Expand the URDF with use_pid:=true so all command interfaces are exported.
-    # This must match exactly the URDF OCS2 will parse for its Pinocchio model.
     robot_description_str = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution([FindPackageShare("biped_description"), "urdf", "biped_robot_12dof.urdf"]),
-            " use_pid:=true",
-            " headless:=false",
             " use_mjcf_from_topic:=false",
-            " use_transmissions:=false",
             " use_legged_hw:=false",
-            " pd_gains_file:=",
-            PathJoinSubstitution(
-                [FindPackageShare("legged_controllers"), "config", "mujoco_interface_pd_gains.yaml"]
-            ),
+            " pd_gains_file:=",     pd_gains_file,
         ]
     ).perform(context)
 
@@ -58,34 +56,28 @@ def launch_setup(context):
         "robot_description": ParameterValue(value=robot_description_str, value_type=str)
     }
 
-    # Controller params — same structure as test_load_mpc_controller.launch.py
     legged_controller_params = {
         "legged_controller": {
             "ros__parameters": {
-                "urdf_file":      os.path.join(biped_share, "urdf", "biped_robot_12dof.urdf"),
+                "urdf_file":      os.path.join(biped_share,  "urdf",   "biped_robot_12dof.urdf"),
                 "task_file":      os.path.join(legged_share, "config", "mpc", "task.info"),
                 "reference_file": os.path.join(legged_share, "config", "mpc", "reference.info"),
             }
         }
     }
-    param_file = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", delete=False, prefix="legged_precompile_"
+    legged_ctrl_param_file = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", delete=False, prefix="legged_ctrl_"
     )
-    yaml.dump(legged_controller_params, param_file)
-    param_file.close()
+    yaml.dump(legged_controller_params, legged_ctrl_param_file)
+    legged_ctrl_param_file.close()
 
     return [
-        # # robot_state_publisher is required so ros2_control_node can read
-        # # /robot_description before trying to load the hardware interface.
         Node(
             package="robot_state_publisher",
             executable="robot_state_publisher",
-            parameters=[robot_description, {"use_sim_time": False}],
+            parameters=[robot_description, {"use_sim_time": True}],
             output="both",
         ),
-        # ros2_control_node with MuJoCo backend — starts the controller_manager
-        # so the spawner can configure the controller (which triggers CppAD).
-        # Shut down the whole launch when this exits.
         Node(
             package="mujoco_ros2_control",
             executable="ros2_control_node",
@@ -93,23 +85,44 @@ def launch_setup(context):
             output="both",
             parameters=[
                 ParameterFile(controllers_yaml, allow_substs=False),
-                {"use_sim_time": False},
+                {"use_sim_time": True},
             ],
             on_exit=Shutdown(),
         ),
-        # Spawner configures legged_controller — on_configure() calls
-        # setupLeggedInterface() which triggers CppAD code generation.
-        # recompileLibrariesCppAd must be true in task.info for this to work.
         Node(
             package="controller_manager",
             executable="spawner",
-            arguments=["legged_controller", "--param-file", param_file.name],
+            arguments=[
+                "joint_state_broadcaster",
+                "imu_sensor_broadcaster",
+                "--param-file", controllers_yaml,
+            ],
             output="both",
+        ),
+        Node(
+            package="controller_manager",
+            executable="spawner",
+            arguments=["legged_controller", "--param-file", legged_ctrl_param_file.name],
+            output="both",
+        ),
+        Node(
+            package="remote_control",
+            executable="base_velocity_controller_gui",
+            name="base_velocity_controller_gui",
+            output="screen",
         ),
     ]
 
 
 def generate_launch_description():
+    default_pd_gains = PathJoinSubstitution(
+        [FindPackageShare("legged_controllers"), "config", "mujoco_interface_pd_gains.yaml"]
+    )
     return LaunchDescription([
+        DeclareLaunchArgument(
+            "pd_gains_file",
+            default_value=default_pd_gains,
+            description="Path to YAML file with PD gains for the MuJoCo hardware interface",
+        ),
         OpaqueFunction(function=launch_setup),
     ])

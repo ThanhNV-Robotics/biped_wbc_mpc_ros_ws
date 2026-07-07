@@ -7,6 +7,7 @@
 #include <pinocchio/fwd.hpp>
 
 #include "legged_controllers/LeggedController.h"
+#include "legged_controllers/InverseDynamics.h"
 
 #include <ocs2_centroidal_model/AccessHelperFunctions.h>
 #include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
@@ -156,6 +157,8 @@ void LeggedController::setupMpc()
 
   observationPublisher_ = mpcNode_->create_publisher<ocs2_msgs::msg::MpcObservation>(
       robotName + "_mpc_observation", 1);
+  optimalObservationPublisher_ = mpcNode_->create_publisher<ocs2_msgs::msg::MpcObservation>(
+      robotName + "_mpc_policy", 1);
 }
 
 void LeggedController::setupMrt()
@@ -211,12 +214,22 @@ controller_interface::CallbackReturn LeggedController::on_configure(const rclcpp
                 defaultJointAngles_(defaultJointAngles_.size() - 1));
   }
 
-  // 3g: WBC + SafetyChecker — TODO: enable once legged_wbc is ported to ROS2
-  // wbc_ = std::make_shared<WeightedWbc>(legged_interface_->getPinocchioInterface(),
-  //                                      legged_interface_->getCentroidalModelInfo(),
-  //                                      *eeKinematicsPtr_);
-  // wbc_->loadTasksSetting(taskFile_, verbose);
-  // safetyChecker_ = std::make_shared<SafetyChecker>(legged_interface_->getCentroidalModelInfo());
+  // 3f: Target-trajectory calculator — converts WalkingVelocityCommand to
+  // OCS2 TargetTrajectories and pushes them into the reference manager.
+  targetTrajCalculator_ = std::make_unique<TargetTrajectoriesCalculator>(
+      referenceFile_,
+      legged_interface_->getCentroidalModelInfo(),
+      legged_interface_->getPinocchioInterface(),
+      legged_interface_->mpcSettings().timeHorizon_);
+
+  // Publisher to /legged_robot_mpc_target — RosReferenceManager subscribes to
+  // this topic, so publishing here makes the reference trajectory visible for
+  // debugging while keeping the OCS2 architecture intact.
+  targetTrajPublisher_ = std::make_unique<ocs2::TargetTrajectoriesRosPublisher>(mpcNode_, "legged_robot");
+
+  // 3g: Dedicated pinocchio interface for inverse dynamics in update().
+  // Copied here after legged_interface_ is fully built; must not be shared with MPC thread.
+  pinocchioForID_ = std::make_unique<ocs2::PinocchioInterface>(legged_interface_->getPinocchioInterface());
 
   RCLCPP_INFO(get_node()->get_logger(), "LeggedController configured successfully");
   return controller_interface::CallbackReturn::SUCCESS;
@@ -238,12 +251,49 @@ controller_interface::CallbackReturn LeggedController::on_activate(const rclcpp_
   updateStatesEstimatate(get_node()->now(), rclcpp::Duration(0, 2'000'000));
   RCLCPP_INFO(get_node()->get_logger(), "on_activate: state seeded.");
 
-  // ── 2. Send hold-in-place reference to the MPC ───────────────────────────
-  TargetTrajectories initTarget({currentObservation_.time},
-                                {currentObservation_.state},
-                                {currentObservation_.input});
-  mpcMrtInterface_->getReferenceManager().setTargetTrajectories(initTarget);
+  // ── 2. Send standing reference as initial MPC target ────────────────────
+  // Use a zero-velocity command at the default height so the robot stands still.
+  {
+    const auto& info = legged_interface_->getCentroidalModelInfo();
+    const scalar_t t0 = currentObservation_.time;
+    const scalar_t tH = t0 + legged_interface_->mpcSettings().timeHorizon_;
+    const scalar_t defaultHeight = 0.75;  // matches defaultBaseHeight in reference.info
+
+    vector_t standingState = vector_t::Zero(info.stateDim);
+    standingState.segment<3>(6) = currentObservation_.state.segment<3>(6);  // current xy position
+    standingState(8)  = defaultHeight;
+    standingState(9)  = currentObservation_.state(9);  // preserve current yaw
+    standingState.tail(info.actuatedDofNum) = defaultJointAngles_;
+
+    const TargetTrajectories initTarget({t0, tH},
+                                        {standingState, standingState},
+                                        {vector_t::Zero(info.inputDim), vector_t::Zero(info.inputDim)});
+    // Set directly — the MPC thread may start before the ROS topic message is
+    // delivered, so bypass the pub/sub path for this one-time initial reference.
+    mpcMrtInterface_->getReferenceManager().setTargetTrajectories(initTarget);
+  }
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
+
+  // ── 2b. Subscribe to walking velocity commands ───────────────────────────
+  {
+    auto qos = rclcpp::QoS(1).best_effort();
+    walkingVelCmdSub_ = mpcNode_->create_subscription<humanoid_mpc_msgs::msg::WalkingVelocityCommand>(
+        "/humanoid/walking_velocity_command", qos,
+        [this](const humanoid_mpc_msgs::msg::WalkingVelocityCommand::SharedPtr msg) {
+          if (!mpcRunning_ || !targetTrajCalculator_) return;
+
+          // Pack into vector4_t: [vx_norm, vy_norm, desired_height_m, omega_z_norm]
+          TargetTrajectoriesCalculator::vector4_t cmd;
+          cmd << msg->linear_velocity_x,
+                 msg->linear_velocity_y,
+                 msg->desired_pelvis_height,
+                 msg->angular_velocity_z;
+
+          const auto trajectories = targetTrajCalculator_->commandedVelocityToTargetTrajectories(
+              cmd, currentObservation_.time, currentObservation_.state);
+          targetTrajPublisher_->publishTargetTrajectories(trajectories);
+        });
+  }
 
   // ── 3. Start the MPC background thread ──────────────────────────────────────
   mpcRunning_ = true;
@@ -267,14 +317,12 @@ controller_interface::CallbackReturn LeggedController::on_activate(const rclcpp_
     }
   });
   setThreadPriority(legged_interface_->sqpSettings().threadPriority, mpcThread_);
-  RCLCPP_INFO(get_node()->get_logger(), "STEP 1: MPC disabled — position-hold only. No advanceMpc() calls.");
 
-  // ── 6. Seed zero-position commands before first update() tick ───────────────
-  // Hold all joints at 0 (straight posture). The MPC will take over once its
-  // first policy is ready and smoothly drive to the planned configuration.
+  // Seed default standing angles before the first update() tick.
+  // update() will take over once initialPolicyReceived() is true.
   const size_t nJoints = jointNames_.size();
   for (size_t i = 0; i < nJoints; ++i) {
-    command_interfaces_[3 * i + 0].set_value(0.0);
+    command_interfaces_[3 * i + 0].set_value(defaultJointAngles_(i));
     command_interfaces_[3 * i + 1].set_value(0.0);
     command_interfaces_[3 * i + 2].set_value(0.0);
   }
@@ -318,16 +366,58 @@ controller_interface::return_type LeggedController::update(const rclcpp::Time& t
   const size_t nJoints = jointNames_.size();
   const auto& info = legged_interface_->getCentroidalModelInfo();
 
-  // MPC runs in background and observation is published for monitoring, but its
-  // output is not used for commands. Hold joints at zero (straight upright).
-  // TODO: re-enable evaluatePolicy() + feedforward once state estimation is verified.
-  for (size_t j = 0; j < nJoints; ++j) {
-    command_interfaces_[3 * j + 0].set_value(0.0);
-    command_interfaces_[3 * j + 1].set_value(0.0);
-    command_interfaces_[3 * j + 2].set_value(0.0);
+  // Set false to hold defaultJointAngles_ (PD only) while debugging state estimation.
+  // Set true to enable MPC position reference + ID feedforward torques.
+  constexpr bool kEnableMpcOutput = true;
+
+  if (kEnableMpcOutput && mpcMrtInterface_->initialPolicyReceived()) {
+    // ── 4a. Evaluate MPC policy at current time ────────────────────────────
+    vector_t optState, optInput;
+    size_t optMode;
+    mpcMrtInterface_->evaluatePolicy(currentObservation_.time, currentObservation_.state,
+                                     optState, optInput, optMode);
+
+    // ── 4b. Reference joint pos/vel from optimal state and input ──────────
+    const vector_t jointPosRef = optState.tail(info.actuatedDofNum);
+    const vector_t jointVelRef = getJointVelocities(optInput, info);
+
+    // ── 4c. Inverse dynamics feedforward torques ───────────────────────────
+    // Set to zero while debugging; re-enable by computing ID torques.
+    const vector_t torques = vector_t::Zero(info.actuatedDofNum);
+
+    for (size_t j = 0; j < nJoints; ++j) {
+      command_interfaces_[3 * j + 0].set_value(jointPosRef(j));
+      command_interfaces_[3 * j + 1].set_value(jointVelRef(j));
+      command_interfaces_[3 * j + 2].set_value(torques(j));
+    }
+  } else {
+    // ── 4d. No policy yet — hold default standing pose, zero vel/torque ────
+    for (size_t j = 0; j < nJoints; ++j) {
+      command_interfaces_[3 * j + 0].set_value(defaultJointAngles_(j));
+      command_interfaces_[3 * j + 1].set_value(0.0);
+      command_interfaces_[3 * j + 2].set_value(0.0);
+    }
   }
 
-  // ── 5. Publish observation ────────────────────────────────────────────────
+  // ── 5. Publish MPC policy output for debugging ───────────────────────────
+  if (mpcMrtInterface_->initialPolicyReceived()) {
+    vector_t optState, optInput;
+    size_t optMode;
+    mpcMrtInterface_->evaluatePolicy(currentObservation_.time, currentObservation_.state,
+                                     optState, optInput, optMode);
+    SystemObservation optObs;
+    optObs.time  = currentObservation_.time;
+    optObs.state = optState;
+    optObs.input = optInput;
+    optObs.mode  = optMode;
+    optimalObservationPublisher_->publish(
+        ocs2::ros_msg_conversions::createObservationMsg(optObs));
+  }
+
+  // ── 6. Spin mpcNode_ to process incoming ROS callbacks ───────────────────
+  rclcpp::spin_some(mpcNode_);
+
+  // ── 7. Publish measured observation ──────────────────────────────────────
   observationPublisher_->publish(
       ocs2::ros_msg_conversions::createObservationMsg(currentObservation_));
 

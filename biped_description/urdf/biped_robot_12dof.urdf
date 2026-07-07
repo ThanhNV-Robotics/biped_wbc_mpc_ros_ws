@@ -1,13 +1,9 @@
 <?xml version="1.0" ?>
 <robot name="biped 12-dof robot" version="1.0" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- For ros2_control: Whether or not to use PID control -->
-  <xacro:arg name="use_pid" default="false"/>
-  <xacro:arg name="headless" default="false"/>
   <!-- Path to YAML file with PD gains for MuJoCo internal hold-position mode -->
   <xacro:arg name="pd_gains_file" default=""/>
   <xacro:arg name="use_mjcf_from_topic" default="false"/>
-  <xacro:arg name="use_transmissions" default="false"/>
   <!-- legged_hw: use instead of MujocoSystemInterface (real robot or UDP bridge) -->
   <xacro:arg name="use_legged_hw" default="false"/>
   <!-- use_sim:=true → connect to MuJoCo (sim_ip); use_sim:=false → connect to STM32 (hw_ip) -->
@@ -343,9 +339,6 @@
       <!-- Uncomment to start the simulation at a specific keyframe defined in the MJCF -->
       <!-- <param name="initial_keyframe">start_90</param> -->
 
-      <!-- If set to true, will not launch the Simulate App window -->
-      <param name="headless">$(arg headless)</param>
-
       <!-- Path to PD gains YAML for internal hold-position mode (empty = disabled) -->
       <param name="pd_gains_file">$(arg pd_gains_file)</param>
 
@@ -354,10 +347,8 @@
     </hardware>
     <joint name="left_hip_pitch_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -370,10 +361,8 @@
 
     <joint name="left_hip_roll_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -386,10 +375,8 @@
 
     <joint name="left_hip_yaw_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -402,10 +389,8 @@
 
     <joint name="left_knee_pitch_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -418,10 +403,8 @@
 
     <joint name="left_ankle_roll_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -434,10 +417,8 @@
 
     <joint name="left_ankle_pitch_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -450,10 +431,8 @@
 
     <joint name="right_hip_pitch_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -466,10 +445,8 @@
 
     <joint name="right_hip_roll_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -482,10 +459,8 @@
 
     <joint name="right_hip_yaw_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -498,10 +473,8 @@
 
     <joint name="right_knee_pitch_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -514,10 +487,8 @@
 
     <joint name="right_ankle_roll_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
@@ -530,10 +501,8 @@
 
     <joint name="right_ankle_pitch_joint">
       <command_interface name="position"/>
-      <xacro:if value="$(arg use_pid)">
-        <command_interface name="velocity"/>
-        <command_interface name="effort"/>
-      </xacro:if>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>

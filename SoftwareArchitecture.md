@@ -255,6 +255,54 @@ Control thread (every 2ms):
 
 `LeggedInterface` defines the OCS2 problem: cost function, centroidal dynamics, constraints (friction cone, swing foot clearance, contact schedule, joint limits).
 
+### MPC Reference: `/legged_robot_mpc_target`
+
+The MPC cost function tracks a **TargetTrajectories** reference, delivered over the topic `/legged_robot_mpc_target` (type `ocs2_msgs/msg/MpcTargetTrajectories`):
+
+```
+time_trajectory:   float64[]       # timestamps of the waypoints
+state_trajectory:  MpcState[]      # desired centroidal state at each waypoint
+  └─ value: float32[24]            # same 24-dim layout as /legged_robot_mpc_observation
+input_trajectory:  MpcInput[]      # desired input (zeros — not used in the reference)
+  └─ value: float32[18]
+```
+
+**State trajectory layout** (`value[i]` for each waypoint):
+
+| Index | Meaning |
+|-------|---------|
+| `[0]`–`[2]` | Target linear momentum / mass ≈ CoM linear velocity (vx, vy, vz) in world frame |
+| `[3]`–`[5]` | Target angular momentum / mass ≈ angular velocity (wx, wy, wz) in world frame |
+| `[6]`–`[8]` | Target base position (px, py, pz) |
+| `[9]`–`[11]` | Target base orientation ZYX Euler (yaw, pitch=0, roll=0) |
+| `[12]`–`[23]` | Target joint angles (default standing configuration) |
+
+**Reference pipeline:**
+
+```
+/humanoid/walking_velocity_command   (25 Hz from GUI)
+  cmd = [vx_norm, vy_norm, pelvis_height_m, omega_z_norm]
+         │         │         │                │
+         × max_vx  × max_vy  passthrough      × max_omega_z
+         └─────────────────── low-pass filter ────────────────────┘
+                    ↓
+         TargetTrajectoriesCalculator::commandedVelocityToTargetTrajectories()
+           builds 3-waypoint trajectory:
+             t0           → current momentum + current base pose
+             t0 + 0.7·T  → integrated intermediate pose
+             t0 + T       → integrated final pose
+                    ↓
+         TargetTrajectoriesRosPublisher → /legged_robot_mpc_target
+                    ↓
+         RosReferenceManager::preSolverRun() → setTargetTrajectories()
+                    ↓
+         OCS2 MPC cost function
+```
+
+**Initial reference** (set at `on_activate()`): standing still at the current base pose and default joint angles, applied directly via `setTargetTrajectories()` — not through the topic — to avoid a race with the MPC thread start.
+
+---
+
 ### WBC (Whole-Body Controller)
 
 ```
@@ -306,11 +354,14 @@ Output: 12 joint torques → written to effort command interfaces.
 └──────────────────────────────────────────────────────────────────────┘
 
 Topics visible externally:
-  /clock                           ← sim time
-  /joint_states                    ← joint_state_broadcaster
-  /imu_sensor_broadcaster/imu      ← imu_sensor_broadcaster
-  /simulator/floating_base_state   ← MujocoSystemInterface directly
-  /tf                              ← robot_state_publisher
+  /clock                                ← sim time
+  /joint_states                         ← joint_state_broadcaster
+  /imu_sensor_broadcaster/imu           ← imu_sensor_broadcaster
+  /simulator/floating_base_state        ← MujocoSystemInterface (ground-truth odometry)
+  /tf                                   ← robot_state_publisher
+  /legged_robot_mpc_observation         ← LeggedController: current centroidal state (24-dim)
+  /legged_robot_mpc_target              ← LeggedController: MPC reference trajectory (3 waypoints)
+  /humanoid/walking_velocity_command    ← GUI: [vx_norm, vy_norm, height_m, omega_z_norm]
 ```
 
 ---

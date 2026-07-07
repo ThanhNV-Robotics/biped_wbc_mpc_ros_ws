@@ -34,24 +34,17 @@ def launch_setup(context):
     biped_share  = get_package_share_directory("biped_description")
     legged_share = get_package_share_directory("legged_controllers")
 
-    headless      = LaunchConfiguration("headless").perform(context)
     pd_gains_file = LaunchConfiguration("pd_gains_file").perform(context)
     controllers_yaml = PathJoinSubstitution(
         [FindPackageShare("legged_controllers"), "config", "main_controllers.yaml"]
     ).perform(context)
 
-    # xacro expands the URDF and selects the MujocoSystemInterface hardware plugin.
-    # use_pid:=true exports position/velocity/effort command interfaces needed by
-    # the legged_controller once step 2 is implemented.
     robot_description_str = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution([FindPackageShare("biped_description"), "urdf", "biped_robot_12dof.urdf"]),
-            " use_pid:=true",
-            " headless:=",           headless,
             " use_mjcf_from_topic:=false",
-            " use_transmissions:=false",
             " use_legged_hw:=false",
             " pd_gains_file:=",      pd_gains_file,
         ]
@@ -136,11 +129,6 @@ def generate_launch_description():
         [FindPackageShare("legged_controllers"), "config", "mujoco_interface_pd_gains.yaml"]
     )
     return LaunchDescription([
-        DeclareLaunchArgument(
-            "headless",
-            default_value="false",
-            description="Run MuJoCo without a GUI window",
-        ),
         DeclareLaunchArgument(
             "pd_gains_file",
             default_value=default_pd_gains,

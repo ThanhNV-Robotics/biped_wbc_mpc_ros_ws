@@ -140,7 +140,6 @@ For each of the 12 joints:
 - `<joint_name>/velocity` — desired joint velocity (PD target)
 - `<joint_name>/effort`   — feedforward torque from WBC
 
-Requires `use_pid:=true` when expanding the URDF with xacro.
 
 ### State interfaces (read by the controller)
 
@@ -198,6 +197,56 @@ Accessor functions from `ocs2_centroidal_model/AccessHelperFunctions.h`:
 centroidal_model::getJointAngles(state, info)      // state[12:24]
 centroidal_model::getJointVelocities(input, info)  // input[6:18]  (input = [GRFs(6), joint_vel(12)])
 centroidal_model::getContactForces(input, i, info) // input[3*i : 3*i+3]
+```
+
+---
+
+## Published topics
+
+| Topic | Type | Rate | Content |
+|-------|------|------|---------|
+| `/legged_robot_mpc_observation` | `ocs2_msgs/MpcObservation` | 500 Hz | **Measured** centroidal state from the Kalman filter estimator |
+| `/legged_robot_mpc_policy` | `ocs2_msgs/MpcObservation` | 500 Hz | **Optimal** state + input evaluated from the latest MPC policy |
+| `/legged_robot_mpc_target` | `ocs2_msgs/MpcTargetTrajectories` | on command | Reference trajectory fed to the MPC (published by `TargetTrajectoriesCalculator`) |
+
+### `/legged_robot_mpc_policy` field layout
+
+The `state.value` array (length 24) and `input.value` array (length 18):
+
+**state.value — optimal centroidal state:**
+
+| Index | Symbol | Content |
+|-------|--------|---------|
+| 0–5 | h/m | Normalized centroidal momentum [lin x/y/z, ang x/y/z] |
+| 6 | p_x | Optimal base position x |
+| 7 | p_y | Optimal base position y |
+| **8** | **p_z** | **Optimal base height** (target ~0.765 m when standing) |
+| 9 | θ_z | Optimal base yaw |
+| 10 | θ_y | Optimal base pitch |
+| 11 | θ_x | Optimal base roll |
+| 12–17 | q_0–5 | Optimal left leg joint angles |
+| 18–23 | q_6–11 | Optimal right leg joint angles |
+
+**input.value — optimal MPC input:**
+
+| Index | Content |
+|-------|---------|
+| 0–2 | Left foot contact force [fx, fy, fz] (N) |
+| 3–5 | Right foot contact force [fx, fy, fz] (N) |
+| 6–11 | Left leg joint velocities (rad/s) |
+| 12–17 | Right leg joint velocities (rad/s) |
+
+**Quick inspection commands:**
+```bash
+# Watch optimal base height (index 8)
+ros2 topic echo /legged_robot_mpc_policy --field state.value[8]
+
+# Watch left foot vertical contact force (index 2)
+ros2 topic echo /legged_robot_mpc_policy --field input.value[2]
+
+# Compare measured vs optimal base height side by side
+ros2 topic echo /legged_robot_mpc_observation --field state.value[8] &
+ros2 topic echo /legged_robot_mpc_policy --field state.value[8]
 ```
 
 ---
