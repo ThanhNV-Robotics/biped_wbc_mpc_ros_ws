@@ -59,11 +59,24 @@ ament_target_dependencies(${PROJECT_NAME}
 
 pluginlib_export_plugin_description_file(controller_interface legged_controllers_plugins.xml)
 
+# ── Standalone Pinocchio ID test executable ───────────────────────────────────
+add_executable(test_pinocchio_id src/test_pinocchio_id.cpp)
+target_include_directories(test_pinocchio_id PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+ament_target_dependencies(test_pinocchio_id
+  rclcpp legged_interface ocs2_centroidal_model ocs2_core ocs2_pinocchio_interface)
+target_link_libraries(test_pinocchio_id ${PROJECT_NAME})
+
 install(TARGETS ${PROJECT_NAME}
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+
+# ros2 run looks for executables in lib/<package_name>/
+install(TARGETS test_pinocchio_id
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY include/

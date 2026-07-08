@@ -368,7 +368,7 @@ controller_interface::return_type LeggedController::update(const rclcpp::Time& t
 
   // Set false to hold defaultJointAngles_ (PD only) while debugging state estimation.
   // Set true to enable MPC position reference + ID feedforward torques.
-  constexpr bool kEnableMpcOutput = true;
+  constexpr bool kEnableMpcOutput = false;
 
   if (kEnableMpcOutput && mpcMrtInterface_->initialPolicyReceived()) {
     // ── 4a. Evaluate MPC policy at current time ────────────────────────────

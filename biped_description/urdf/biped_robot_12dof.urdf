@@ -4,6 +4,7 @@
   <!-- Path to YAML file with PD gains for MuJoCo internal hold-position mode -->
   <xacro:arg name="pd_gains_file" default=""/>
   <xacro:arg name="use_mjcf_from_topic" default="false"/>
+  <xacro:arg name="mjcf_file" default="$(find biped_description)/mjcf/biped_robot_12dof.xml"/>
   <!-- legged_hw: use instead of MujocoSystemInterface (real robot or UDP bridge) -->
   <xacro:arg name="use_legged_hw" default="false"/>
   <!-- use_sim:=true → connect to MuJoCo (sim_ip); use_sim:=false → connect to STM32 (hw_ip) -->
@@ -327,7 +328,7 @@
       <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
 
       <xacro:unless value="$(arg use_mjcf_from_topic)">
-        <param name="mujoco_model">$(find biped_description)/mjcf/biped_robot_12dof.xml</param>
+        <param name="mujoco_model">$(arg mjcf_file)</param>
       </xacro:unless>
 
       <!-- Uncomment this to use the keyframe from shown file as the starting configuration. -->

@@ -38,19 +38,19 @@
 
     <default>
         <default class="AK8064_actuator">
-            <joint damping="0.02" armature="0.231" frictionloss="4.8" />
+            <joint damping="0.0" armature="0.0" frictionloss="0.0" />
         </default>
 
         <default class="AK7010_actuator">
-            <joint damping="0.015" armature="0.00414" frictionloss="0.5" />
+            <joint damping="0.0" armature="0.0" frictionloss="0.0" />
         </default>
 
         <default class="AK109_actuator">
-            <joint damping="0.03" armature="0.00812" frictionloss="0.5" />
+            <joint damping="0.0" armature="0.0" frictionloss="0.0" />
         </default>
 
         <default class="AK606_actuator">
-            <joint damping="0.02" armature="0.00088" frictionloss="0.25" />
+            <joint damping="0.0" armature="0.0" frictionloss="0.0" />
         </default>
     </default>
 
