@@ -16,7 +16,7 @@
     </default>
     <default>
         <default class="visual">
-            <geom contype="0" conaffinity="0" group="0" density="0" rgba="0.5 0.5 0.5 1" />
+            <geom contype="0" conaffinity="0" group="0" density="0" rgba="0.8 0.8 0.8 1" />
         </default>
         <default class="transparent">
             <geom contype="0" conaffinity="0" group="0" density="0" rgba="0.5 0.5 0.5 0.3" />

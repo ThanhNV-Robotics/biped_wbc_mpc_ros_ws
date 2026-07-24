@@ -4,16 +4,29 @@
 #include "robot_state_visualization/mujoco_rendering.hpp"
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <ocs2_msgs/msg/mpc_observation.hpp>
 #include <unordered_map>
 #include <string>
 #include <vector>
 #include <Eigen/Dense>
+#include <Eigen/Geometry>
 
 
 // MuJoCo data structures
 mjModel *mj_model = nullptr;
 mjData *mj_data = nullptr;
 std::unordered_map<std::string, int> joint_qpos_index; // (joint_name, qpos_index)
+
+// qpos start address of the torso free joint (-1 if not found)
+int torso_free_qpos_adr = -1;
+
+// joint names in centroidal state order (indices 12..23)
+const std::vector<std::string> kCentroidalJointNames = {
+  "left_hip_pitch_joint",  "left_hip_roll_joint",  "left_hip_yaw_joint",
+  "left_knee_pitch_joint", "left_ankle_roll_joint", "left_ankle_pitch_joint",
+  "right_hip_pitch_joint", "right_hip_roll_joint",  "right_hip_yaw_joint",
+  "right_knee_pitch_joint","right_ankle_roll_joint","right_ankle_pitch_joint"
+};
 std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::Imu>> filtered_acceleration_publisher;
 // Real-time control parameters
 const double SIMULATION_RATE = 1000.0;  // Hz 
@@ -114,6 +127,46 @@ void visualize_zmp ()
     mju_copy3(mj_data->site_xpos + 3 * site_id, zmp_position.data());
   }
 }
+// MPC observation callback: unpack centroidal state → base pose + joints → MuJoCo qpos
+//
+// Centroidal state layout:
+//   [0..5]   normalized centroidal momentum (unused)
+//   [6..8]   base position (x, y, z)
+//   [9..11]  Euler ZYX (yaw, pitch, roll)
+//   [12..23] joint angles (order = kCentroidalJointNames)
+void mpc_observation_callback(const ocs2_msgs::msg::MpcObservation::SharedPtr msg)
+{
+  const auto& v = msg->state.value;
+  if (static_cast<int>(v.size()) < 12 + static_cast<int>(kCentroidalJointNames.size())) return;
+
+  const double yaw = v[9], pitch = v[10], roll = v[11];
+
+  // Euler ZYX → quaternion
+  Eigen::Quaterniond q =
+      Eigen::AngleAxisd(yaw,   Eigen::Vector3d::UnitZ()) *
+      Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(roll,  Eigen::Vector3d::UnitX());
+
+  // Base pose via free joint (MuJoCo quaternion order: w, x, y, z)
+  if (torso_free_qpos_adr >= 0) {
+    mj_data->qpos[torso_free_qpos_adr + 0] = v[6];   // x
+    mj_data->qpos[torso_free_qpos_adr + 1] = v[7];   // y
+    mj_data->qpos[torso_free_qpos_adr + 2] = v[8];   // z
+    mj_data->qpos[torso_free_qpos_adr + 3] = q.w();  // MuJoCo quaternion order: w, x, y, z
+    mj_data->qpos[torso_free_qpos_adr + 4] = q.x();
+    mj_data->qpos[torso_free_qpos_adr + 5] = q.y();
+    mj_data->qpos[torso_free_qpos_adr + 6] = q.z();
+  }
+
+  // Joint angles
+  for (size_t i = 0; i < kCentroidalJointNames.size(); ++i) {
+    auto it = joint_qpos_index.find(kCentroidalJointNames[i]);
+    if (it != joint_qpos_index.end()) {
+      mj_data->qpos[it->second] = static_cast<double>(v[12 + i]);
+    }
+  }
+}
+
 // JointState callback: copy positions into MuJoCo
 void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
 {
@@ -185,6 +238,22 @@ int main(int argc, const char **argv)
     joint_qpos_index[jname] = qpos_adr;
   }
 
+  // Find torso free joint for base pose (try both capitalisation variants)
+  for (const char* torso_name : {"link0_torso", "Link0_Torso"}) {
+    int body_id = mj_name2id(mj_model, mjOBJ_BODY, torso_name);
+    if (body_id < 0) continue;
+    int jnt_id = mj_model->body_jntadr[body_id];
+    if (jnt_id >= 0 && mj_model->jnt_type[jnt_id] == mjJNT_FREE) {
+      torso_free_qpos_adr = mj_model->jnt_qposadr[jnt_id];
+      RCLCPP_INFO_STREAM(node->get_logger(),
+          "Torso free joint found (body='" << torso_name << "'), qpos_adr=" << torso_free_qpos_adr);
+      break;
+    }
+  }
+  if (torso_free_qpos_adr < 0) {
+    RCLCPP_WARN_STREAM(node->get_logger(), "No free joint found on torso body — base pose won't be visualised.");
+  }
+
   // initialize mujoco control
   //auto mujoco_control = mujoco_ros2_control::MujocoRos2Control(node, mj_model, mj_data);
 
@@ -208,13 +277,17 @@ int main(int argc, const char **argv)
   auto last_rendering_time = start_time;
   auto last_camera_time = start_time;
 
-  // Create a subscription to subsribe to /joint_states
-  auto subscription_joint_states = node->create_subscription<sensor_msgs::msg::JointState>(
-      "/joint_states", 10, joint_state_callback );
+  // // Create a subscription to subsribe to /joint_states
+  // auto subscription_joint_states = node->create_subscription<sensor_msgs::msg::JointState>(
+  //     "/joint_states", 10, joint_state_callback );
 
-  // create a subscription to subscribe to /imu
-  auto subscription_imu = node->create_subscription<sensor_msgs::msg::Imu>(
-      "/imu_sensor_broadcaster/imu", 10, imu_callback );
+  // // create a subscription to subscribe to /imu
+  // auto subscription_imu = node->create_subscription<sensor_msgs::msg::Imu>(
+  //     "/imu_sensor_broadcaster/imu", 10, imu_callback );
+
+  // Subscribe to MPC observation: estimated base pose + joint angles from state estimator
+  auto subscription_mpc_obs = node->create_subscription<ocs2_msgs::msg::MpcObservation>(
+      "/legged_robot_mpc_observation", rclcpp::SensorDataQoS(), mpc_observation_callback);
   
   while (rclcpp::ok() && !rendering->is_close_flag_raised())
   //while (!rendering->is_close_flag_raised())

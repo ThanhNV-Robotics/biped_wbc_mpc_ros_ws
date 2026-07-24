@@ -1,6 +1,6 @@
 controller_manager:
   ros__parameters:
-    update_rate: 500  # Hz — must match mujoco_ros2_control_node update rate
+    update_rate: 250  # Hz — must match mujoco_ros2_control_node update rate
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster

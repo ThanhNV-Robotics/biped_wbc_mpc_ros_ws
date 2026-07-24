@@ -103,6 +103,11 @@ protected:
   // Used as the PD position setpoint so the robot holds the nominal standing pose.
   ocs2::vector_t defaultJointAngles_;
 
+  // Joint angles captured from hardware at on_activate() time.
+  // Used as the ramp start point so commands don't step to defaultJointAngles_ instantly.
+  ocs2::vector_t rampStartAngles_;
+  rclcpp::Time   activateTime_;
+
   // ── MPC background thread ────────────────────────────────────────────────
   std::thread mpcThread_;
   std::atomic_bool controllerRunning_{false};

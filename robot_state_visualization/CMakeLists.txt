@@ -11,6 +11,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(ocs2_msgs REQUIRED)
 # MuJoCo + GLFW
 find_package(mujoco QUIET)
 if(mujoco_FOUND)
@@ -68,6 +69,7 @@ add_executable(robot_state_visualization_node
 ament_target_dependencies(robot_state_visualization_node
   rclcpp
   sensor_msgs
+  ocs2_msgs
 )
 ament_target_dependencies(robot_state_visualization_lib
   rclcpp
@@ -82,7 +84,10 @@ target_link_libraries(robot_state_visualization_node
 install(TARGETS
   robot_state_visualization_lib
   robot_state_visualization_node
-  DESTINATION lib/${PROJECT_NAME}
+  EXPORT export_robot_state_visualization_lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
 # Install headers
@@ -90,9 +95,11 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
+ament_export_targets(export_robot_state_visualization_lib HAS_LIBRARY_TARGET)
+ament_export_include_directories(include)
+
 install(DIRECTORY
   launch
-  mujoco_models
   DESTINATION share/${PROJECT_NAME}/
 )
 

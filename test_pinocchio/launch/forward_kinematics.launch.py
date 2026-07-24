@@ -80,11 +80,13 @@ def launch_setup(context, *_args, **_kwargs):
             name="forward_kinematics_node",
             output="screen",
             parameters=[{
-                "urdf_file":          urdf_file,
-                "task_file":          task_file,
-                "joint_states_topic": "/joint_states",
-                "base_z":             0.765,
-                "update_rate":        100.0,
+                "urdf_file":           urdf_file,
+                "task_file":           task_file,
+                "joint_states_topic":  "/joint_states",
+                "base_z":              0.765,
+                "mujoco_model_path":   PathJoinSubstitution(
+                    [FindPackageShare("biped_description"), "urdf", "mjmodel.xml"]
+                ).perform(context),
             }],
         ),
     ]
@@ -95,7 +97,7 @@ def generate_launch_description():
         [FindPackageShare("legged_controllers"), "config", "mujoco_interface_pd_gains.yaml"]
     )
     default_mjcf = PathJoinSubstitution(
-        [FindPackageShare("biped_description"), "mjcf", "fixed_torso_test.xml"]
+        [FindPackageShare("biped_description"), "urdf", "mjmodel.xml"]
     )
     return LaunchDescription([
         DeclareLaunchArgument(

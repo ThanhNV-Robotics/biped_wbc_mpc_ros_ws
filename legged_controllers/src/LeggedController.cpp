@@ -251,6 +251,15 @@ controller_interface::CallbackReturn LeggedController::on_activate(const rclcpp_
   updateStatesEstimatate(get_node()->now(), rclcpp::Duration(0, 2'000'000));
   RCLCPP_INFO(get_node()->get_logger(), "on_activate: state seeded.");
 
+  // Capture current hardware joint positions as ramp start point.
+  // update() will interpolate from here to defaultJointAngles_ over kRampDuration seconds.
+  activateTime_ = get_node()->now();
+  const size_t nJ = jointNames_.size();
+  rampStartAngles_.resize(nJ);
+  for (size_t i = 0; i < nJ; ++i) {
+    rampStartAngles_(i) = state_interfaces_[3 * i + 0].get_value();
+  }
+
   // ── 2. Send standing reference as initial MPC target ────────────────────
   // Use a zero-velocity command at the default height so the robot stands still.
   {
@@ -391,9 +400,14 @@ controller_interface::return_type LeggedController::update(const rclcpp::Time& t
       command_interfaces_[3 * j + 2].set_value(torques(j));
     }
   } else {
-    // ── 4d. No policy yet — hold default standing pose, zero vel/torque ────
+    // ── 4d. No policy yet — ramp from initial pose to default standing pose ──
+    constexpr double kRampDuration = 3.0;  // seconds to reach defaultJointAngles_
+    const double elapsed = (time - activateTime_).seconds();
+    const double alpha   = std::min(elapsed / kRampDuration, 1.0);
+
     for (size_t j = 0; j < nJoints; ++j) {
-      command_interfaces_[3 * j + 0].set_value(defaultJointAngles_(j));
+      const double ref = rampStartAngles_(j) + alpha * (defaultJointAngles_(j) - rampStartAngles_(j));
+      command_interfaces_[3 * j + 0].set_value(ref);
       command_interfaces_[3 * j + 1].set_value(0.0);
       command_interfaces_[3 * j + 2].set_value(0.0);
     }

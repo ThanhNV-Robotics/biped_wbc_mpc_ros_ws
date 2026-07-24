@@ -140,8 +140,8 @@ mpc
 
   debugPrint                      false
 
-  mpcDesiredFrequency             100  ; [Hz]
-  mrtDesiredFrequency             500 ; [Hz]
+  mpcDesiredFrequency             50  ; [Hz]
+  mrtDesiredFrequency             250 ; [Hz]
 }
 
 initialState ;; only used as the cold-start guess for the MPC optimizer on first solve. It does not set any tracking reference.

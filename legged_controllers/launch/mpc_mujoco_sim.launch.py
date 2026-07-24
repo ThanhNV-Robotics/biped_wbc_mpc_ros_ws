@@ -8,6 +8,8 @@ Launches:
   4. legged_controller        — MPC + state estimator
   5. base_velocity_controller_gui (remote_control) — GUI for pelvis height and
      base velocity commands, publishes to /humanoid/walking_velocity_command
+  6. robot_state_visualization — second MuJoCo window showing the estimated
+     state from /legged_robot_mpc_observation
 
 Usage:
     ros2 launch legged_controllers mpc_mujoco_sim.launch.py
@@ -110,6 +112,15 @@ def launch_setup(context):
             executable="base_velocity_controller_gui",
             name="base_velocity_controller_gui",
             output="screen",
+        ),
+        Node(
+            package="robot_state_visualization",
+            executable="robot_state_visualization_node",
+            name="state_estimation_visualizer",
+            output="screen",
+            parameters=[{
+                "mujoco_model_path": os.path.join(biped_share, "mjcf", "biped_robot_12dof.xml"),
+            }],
         ),
     ]
 
