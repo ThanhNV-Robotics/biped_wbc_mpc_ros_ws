@@ -8,7 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY urdf rviz mjcf launch config
+install(DIRECTORY urdf mjcf launch rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
