@@ -1,0 +1,11 @@
+<library path="biped_controllers">
+  <class
+    name="biped_controllers/JointJoggingController"
+    type="biped_controllers::JointJoggingController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Jogs the joints from joint_state_publisher_gui sliders: rate-limited and low-pass filtered
+      position commands (velocity = 0, effort = 0), starting at the measured pose. Test controller.
+    </description>
+  </class>
+</library>

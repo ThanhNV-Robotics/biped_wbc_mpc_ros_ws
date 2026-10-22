@@ -1,10 +1,26 @@
 """Real robot through the NUCLEO-H755 bridge: ros2_control + joint_state_broadcaster (+ RViz).
 
-Step 2 (read path): BipedSystem never enables the motors.
+BipedSystem starts INACTIVE (states only, motors disabled). With enable:=true the launch file
+activates it as soon as joint_state_broadcaster is up (motors enabled, holding the current pose
+with their own kp / kd: PVT commands only). If the activation is refused (motor offline, joint outside its URDF limits, ...),
+the hardware stays inactive, ROS keeps running and the log says why.
+
+With slider:=true (implies enable:=true) it also starts joint_jogging_controller (package
+biped_controllers) and joint_state_publisher_gui (sliders, remapped to /slider_joint_states). The
+controller moves each joint slowly and smoothly to its slider value once that slider has been moved
+(speed / filter: joint_jogging_controller in config/controllers.yaml). For checking read / write
+on the robot.
 
 Usage:
-  ros2 launch biped_hardware hardware.launch.py
+  ros2 launch biped_hardware hardware.launch.py                 # motors stay disabled
+  ros2 launch biped_hardware hardware.launch.py enable:=true    # motors enabled, holding the pose
+  ros2 launch biped_hardware hardware.launch.py slider:=true    # enabled + sliders
   ros2 launch biped_hardware hardware.launch.py rviz:=false board_ip:=192.168.10.10
+  ros2 launch biped_hardware hardware.launch.py slider:=true gains:=/path/to/my_gains.yaml
+
+By hand:
+  ros2 control set_hardware_component_state BipedSystem active     # enable
+  ros2 control set_hardware_component_state BipedSystem inactive   # disable
 
 Check:
   ros2 control list_hardware_interfaces
@@ -12,9 +28,11 @@ Check:
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler
 from launch.conditions import IfCondition
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
+from launch.event_handlers import OnProcessExit
+from launch.substitutions import (
+    Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution, PythonExpression)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -29,10 +47,55 @@ def generate_launch_description():
             PathJoinSubstitution([pkg_share, 'urdf', 'biped_hw.urdf.xacro']),
             ' model:=', LaunchConfiguration('model'),
             ' board_ip:=', LaunchConfiguration('board_ip'),
+            ' gains:=', LaunchConfiguration('gains'),
         ]),
         value_type=str,
     )
     controllers_yaml = PathJoinSubstitution([pkg_share, 'config', 'controllers.yaml'])
+
+    # Publishes /joint_states from the position/velocity/effort state interfaces
+    jsb_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
+        output='screen')
+
+    enable = LaunchConfiguration('enable')
+    slider = LaunchConfiguration('slider')
+
+    # enable:=true (or slider:=true): activate BipedSystem once the spawner is done
+    # (controller_manager is up and the hardware is configured). Same as the command line call, so
+    # a refused activation only leaves the hardware inactive instead of stopping ros2_control_node.
+    activate = ExecuteProcess(
+        cmd=['ros2', 'control', 'set_hardware_component_state', 'BipedSystem', 'active'],
+        output='screen')
+    enable_hardware = RegisterEventHandler(
+        OnProcessExit(target_action=jsb_spawner, on_exit=[activate]),
+        condition=IfCondition(PythonExpression(
+            ["'", enable, "' == 'true' or '", slider, "' == 'true'"])))
+
+    # slider:=true, step 1: joint_jogging_controller. Its command interfaces only exist once the
+    # hardware is active, so it starts after the activation.
+    test_controllers = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['joint_jogging_controller', '--controller-manager', '/controller_manager'],
+        output='screen')
+    start_test_controllers = RegisterEventHandler(
+        OnProcessExit(target_action=activate, on_exit=[test_controllers]),
+        condition=IfCondition(slider))
+
+    # slider:=true, step 2: the sliders (the controller subscribes to them)
+    sliders = Node(
+        package='joint_state_publisher_gui',
+        executable='joint_state_publisher_gui',
+        name='joint_state_publisher_gui',
+        output='screen',
+        # not /joint_states: that topic is the real robot (joint_state_broadcaster)
+        remappings=[('joint_states', 'slider_joint_states')])
+    start_sliders = RegisterEventHandler(
+        OnProcessExit(target_action=test_controllers, on_exit=[sliders]),
+        condition=IfCondition(slider))
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -44,9 +107,21 @@ def generate_launch_description():
             default_value='192.168.10.10',
             description='NUCLEO-H755 address'),
         DeclareLaunchArgument(
+            'gains',
+            default_value=PathJoinSubstitution([pkg_share, 'config', 'joint_gains.yaml']),
+            description='kp / kd per joint, written to the motors at activation, then fixed'),
+        DeclareLaunchArgument(
             'rviz',
             default_value='true',
             description='Start RViz with the biped_description config'),
+        DeclareLaunchArgument(
+            'enable',
+            default_value='false',
+            description='Enable the motors (activate BipedSystem) right after startup'),
+        DeclareLaunchArgument(
+            'slider',
+            default_value='false',
+            description='Enable the motors and move them with joint_state_publisher_gui sliders'),
         DeclareLaunchArgument(
             'base_height',
             default_value='0.86',
@@ -66,12 +141,10 @@ def generate_launch_description():
             output='screen',
             parameters=[{'robot_description': robot_description}, controllers_yaml]),
 
-        # Publishes /joint_states from the position/velocity/effort state interfaces
-        Node(
-            package='controller_manager',
-            executable='spawner',
-            arguments=['joint_state_broadcaster', '--controller-manager', '/controller_manager'],
-            output='screen'),
+        jsb_spawner,
+        enable_hardware,
+        start_test_controllers,
+        start_sliders,
 
         # world -> link0_torso until a state estimator publishes it
         Node(

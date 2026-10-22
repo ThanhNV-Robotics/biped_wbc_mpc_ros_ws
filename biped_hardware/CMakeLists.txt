@@ -10,6 +10,7 @@ set(THIS_PACKAGE_DEPENDS
   rclcpp_lifecycle
   hardware_interface
   pluginlib
+  urdf
 )
 
 # find dependencies

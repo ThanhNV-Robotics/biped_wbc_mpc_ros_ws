@@ -8,8 +8,12 @@ namespace ankle_kinematics
 using vec2 = std::array<double,2>;
 using mat2 = std::array<std::array<double,2>,2>;
 
-constexpr double LOWER = -0.3490658402442932;
-constexpr double UPPER =  0.3490658402442932;
+/* Mechanical range (design, 2026-10-23): roll ±15 deg, pitch ±30 deg, same as the URDF limits.
+ * With the geometry below the linkage does not reach the corners of that box: full roll ±15 deg
+ * only for pitch -22.7 .. +26.9 deg, at pitch -30 deg only about ±2 deg roll, at +30 deg about
+ * ±8 deg (both legs, mirrored). clampToWorkspace() keeps commands inside the reachable set. */
+constexpr double ROLL_LIMIT  = 15.0 * M_PI / 180.0;
+constexpr double PITCH_LIMIT = 30.0 * M_PI / 180.0;
 
 /* ───────── geometry ───────── */
 struct Geom
@@ -76,6 +80,42 @@ inline vec2 motorAngles(double roll,double pitch,const Geom& G)
 inline vec2 leftMotorAngles (double r,double p){return motorAngles(r,p,LEFT);}
 inline vec2 rightMotorAngles(double r,double p){auto t=motorAngles(r,p,RIGHT); return {t[1],t[0]}; } // swap order
 
+/* ---------- reachable set --------------------------------------------------------- */
+/* True if both links reach (the acos argument of motorAngles stays inside [-1, 1]) */
+inline bool reachable(double roll,double pitch,const Geom& G)
+{
+    const auto& [Px0,Py0,Pz0,d,a,h,l,s] = G;
+    vec2 Px,Py,Pz;
+    rotate(std::cos(roll),std::sin(roll),std::cos(pitch),std::sin(pitch),Px0,Py0,Pz0,Px,Py,Pz);
+    for(std::size_t i=0;i<2;++i)
+    {
+        double z = Pz[i]-h[i],  x = d[i]-Px[i];
+        double u = 2*a[i]*Py[i], v = 2*a[i]*z;
+        double w = (a[i]*a[i]+x*x+Py[i]*Py[i]+z*z-l[i]*l[i])*s[i];
+        if(!(std::fabs(w) <= std::hypot(u,v))) return false;
+    }
+    return true;
+}
+
+/* Clamp to the mechanical range, then, if the linkage cannot reach that pose, keep the pitch and
+ * reduce the roll (bisection) until it can. Never returns a pose motorAngles() cannot solve. */
+inline vec2 clampToWorkspace(double roll,double pitch,const Geom& G)
+{
+    roll  = std::clamp(roll, -ROLL_LIMIT,  ROLL_LIMIT);
+    pitch = std::clamp(pitch,-PITCH_LIMIT, PITCH_LIMIT);
+    if(reachable(roll,pitch,G)) return {roll,pitch};
+    if(!reachable(0.0,pitch,G)) pitch = 0.0;   // not expected inside ±30 deg; stay safe
+    double lo = 0.0, hi = 1.0;                  // scale of the roll: lo reachable, hi not
+    for(int k=0;k<30;++k)
+    {
+        const double mid = 0.5*(lo+hi);
+        if(reachable(mid*roll,pitch,G)) lo = mid; else hi = mid;
+    }
+    return {lo*roll,pitch};
+}
+inline vec2 leftClampToWorkspace (double r,double p){return clampToWorkspace(r,p,LEFT);}
+inline vec2 rightClampToWorkspace(double r,double p){return clampToWorkspace(r,p,RIGHT);}
+
 /* ---------- forward map (θm → pitch,roll)  –  FD Newton --------------- */
 inline vec2 forwardOneLeg(const vec2& th,const Geom& G,
                           double roll0=0,double pitch0=0)
@@ -85,7 +125,7 @@ inline vec2 forwardOneLeg(const vec2& th,const Geom& G,
     const vec2 s_m{std::sin(th[0]),std::sin(th[1])};
 
     double roll=roll0, pitch=pitch0;
-    for(int k=0;k<4;++k)
+    for(int k=0;k<10;++k)   // converges in ~4 inside the range; more as margin near the edges
     {
         double c5=std::cos(roll),s5=std::sin(roll);
         double c6=std::cos(pitch),s6=std::sin(pitch);
@@ -127,8 +167,8 @@ inline vec2 forwardOneLeg(const vec2& th,const Geom& G,
         roll-=dx; pitch-=dy;
         if(std::fabs(dx)<1e-12 && std::fabs(dy)<1e-12) break;
     }
-    return {std::clamp(roll,LOWER,UPPER),
-            std::clamp(pitch,LOWER,UPPER)};
+    return {std::clamp(roll,-ROLL_LIMIT,ROLL_LIMIT),
+            std::clamp(pitch,-PITCH_LIMIT,PITCH_LIMIT)};
 }
 inline vec2 leftJointAngles (double t5,double t6,double r0=0,double p0=0)
 { return forwardOneLeg({t5,t6},LEFT ,r0,p0); }

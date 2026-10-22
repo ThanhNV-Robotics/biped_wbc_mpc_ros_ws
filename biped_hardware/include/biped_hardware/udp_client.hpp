@@ -37,6 +37,9 @@ public:
   /// Block up to timeout_ms for the next datagram (used only during configure, not in the loop).
   bool wait_readable(int timeout_ms);
 
+  /// Local address the kernel picked for the connected socket (shows which interface is used)
+  std::string local_address() const;
+
   const std::string & error() const {return error_;}
   uint64_t dropped() const {return dropped_;}
 

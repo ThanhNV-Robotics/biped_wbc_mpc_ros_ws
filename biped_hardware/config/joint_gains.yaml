@@ -1,0 +1,31 @@
+# Impedance gains written to the motors when BipedSystem is activated (enabled), then fixed:
+# while active only PVT commands (position, velocity, feed-forward torque) are sent.
+#
+# Motor law: tau = kp * (pos_target - q) + kd * (vel_target - dq) + tau_ff   [Nm, rad, rad/s]
+#
+# Hips / knees: the joint's own motor (direction does not matter for gains).
+# Ankles: the gains of the MOTOR each ankle joint carries, in motor space:
+#   *_ankle_roll_joint  -> upper ankle motor (MD 50 / 110)
+#   *_ankle_pitch_joint -> lower ankle motor (MD 60 / 120)
+# Each ankle motor moves roll and pitch together, so the resulting roll / pitch stiffness follows
+# from the ankle Jacobian (near neutral one motor radian is about 0.5-1 joint radian).
+#
+# The firmware writes these at enable, reads them back and refuses to enable on a mismatch.
+# The motors' RAM gains were all 0 on 2026-10-23 (`nucleotool md -i <id> info`).
+#
+# START VALUES ARE 0 (motors enabled but limp). Fill in your values before jogging.
+# kp must be in [0, 1000], kd in [0, 50] (checked in on_init).
+
+left_hip_pitch_joint:    {kp: 0.0, kd: 0.0}   # MD 10
+left_hip_roll_joint:     {kp: 0.0, kd: 0.0}   # MD 20
+left_hip_yaw_joint:      {kp: 0.0, kd: 0.0}   # MD 30
+left_knee_pitch_joint:   {kp: 100.0, kd: 0.5}   # MD 40
+left_ankle_roll_joint:   {kp: 0.0, kd: 0.0}   # MD 50 (upper ankle motor)
+left_ankle_pitch_joint:  {kp: 0.0, kd: 0.0}   # MD 60 (lower ankle motor)
+
+right_hip_pitch_joint:   {kp: 0.0, kd: 0.0}   # MD 70
+right_hip_roll_joint:    {kp: 0.0, kd: 0.0}   # MD 80
+right_hip_yaw_joint:     {kp: 0.0, kd: 0.0}   # MD 90
+right_knee_pitch_joint:  {kp: 0.0, kd: 0.0}   # MD 100
+right_ankle_roll_joint:  {kp: 0.0, kd: 0.0}   # MD 110 (upper ankle motor)
+right_ankle_pitch_joint: {kp: 0.0, kd: 0.0}   # MD 120 (lower ankle motor)

@@ -115,6 +115,21 @@ bool UdpClient::recv_latest(WbcStatePacket & out)
   return got;
 }
 
+std::string UdpClient::local_address() const
+{
+  if (sock_ < 0) {
+    return "";
+  }
+  sockaddr_in addr{};
+  socklen_t len = sizeof(addr);
+  if (::getsockname(sock_, reinterpret_cast<sockaddr *>(&addr), &len) < 0) {
+    return "";
+  }
+  char buf[INET_ADDRSTRLEN] = {};
+  ::inet_ntop(AF_INET, &addr.sin_addr, buf, sizeof(buf));
+  return buf;
+}
+
 bool UdpClient::wait_readable(int timeout_ms)
 {
   if (sock_ < 0) {

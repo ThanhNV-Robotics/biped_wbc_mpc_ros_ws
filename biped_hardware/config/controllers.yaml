@@ -1,6 +1,77 @@
 controller_manager:
   ros__parameters:
-    update_rate: 500  # Hz, one UDP command + one state per cycle
+    update_rate: 500  # Hz, one UDP command + one state per cycle (CM4 CAN loop: 500 Hz too)
+
+    # Start with the motors disabled. Enable on purpose:
+    #   ros2 control set_hardware_component_state BipedSystem active
+    hardware_components_initial_state:
+      inactive: [BipedSystem]
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Slider jogging (started by slider:=true): position from joint_state_publisher_gui, rate-limited
+    # and filtered, velocity = 0, effort = 0. The motors use their own kp / kd (PVT only).
+    joint_jogging_controller:
+      type: biped_controllers/JointJoggingController
+
+    # Manual alternative (not started): forwards the position of all 12 joints from a
+    # std_msgs/Float64MultiArray on /position_controller/commands, in the joint order below.
+    # Claims the same position interfaces as joint_jogging_controller: run only one of them.
+    position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+joint_state_broadcaster:
+  ros__parameters:
+    # Selects what is published. In Humble it does NOT fix the order of /joint_states (tested:
+    # the right leg still comes out mixed), so always match values by name.
+    joints:
+      - left_hip_pitch_joint
+      - left_hip_roll_joint
+      - left_hip_yaw_joint
+      - left_knee_pitch_joint
+      - left_ankle_roll_joint
+      - left_ankle_pitch_joint
+      - right_hip_pitch_joint
+      - right_hip_roll_joint
+      - right_hip_yaw_joint
+      - right_knee_pitch_joint
+      - right_ankle_roll_joint
+      - right_ankle_pitch_joint
+    interfaces: [position, velocity, effort]
+
+position_controller:
+  ros__parameters:
+    joints:
+      - left_hip_pitch_joint
+      - left_hip_roll_joint
+      - left_hip_yaw_joint
+      - left_knee_pitch_joint
+      - left_ankle_roll_joint
+      - left_ankle_pitch_joint
+      - right_hip_pitch_joint
+      - right_hip_roll_joint
+      - right_hip_yaw_joint
+      - right_knee_pitch_joint
+      - right_ankle_roll_joint
+      - right_ankle_pitch_joint
+    interface_name: position
+
+joint_jogging_controller:
+  ros__parameters:
+    joints:
+      - left_hip_pitch_joint
+      - left_hip_roll_joint
+      - left_hip_yaw_joint
+      - left_knee_pitch_joint
+      - left_ankle_roll_joint
+      - left_ankle_pitch_joint
+      - right_hip_pitch_joint
+      - right_hip_roll_joint
+      - right_hip_yaw_joint
+      - right_knee_pitch_joint
+      - right_ankle_roll_joint
+      - right_ankle_pitch_joint
+    slider_topic: /slider_joint_states
+    max_velocity: 0.3          # rad/s, how fast a joint moves toward its slider
+    filter_time_constant: 0.1  # s, low-pass after the rate limit
