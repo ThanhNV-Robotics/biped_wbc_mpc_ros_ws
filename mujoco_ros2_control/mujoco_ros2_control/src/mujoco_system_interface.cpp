@@ -1080,6 +1080,11 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   initialize_initial_positions(get_hardware_info());
   set_initial_pose();
 
+  if (!configure_pvt_drive())
+  {
+    return hardware_interface::CallbackReturn::FAILURE;
+  }
+
   // Store initial state for reset_world service
   {
     const std::unique_lock<std::recursive_mutex> lock(*sim_mutex_);
@@ -1088,9 +1093,6 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     initial_ctrl_.assign(mj_data_->ctrl, mj_data_->ctrl + mj_model_->nu);
   }
 
-  // Disable the rangefinder flag at startup so that we don't get the yellow lines.
-  // We can still turn this on manually if desired.
-  sim_->opt.flags[mjVIS_RANGEFINDER] = false;
   // Enable site rendering for group 0 (where sensors like IMU are typically placed)
   // Turn off other site groups so that the visualization is more realistic.
   for (int i = 0; i < mjNGROUP; i++)
@@ -1295,6 +1297,12 @@ std::vector<hardware_interface::StateInterface> MujocoSystemInterface::export_st
     new_state_interfaces.emplace_back(contact.name, "contact", &contact.contact_state);
   }
 
+  // PVT mode: 1 while the (simulated) motors are enabled, as BipedSystem/enabled on the robot
+  if (pvt_drive_)
+  {
+    new_state_interfaces.emplace_back(get_hardware_info().name, "enabled", &pvt_enabled_state_);
+  }
+
   return new_state_interfaces;
 }
 
@@ -1338,6 +1346,10 @@ std::vector<hardware_interface::CommandInterface> MujocoSystemInterface::export_
   // Actuator command interfaces - feedforward_effort, kp, kd for HybridJoint PD impedance control
   for (auto& actuator : mujoco_actuator_data_)
   {
+    if (pvt_drive_)
+    {
+      break;  // PVT mode: only the URDF position / velocity / effort commands, as on the robot
+    }
     if (actuator.actuator_type != ActuatorType::PASSIVE)
     {
       new_command_interfaces.emplace_back(actuator.joint_name, "feedforward_effort",
@@ -1350,9 +1362,148 @@ std::vector<hardware_interface::CommandInterface> MujocoSystemInterface::export_
   return new_command_interfaces;
 }
 
+bool MujocoSystemInterface::configure_pvt_drive()
+{
+  const std::string pvt_mode = get_hardware_parameter_or(get_hardware_info(), "pvt_mode", "false");
+  if (pvt_mode != "true" && pvt_mode != "True" && pvt_mode != "1")
+  {
+    return true;
+  }
+
+  BipedPvtDrive::Params params;
+  std::vector<BipedPvtDrive::JointConfig> joints;
+  pvt_joint_index_.clear();
+  try
+  {
+    params.command_timeout = std::stod(get_hardware_parameter_or(get_hardware_info(), "command_timeout", "0.02"));
+    params.damping_kd = std::stod(get_hardware_parameter_or(get_hardware_info(), "damping_kd", "1.0"));
+    params.damping_duration = std::stod(get_hardware_parameter_or(get_hardware_info(), "damping_duration", "1.0"));
+
+    for (const auto& info : get_hardware_info().joints)
+    {
+      BipedPvtDrive::JointConfig j;
+      j.name = info.name;
+      // Same joint params and ranges as BipedSystem (gains from config/joint_gains.yaml via the xacro)
+      j.kp = std::stod(info.parameters.at("kp"));
+      j.kd = std::stod(info.parameters.at("kd"));
+      if (!(j.kp >= 0.0 && j.kp <= 1000.0) || !(j.kd >= 0.0 && j.kd <= 50.0))
+      {
+        RCLCPP_FATAL(get_logger(), "Joint '%s': kp %.3f / kd %.3f outside [0, 1000] / [0, 50]", j.name.c_str(), j.kp,
+                     j.kd);
+        return false;
+      }
+
+      const int jid = mj_name2id(mj_model_, mjOBJ_JOINT, j.name.c_str());
+      if (jid >= 0 && mj_model_->jnt_type[jid] == mjJNT_HINGE)
+      {
+        j.qpos_adr = mj_model_->jnt_qposadr[jid];
+        j.qvel_adr = mj_model_->jnt_dofadr[jid];
+        j.limited = mj_model_->jnt_limited[jid] != 0;
+        j.lower = mj_model_->jnt_range[2 * jid];
+        j.upper = mj_model_->jnt_range[2 * jid + 1];
+        for (int a = 0; a < mj_model_->nu; ++a)
+        {
+          if (mj_model_->actuator_trntype[a] == mjTRN_JOINT && mj_model_->actuator_trnid[2 * a] == jid)
+          {
+            j.actuator_id = a;
+          }
+        }
+      }
+
+      const auto it = std::find_if(urdf_joint_data_.begin(), urdf_joint_data_.end(),
+                                   [&j](const URDFJointData& joint) { return joint.name == j.name; });
+      if (it == urdf_joint_data_.end())
+      {
+        RCLCPP_FATAL(get_logger(), "PVT mode: joint '%s' is not registered", j.name.c_str());
+        return false;
+      }
+      pvt_joint_index_.push_back(static_cast<std::size_t>(it - urdf_joint_data_.begin()));
+      joints.push_back(j);
+    }
+  }
+  catch (const std::exception& e)
+  {
+    RCLCPP_FATAL(get_logger(), "PVT mode: missing or invalid parameter (joint kp / kd, command_timeout, damping_kd, "
+                               "damping_duration): %s", e.what());
+    return false;
+  }
+
+  auto drive = std::make_unique<BipedPvtDrive>();
+  const std::string error = drive->configure(mj_model_, joints, params);
+  if (!error.empty())
+  {
+    RCLCPP_FATAL(get_logger(), "PVT mode: %s", error.c_str());
+    return false;
+  }
+
+  const std::size_t n = joints.size();
+  pvt_pos_.assign(n, 0.0);
+  pvt_vel_.assign(n, 0.0);
+  pvt_eff_.assign(n, 0.0);
+  pvt_q_.assign(n, 0.0);
+  pvt_enabled_state_ = 0.0;
+  pvt_active_ = false;
+  {
+    // Motors start disabled: zero torque until activation, whatever the model's initial ctrl is
+    const std::unique_lock<std::recursive_mutex> lock(*sim_mutex_);
+    for (const auto& j : joints)
+    {
+      mj_data_->ctrl[j.actuator_id] = 0.0;
+      mj_data_control_->ctrl[j.actuator_id] = 0.0;
+    }
+  }
+  pvt_drive_ = std::move(drive);
+
+  RCLCPP_INFO(get_logger(), "PVT mode (biped motors): %zu joints, tau = kp (p - q) + kd (v - dq) + tau_ff every "
+                            "physics step; command timeout %.3f s -> damping kd %.2f for %.2f s -> disabled",
+              n, params.command_timeout, params.damping_kd, params.damping_duration);
+  for (const auto& j : joints)
+  {
+    RCLCPP_INFO(get_logger(), "  %-24s kp %7.2f  kd %6.3f  range [%.3f, %.3f]", j.name.c_str(), j.kp, j.kd, j.lower,
+                j.upper);
+  }
+  RCLCPP_INFO(get_logger(), "Motors DISABLED until the hardware is activated");
+  return true;
+}
+
 hardware_interface::CallbackReturn MujocoSystemInterface::on_activate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   RCLCPP_INFO(get_logger(), "Activating MuJoCo hardware interface and starting Simulate threads...");
+
+  if (pvt_drive_)
+  {
+    // As BipedSystem::on_activate: checks, then targets = current pose, motors enabled with the
+    // configured gains (here at once; the board takes ~40 ms)
+    const auto& joints = pvt_drive_->joints();
+    for (std::size_t i = 0; i < joints.size(); ++i)
+    {
+      pvt_q_[i] = urdf_joint_data_[pvt_joint_index_[i]].position_interface.state_;
+    }
+    const std::string why = pvt_drive_->activation_blocker(pvt_q_);
+    if (!why.empty())
+    {
+      RCLCPP_ERROR(get_logger(), "Activation refused, motors stay disabled:%s", why.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    for (std::size_t i = 0; i < joints.size(); ++i)
+    {
+      auto& joint = urdf_joint_data_[pvt_joint_index_[i]];
+      joint.position_interface.command_ = pvt_q_[i];
+      joint.velocity_interface.command_ = 0.0;
+      joint.effort_interface.command_ = 0.0;
+    }
+    double sim_time;
+    {
+      std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+      sim_time = mj_data_control_->time;
+    }
+    pvt_drive_->enable(pvt_q_, sim_time);
+    pvt_active_ = true;
+    pvt_enabled_state_ = 1.0;
+    RCLCPP_WARN(get_logger(), "ACTIVE: %zu simulated motors enabled with the joint kp / kd, holding the current pose. "
+                              "PVT commands only.", joints.size());
+    return hardware_interface::CallbackReturn::SUCCESS;
+  }
 
   // Enable internal PD hold-position for every actuator that has gains configured.
   // This keeps the robot stable without requiring any ros2_control controller to be
@@ -1403,6 +1554,14 @@ MujocoSystemInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous_s
 {
   RCLCPP_INFO(get_logger(), "Deactivating MuJoCo hardware interface and shutting down Simulate...");
 
+  if (pvt_drive_)
+  {
+    pvt_drive_->disable();
+    pvt_active_ = false;
+    pvt_enabled_state_ = 0.0;
+    RCLCPP_INFO(get_logger(), "Deactivated: simulated motors disabled");
+  }
+
   // TODO: Should we shut MuJoCo things down here or in the destructor?
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -1412,6 +1571,13 @@ hardware_interface::return_type
 MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string>& start_interfaces,
                                                    const std::vector<std::string>& stop_interfaces)
 {
+  // PVT mode: there are no modes. Position, velocity and effort always form one PVT command;
+  // the drive keeps the last command when a controller stops (as the robot).
+  if (pvt_drive_)
+  {
+    return hardware_interface::return_type::OK;
+  }
+
   auto update_joint_interface = [this](const std::string& interface_name, bool enabled) {
     size_t delimiter_pos = interface_name.find('/');
     if (delimiter_pos == std::string::npos)
@@ -1707,6 +1873,20 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
 #endif
   }
 
+  // PVT mode: active, but the drive no longer follows us (timeout / non-finite command): stop,
+  // as BipedSystem does when the board leaves ENABLED
+  if (pvt_drive_)
+  {
+    const bool enabled = pvt_drive_->state() == BipedPvtDrive::State::ENABLED;
+    pvt_enabled_state_ = enabled ? 1.0 : 0.0;
+    if (pvt_active_ && !enabled)
+    {
+      pvt_active_ = false;
+      RCLCPP_ERROR(get_logger(), "Simulated motors left ENABLED (%s)", pvt_drive_->fault().c_str());
+      return hardware_interface::return_type::ERROR;
+    }
+  }
+
   return hardware_interface::return_type::OK;
 }
 
@@ -1716,11 +1896,30 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
   // Guard against invalid period (negative or too small)
   if (period.seconds() <= 0.0)
   {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+    RCLCPP_WARN_THROTTLE(get_logger(), *clock_node_->get_clock(), 1000,
                          "write() called with invalid period: %.6f seconds, skipping", period.seconds());
     return hardware_interface::return_type::OK;
   }
   
+  // PVT mode: hand the joint commands to the drive (applied in the physics thread every step)
+  if (pvt_drive_)
+  {
+    for (std::size_t i = 0; i < pvt_joint_index_.size(); ++i)
+    {
+      const auto& joint = urdf_joint_data_[pvt_joint_index_[i]];
+      pvt_pos_[i] = joint.position_interface.command_;
+      pvt_vel_[i] = joint.velocity_interface.command_;
+      pvt_eff_[i] = joint.effort_interface.command_;
+    }
+    double sim_time;
+    {
+      std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+      sim_time = mj_data_control_->time;
+    }
+    pvt_drive_->set_commands(pvt_pos_, pvt_vel_, pvt_eff_, sim_time);
+    return hardware_interface::return_type::OK;
+  }
+
   // Update mimic joints
   for (auto& joint : urdf_joint_data_)
   {
@@ -1799,7 +1998,7 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       
       if (std::abs(total_torque) > max_torque)
       {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+        RCLCPP_WARN_THROTTLE(get_logger(), *clock_node_->get_clock(), 1000,
                              "Joint %s: Torque %.2f Nm exceeds limit, clamping to %.2f Nm",
                              actuator.joint_name.c_str(), total_torque, clamped_torque);
       }
@@ -2937,6 +3136,11 @@ void MujocoSystemInterface::PhysicsLoop()
               std::lock_guard<std::mutex> data_lock(control_data_mutex_);
               mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
               mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+              // PVT mode: motor PD law from the current state, every step
+              if (pvt_drive_)
+              {
+                pvt_drive_->apply(mj_data_);
+              }
             }
             // run single step, let next iteration deal with timing
             mj_step(mj_model_, mj_data_);
@@ -2992,6 +3196,11 @@ void MujocoSystemInterface::PhysicsLoop()
                 std::lock_guard<std::mutex> data_lock(control_data_mutex_);
                 mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
                 mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+                // PVT mode: motor PD law from the current state, every step
+                if (pvt_drive_)
+                {
+                  pvt_drive_->apply(mj_data_);
+                }
               }
               // call mj_step
               mj_step(mj_model_, mj_data_);
@@ -3052,6 +3261,11 @@ void MujocoSystemInterface::PhysicsLoop()
           {
             mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
             mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+            // PVT mode: motor PD law from the current state, every step
+            if (pvt_drive_)
+            {
+              pvt_drive_->apply(mj_data_);
+            }
             mj_step(mj_model_, mj_data_);
             publish_clock();
 

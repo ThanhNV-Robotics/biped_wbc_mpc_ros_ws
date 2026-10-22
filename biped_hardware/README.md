@@ -48,8 +48,12 @@ biped_hardware/
 │   ├── biped_system.cpp
 │   └── udp_client.cpp
 ├── urdf/biped_hw.urdf.xacro   robot model from biped_description + <ros2_control> block
-├── config/controllers.yaml    controller_manager rate and controllers
+│                              (use_sim:=true: MuJoCo instead of BipedSystem)
+├── config/controllers.yaml    controller_manager rate and controllers (robot and sim)
+├── config/joint_gains.yaml    kp / kd of the robot
+├── config/joint_gains_sim.yaml kp / kd of the simulation
 ├── launch/hardware.launch.py  real robot bring-up
+├── launch/sim.launch.py       the same in MuJoCo (mujoco_ros2_control, PVT mode)
 └── biped_hardware.xml         pluginlib description (biped_hardware/BipedSystem)
 ```
 
@@ -341,3 +345,28 @@ robot):
 - **nucleotool** (`CANdle-SDK-udp`, UDP port 9998): discover, zero, calibration, register access,
   encoder readout. Only works while the board is in MAINTENANCE mode, and is kept separate from
   this plugin on purpose.
+
+---
+
+## Simulation (MuJoCo)
+
+`launch/sim.launch.py` runs the same ros2_control setup with `mujoco_ros2_control` in **PVT mode**
+instead of `BipedSystem`: same component name, joints, interfaces (`BipedSystem/enabled`
+included), lifecycle (starts inactive and limp, activate = hold the current pose) and safety
+(20 ms command timeout → damping 1 s → disabled, `read()` error). So `controllers.yaml` and the
+controllers in `biped_controllers` run unchanged. Details and the robot / sim comparison:
+`mujoco_ros2_control/README.md`, section "Biped PVT Mode".
+
+```bash
+ros2 launch biped_hardware sim.launch.py                  # hanging robot, motors disabled (limp)
+ros2 launch biped_hardware sim.launch.py enable:=true     # enabled, holding the pose
+ros2 launch biped_hardware sim.launch.py slider:=true     # enabled + sliders (jogging)
+```
+
+- Scene: `biped_description/mjcf/scene_hanging_12dof_v2.xml`, the v2 robot with its torso welded
+  1.0 m above the floor (keyframe `hang`). The floating-base scene comes next.
+- The sim ankle is a **serial** roll / pitch chain: `ankle_kinematics.hpp` is only used on the
+  robot, and the ankle kp / kd act on the joints directly in sim.
+- Gains: `config/joint_gains_sim.yaml` (argument `gains:=`). The MJCF links are light, so keep
+  kd low (see the file).
+- The controller manager runs on the simulation clock (`use_sim_time`, `/clock` from MuJoCo).

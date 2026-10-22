@@ -47,6 +47,7 @@
 #include "simulate.h"      // must be on your include path, handled by CMake
 
 #include "mujoco_ros2_control/data.hpp"
+#include "mujoco_ros2_control/biped_pvt_drive.hpp"
 
 #include <pluginlib/class_list_macros.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -76,7 +77,8 @@ public:
   /**
    * @brief ros2_control SystemInterface to wrap Mujocos Simulate application.
    *
-   * Supports Actuators, Force Torque/IMU Sensors, and RGB-D camera, and Lidar Sensors in ROS 2 simulations.
+   * Supports Actuators, Force Torque/IMU Sensors and contact sensors in ROS 2 simulations (no cameras / lidar:
+   * mujoco_cameras.cpp and mujoco_lidar.cpp are kept in src/ but not built).
    * For more information on configuration refer to the docs, check the comment strings below, and refer to
    * the example in the test folder.
    */
@@ -410,6 +412,14 @@ private:
   std::vector<mjtNum> initial_ctrl_;
   std::string initial_keyframe_ = "";
 
+  // Biped PVT mode (hardware parameter pvt_mode): emulates biped_hardware/BipedSystem, see
+  // biped_pvt_drive.hpp. Null when off.
+  bool configure_pvt_drive();
+  std::unique_ptr<BipedPvtDrive> pvt_drive_;
+  std::vector<std::size_t> pvt_joint_index_;  // drive joint -> urdf_joint_data_ index
+  std::vector<double> pvt_pos_, pvt_vel_, pvt_eff_, pvt_q_;
+  double pvt_enabled_state_{ 0.0 };  // state interface "<hardware name>/enabled"
+  bool pvt_active_{ false };         // lifecycle ACTIVE
 };
 
 }  // namespace mujoco_ros2_control

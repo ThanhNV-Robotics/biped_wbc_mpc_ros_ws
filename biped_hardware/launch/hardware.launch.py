@@ -67,7 +67,11 @@ def generate_launch_description():
     # (controller_manager is up and the hardware is configured). Same as the command line call, so
     # a refused activation only leaves the hardware inactive instead of stopping ros2_control_node.
     activate = ExecuteProcess(
-        cmd=['ros2', 'control', 'set_hardware_component_state', 'BipedSystem', 'active'],
+        # The service directly, not `ros2 control set_hardware_component_state`: that one goes
+        # through the ros2 daemon, and a stale daemon fails the call with "!rclpy.ok()"
+        cmd=['ros2', 'service', 'call', '/controller_manager/set_hardware_component_state',
+             'controller_manager_msgs/srv/SetHardwareComponentState',
+             "{name: BipedSystem, target_state: {id: 3, label: active}}"],
         output='screen')
     enable_hardware = RegisterEventHandler(
         OnProcessExit(target_action=jsb_spawner, on_exit=[activate]),

@@ -12,10 +12,10 @@ find_package(fmt REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(nav_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(realtime_tools REQUIRED)
 find_package(mujoco_ros2_control_msgs REQUIRED)
 find_package(mujoco_ros2_control_plugins REQUIRED)
 find_package(Threads REQUIRED)
@@ -186,8 +186,11 @@ else()
 endif()
 
 # MuJoCo ROS 2 control system interface (this package)
+# Minimal for locomotion: src/mujoco_cameras.cpp and src/mujoco_lidar.cpp (RGB-D cameras, lidar)
+# are kept but not built. To bring them back, add them here and restore sensor_msgs.
 add_library(mujoco_ros2_control SHARED
     src/mujoco_system_interface.cpp
+    src/biped_pvt_drive.cpp
 )
 # Ensure MuJoCo library can be found at runtime regardless of how it was installed above.
 # mujoco_vendor installs libmujoco.so under opt/mujoco_vendor/lib/ relative to the
@@ -210,8 +213,8 @@ PUBLIC
   hardware_interface::hardware_interface
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
+  realtime_tools::realtime_tools
   ${nav_msgs_TARGETS}
-  ${sensor_msgs_TARGETS}
   ${mujoco_ros2_control_msgs_TARGETS}
   pluginlib::pluginlib
   fmt::fmt
@@ -298,8 +301,8 @@ ament_export_dependencies(
   transmission_interface
   rclcpp
   rclcpp_lifecycle
+  realtime_tools
   nav_msgs
-  sensor_msgs
   mujoco_ros2_control_msgs
   mujoco_ros2_control_plugins
   pluginlib

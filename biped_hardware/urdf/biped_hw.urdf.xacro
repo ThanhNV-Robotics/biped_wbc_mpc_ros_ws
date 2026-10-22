@@ -13,6 +13,12 @@
 
   kp / kd come from config/joint_gains.yaml (argument `gains`): written to the motors when the
   hardware is activated, then fixed (PVT commands only).
+
+  use_sim:=true replaces BipedSystem with the MuJoCo simulation (mujoco_ros2_control in PVT mode,
+  see launch/sim.launch.py). Same component name, joints, interfaces and gains, so the controllers
+  and controllers.yaml are unchanged. The sim joints are serial (the ankle linkage is not
+  simulated): the ankle kp / kd act directly on the roll / pitch joints there. motor_index /
+  direction are not used by the sim.
 -->
 <robot name="biped" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
@@ -21,6 +27,10 @@
   <xacro:arg name="board_port" default="9999"/>
   <xacro:arg name="timeout_cycles" default="10"/>
   <xacro:arg name="gains" default="$(find biped_hardware)/config/joint_gains.yaml"/>
+  <xacro:arg name="use_sim" default="false"/>
+  <xacro:arg name="mujoco_scene" default="scene_hanging_12dof_v2.xml"/>
+  <xacro:arg name="headless" default="false"/>
+  <xacro:arg name="initial_keyframe" default="hang"/>
 
   <xacro:property name="gains" value="${xacro.load_yaml('$(arg gains)')}"/>
 
@@ -42,12 +52,28 @@
   </xacro:macro>
 
   <ros2_control name="BipedSystem" type="system">
-    <hardware>
-      <plugin>biped_hardware/BipedSystem</plugin>
-      <param name="board_ip">$(arg board_ip)</param>
-      <param name="board_port">$(arg board_port)</param>
-      <param name="timeout_cycles">$(arg timeout_cycles)</param>
-    </hardware>
+    <xacro:if value="$(arg use_sim)">
+      <hardware>
+        <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
+        <param name="mujoco_model">$(find biped_description)/mjcf/$(arg mujoco_scene)</param>
+        <param name="headless">$(arg headless)</param>
+        <param name="initial_keyframe">$(arg initial_keyframe)</param>
+        <!-- Motor drives + board as on the robot: fixed kp / kd, PVT commands, disabled until
+             activated, 20 ms command timeout -> damping 1 s -> disabled -->
+        <param name="pvt_mode">true</param>
+        <param name="command_timeout">0.02</param>
+        <param name="damping_kd">1.0</param>
+        <param name="damping_duration">1.0</param>
+      </hardware>
+    </xacro:if>
+    <xacro:unless value="$(arg use_sim)">
+      <hardware>
+        <plugin>biped_hardware/BipedSystem</plugin>
+        <param name="board_ip">$(arg board_ip)</param>
+        <param name="board_port">$(arg board_port)</param>
+        <param name="timeout_cycles">$(arg timeout_cycles)</param>
+      </hardware>
+    </xacro:unless>
 
     <xacro:hw_joint name="left_hip_pitch_joint"    motor_index="0"  direction="1"/>
     <xacro:hw_joint name="left_hip_roll_joint"     motor_index="1"  direction="1"/>

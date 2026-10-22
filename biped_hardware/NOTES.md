@@ -270,3 +270,22 @@ coupling of the gains not handled yet); start range = URDF limits; hardware star
   packed packet before taking their address (unaligned float pointer on the M4 FPU).
 - Robot test (test file kp 0 / kd 0.05, motors effectively limp): gains written + verified,
   ENABLED, clean disable; nucleotool afterwards: kd 0.0500 on MD 10 / 60 / 70 / 120.
+
+### 2026-10-22 — MuJoCo simulation with the robot's interface (hanging scene)
+- `mujoco_ros2_control` got a **PVT mode** (`pvt_mode` hardware param, `BipedPvtDrive`): emulates
+  BipedSystem + firmware. PVT commands with fixed joint kp / kd, `BipedSystem/enabled`, inactive =
+  zero torque, activation = range check + hold pose, 20 ms timeout → damping kd 1 for 1 s →
+  disabled + `read()` ERROR. PD law evaluated before every `mj_step` (1 kHz).
+- Found while doing it: the vendored interface's mode switch made position / velocity / effort
+  exclusive (last claim wins), so `joint_jogging_controller` would have left every joint in effort
+  mode at 0 Nm (limp). PVT mode has no mode switching. Also fixed two `get_clock()` calls that do
+  not exist in Humble (the package did not compile on Humble).
+- User decision: the sim ankle is a serial chain, no ankle kinematics in sim (joint-space gains).
+- `urdf/biped_hw.urdf.xacro use_sim:=true`, `launch/sim.launch.py`, `config/joint_gains_sim.yaml`,
+  `biped_description/mjcf/scene_hanging_12dof_v2.xml` (torso welded at 1.0 m, keyframe `hang`).
+- Tested standalone (drive + MuJoCo 3.13, no ROS): limp hang; activation holds within 0.006 rad;
+  20 ms without commands → damping → disabled. kp 100 / kd 2 stable; ankle roll chatters from
+  kd ≈ 3 (tiny link inertia, explicit 1 ms step).
+- Not tested through ROS yet: needs `ros-humble-mujoco-vendor` and `ros-humble-ros2-control-cmake`.
+- Next: floating-base scene (standing keyframe, odometry / TF instead of the static transform).
+

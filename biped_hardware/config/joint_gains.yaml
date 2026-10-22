@@ -16,16 +16,16 @@
 # START VALUES ARE 0 (motors enabled but limp). Fill in your values before jogging.
 # kp must be in [0, 1000], kd in [0, 50] (checked in on_init).
 
-left_hip_pitch_joint:    {kp: 0.0, kd: 0.0}   # MD 10
-left_hip_roll_joint:     {kp: 0.0, kd: 0.0}   # MD 20
-left_hip_yaw_joint:      {kp: 0.0, kd: 0.0}   # MD 30
+left_hip_pitch_joint:    {kp: 120.0, kd: 1.20}   # MD 10
+left_hip_roll_joint:     {kp: 150.0, kd: 1.5}   # MD 20
+left_hip_yaw_joint:      {kp: 80.0, kd: 0.75}   # MD 30
 left_knee_pitch_joint:   {kp: 100.0, kd: 0.5}   # MD 40
-left_ankle_roll_joint:   {kp: 0.0, kd: 0.0}   # MD 50 (upper ankle motor)
-left_ankle_pitch_joint:  {kp: 0.0, kd: 0.0}   # MD 60 (lower ankle motor)
+left_ankle_roll_joint:   {kp: 30.0, kd: 0.5}   # MD 50 (upper ankle motor)
+left_ankle_pitch_joint:  {kp: 50.0, kd: 0.5}   # MD 60 (lower ankle motor)
 
-right_hip_pitch_joint:   {kp: 0.0, kd: 0.0}   # MD 70
-right_hip_roll_joint:    {kp: 0.0, kd: 0.0}   # MD 80
-right_hip_yaw_joint:     {kp: 0.0, kd: 0.0}   # MD 90
-right_knee_pitch_joint:  {kp: 0.0, kd: 0.0}   # MD 100
-right_ankle_roll_joint:  {kp: 0.0, kd: 0.0}   # MD 110 (upper ankle motor)
-right_ankle_pitch_joint: {kp: 0.0, kd: 0.0}   # MD 120 (lower ankle motor)
+right_hip_pitch_joint:   {kp: 120.0, kd: 1.20}   # MD 70
+right_hip_roll_joint:    {kp: 150.0, kd: 1.5}   # MD 80
+right_hip_yaw_joint:     {kp: 80.0, kd: 0.75}   # MD 90
+right_knee_pitch_joint:  {kp: 100.0, kd: 0.5}   # MD 100
+right_ankle_roll_joint:  {kp: 30.0, kd: 0.5}   # MD 110 (upper ankle motor)
+right_ankle_pitch_joint: {kp: 50.0, kd: 0.5}   # MD 120 (lower ankle motor)

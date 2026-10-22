@@ -1,8 +1,8 @@
 # mujoco_ros2_control
 
 A ROS 2 ros2_control system interface for the [MuJoCo Simulator](https://mujoco.readthedocs.io/en/stable/overview.html),
-extended with a **HybridJoint PD impedance mode**, **foot contact sensors**, and an optional **UDP bridge** for
-zero-latency external controllers.
+extended with a **HybridJoint PD impedance mode**, **foot contact sensors**, and a **biped PVT mode** that
+behaves like the real robot's hardware interface (`biped_hardware/BipedSystem`).
 
 Originally written for NASA Johnson's [iMETRO facility](https://ntrs.nasa.gov/citations/20230015485).
 Parts are based on the MoveIt [mujoco_ros2_control](https://github.com/moveit/mujoco_ros2_control) package.
@@ -20,8 +20,8 @@ Parts are based on the MoveIt [mujoco_ros2_control](https://github.com/moveit/mu
    - [Contact Sensors](#34-contact-sensors)
    - [IMU Sensors](#35-imu-sensors)
    - [Force-Torque Sensors](#36-force-torque-sensors)
-   - [Cameras & Lidar](#37-cameras--lidar)
-4. [UDP Bridge](#4-udp-bridge)
+   - [Cameras & Lidar (not built)](#37-cameras--lidar-not-built)
+4. [Biped PVT Mode](#4-biped-pvt-mode)
 5. [PD Gains File](#5-pd-gains-file)
 6. [Topics & Services](#6-topics--services)
 7. [Debugging](#7-debugging)
@@ -168,11 +168,11 @@ The mutex is only held for the brief copy operations before and after the step.
     <param name="odom_free_joint_name">floating_base</param>
     <param name="odom_topic">/simulator/floating_base_state</param>
 
-    <!-- Enable the UDP bridge to an external controller (see section 4) -->
-    <param name="use_udp">false</param>
-    <param name="udp_controller_ip">127.0.0.1</param>
-    <param name="udp_state_port">9870</param>
-    <param name="udp_cmd_port">9871</param>
+    <!-- Behave like the real biped's BipedSystem (see section 4) -->
+    <param name="pvt_mode">false</param>
+    <param name="command_timeout">0.02</param>
+    <param name="damping_kd">1.0</param>
+    <param name="damping_duration">1.0</param>
   </hardware>
   ...
 </ros2_control>
@@ -374,62 +374,47 @@ Optional suffix overrides: `orientation_mjcf_suffix`, `angular_velocity_mjcf_suf
 
 Optional: `force_mjcf_suffix` (default `_force`), `torque_mjcf_suffix` (default `_torque`).
 
-### 3.7 Cameras & Lidar
+### 3.7 Cameras & Lidar (not built)
 
-Any `<camera>` in the MJCF is automatically published as RGB-D + CameraInfo ROS topics.
-Lidar is implemented by wrapping sets of `<rangefinder>` sensors.
-See the original upstream documentation or [docs/TOOLS.md](docs/TOOLS.md) for full details.
+Removed from the interface to keep it minimal for locomotion tests. The sources
+(`src/mujoco_cameras.cpp`, `src/mujoco_lidar.cpp` and their headers) are kept but not compiled;
+`<camera>` and `<rangefinder>` elements in the MJCF are only shown in the viewer. To bring them back,
+add the sources to `CMakeLists.txt` (with `sensor_msgs`) and hook them into the interface.
+See the original upstream documentation or [docs/TOOLS.md](docs/TOOLS.md).
 
 ---
 
-## 4. UDP Bridge
+## 4. Biped PVT Mode
 
-When enabled, `MujocoSystemInterface` sends a full robot-state snapshot over UDP on every
-`read()` and applies the most recently received `JointCommandPacket` in `write()`, bypassing
-the ros2_control command interfaces entirely.
+`<param name="pvt_mode">true</param>` makes the interface behave like the real robot's
+`biped_hardware/BipedSystem` (motor drives + NUCLEO board), so the same controllers and
+`controllers.yaml` run unchanged in simulation. Set up by `biped_hardware/urdf/biped_hw.urdf.xacro`
+with `use_sim:=true` and started by `ros2 launch biped_hardware sim.launch.py`. Code:
+`biped_pvt_drive.hpp` / `.cpp`.
 
-### Packet formats (`udp_bridge.hpp`)
+| | Robot (`BipedSystem`) | Simulation (PVT mode) |
+|---|---|---|
+| Commands per joint | `position`, `velocity`, `effort` (one PVT command) | same; no `kp` / `kd` / `feedforward_effort` interfaces, no mode switching |
+| States | `position`, `velocity`, `effort`, `<hw>/enabled` | same (`effort` = `qfrc_actuator`) |
+| Law | motor: `tau = kp (p - q) + kd (v - dq) + tau_ff` | same, evaluated in the physics thread **before every `mj_step`** |
+| Gains | joint params `kp` / `kd` (from `joint_gains.yaml`), fixed | same params (sim default: `joint_gains_sim.yaml`) |
+| Inactive | motors disabled, limp | zero torque |
+| Activate | checks (joints inside URDF limits, ...), hold current pose | joints inside the MJCF range (+0.01 rad), hold current pose |
+| No command for 20 ms | firmware damps (kd 1) for 1 s, then disables; `read()` returns ERROR | same, in sim time (`command_timeout`, `damping_kd`, `damping_duration`) |
+| Non-finite command | firmware damps and disables | same |
+| Ankles | parallel linkage, gains in motor space (`ankle_kinematics.hpp`) | **serial roll / pitch joints**, gains in joint space |
+| Torque limit | motor | MJCF actuator `ctrlrange` |
 
-**State packet (sim → controller, every `read()`):**
+Requirements: every ros2_control joint is a hinge driven by a `<motor joint="..."/>` actuator
+(gear 1), so `ctrl` is the joint torque.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp_ns` | `uint64_t` | `steady_clock` nanoseconds |
-| `num_joints` | `uint32_t` | Number of joints in this packet |
-| `joint_pos[32]` | `float[32]` | Joint positions (rad) |
-| `joint_vel[32]` | `float[32]` | Joint velocities (rad/s) |
-| `joint_torque[32]` | `float[32]` | Applied torques (Nm) |
-| `imu_quat[4]` | `float[4]` | Quaternion (w, x, y, z) |
-| `imu_gyro[3]` | `float[3]` | Angular velocity (rad/s) |
-| `imu_accel[3]` | `float[3]` | Linear acceleration (m/s²) |
-
-**Command packet (controller → sim, applied in `write()`):**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `timestamp_ns` | `uint64_t` | `steady_clock` nanoseconds |
-| `num_joints` | `uint32_t` | Number of joints |
-| `pos_des[32]` | `float[32]` | Desired positions |
-| `vel_des[32]` | `float[32]` | Desired velocities |
-| `kp[32]` | `float[32]` | Proportional gains |
-| `kd[32]` | `float[32]` | Derivative gains |
-| `torque_ff[32]` | `float[32]` | Feedforward torques |
-
-The command applied per joint: `tau = kp*(pos_des - q) + kd*(vel_des - qd) + torque_ff`.
-
-**Timeout:** if no packet arrives within 50 ms, `write()` falls back to the ros2_control
-command interfaces automatically.
-
-### Enable in URDF
-
-```xml
-<hardware>
-  <param name="use_udp">true</param>
-  <param name="udp_controller_ip">127.0.0.1</param>
-  <param name="udp_state_port">9870</param>   <!-- sim sends state here -->
-  <param name="udp_cmd_port">9871</param>     <!-- sim receives commands here -->
-</hardware>
-```
+Notes:
+- The PD law runs at the physics rate (1 kHz), not at the 500 Hz command rate: the real drives also
+  close their loop on the motor, much faster than the PC sends commands.
+- In PVT mode `write()` does not touch `ctrl`. The commands go to the drive under its own mutex, so
+  the `mj_data_` → `mj_data_control_` copy after each step can never drop a command.
+- Explicit integration: keep `kd * timestep / joint inertia` well below 2. The light ankle roll
+  link (armature 0.00088) chatters from kd ≈ 3 at 1 ms.
 
 ---
 
@@ -478,7 +463,6 @@ Node(
 
 | Topic | Type | Description |
 |-------|------|-------------|
-| `/mujoco_actuators_states` | `sensor_msgs/msg/JointState` | All MuJoCo actuator states (pos, vel, effort) |
 | `/clock` | `rosgraph_msgs/msg/Clock` | Simulation time |
 | `<odom_topic>` | `nav_msgs/msg/Odometry` | Floating-base odometry (if `odom_free_joint_name` set) |
 

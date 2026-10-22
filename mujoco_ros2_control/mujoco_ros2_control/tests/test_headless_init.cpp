@@ -109,7 +109,6 @@ protected:
     info.hardware_parameters["mujoco_model"] = test_model_path_;
     info.hardware_parameters["meshdir"] = "";
     info.hardware_parameters["headless"] = "true";           // Enable headless mode for CI compatibility
-    info.hardware_parameters["disable_rendering"] = "true";  // Disable cameras/lidar to avoid OpenGL issues in tests
 
     return info;
   }
