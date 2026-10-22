@@ -1,0 +1,12 @@
+<library path="biped_hardware">
+  <class
+    name="biped_hardware/BipedSystem"
+    type="biped_hardware::BipedSystem"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ros2_control system interface for the 12-motor biped. Sends WbcCommandPacket to the
+      NUCLEO-H755 bridge over UDP (port 9999) and reads WbcStatePacket back; maps the parallel
+      ankle motors to ankle roll / pitch joints.
+    </description>
+  </class>
+</library>

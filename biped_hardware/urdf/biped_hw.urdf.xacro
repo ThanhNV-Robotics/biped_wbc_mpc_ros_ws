@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<!--
+  Robot model + ros2_control block for the real robot (biped_hardware/BipedSystem).
+
+  motor_index = index into wbc_protocol.h motors[] (CAN ID order):
+    0..5  left  10 hip pitch, 20 hip roll, 30 hip yaw, 40 knee, 50 ankle upper, 60 ankle lower
+    6..11 right 70 ... 120 (same joint order)
+  The ankle roll joint carries the upper motor, the ankle pitch joint the lower motor;
+  BipedSystem maps the motor pair to roll / pitch with ankle_kinematics.hpp.
+
+  direction = +1 / -1 so that a positive motor angle matches the positive URDF joint angle.
+  TODO: verify every sign by moving each joint by hand (step 3) and fix it here.
+-->
+<robot name="biped" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="model" default="v2_biped_robot_12dof.urdf"/>
+  <xacro:arg name="board_ip" default="192.168.10.10"/>
+  <xacro:arg name="board_port" default="9999"/>
+  <xacro:arg name="timeout_cycles" default="10"/>
+
+  <xacro:include filename="$(find biped_description)/urdf/$(arg model)"/>
+
+  <xacro:macro name="hw_joint" params="name motor_index direction">
+    <joint name="${name}">
+      <param name="motor_index">${motor_index}</param>
+      <param name="direction">${direction}</param>
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <command_interface name="effort"/>
+      <command_interface name="kp"/>
+      <command_interface name="kd"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <ros2_control name="BipedSystem" type="system">
+    <hardware>
+      <plugin>biped_hardware/BipedSystem</plugin>
+      <param name="board_ip">$(arg board_ip)</param>
+      <param name="board_port">$(arg board_port)</param>
+      <param name="timeout_cycles">$(arg timeout_cycles)</param>
+    </hardware>
+
+    <xacro:hw_joint name="left_hip_pitch_joint"    motor_index="0"  direction="1"/>
+    <xacro:hw_joint name="left_hip_roll_joint"     motor_index="1"  direction="1"/>
+    <xacro:hw_joint name="left_hip_yaw_joint"      motor_index="2"  direction="1"/>
+    <xacro:hw_joint name="left_knee_pitch_joint"   motor_index="3"  direction="1"/>
+    <xacro:hw_joint name="left_ankle_roll_joint"   motor_index="4"  direction="1"/>
+    <xacro:hw_joint name="left_ankle_pitch_joint"  motor_index="5"  direction="1"/>
+
+    <xacro:hw_joint name="right_hip_pitch_joint"   motor_index="6"  direction="1"/>
+    <xacro:hw_joint name="right_hip_roll_joint"    motor_index="7"  direction="1"/>
+    <xacro:hw_joint name="right_hip_yaw_joint"     motor_index="8"  direction="1"/>
+    <xacro:hw_joint name="right_knee_pitch_joint"  motor_index="9"  direction="1"/>
+    <xacro:hw_joint name="right_ankle_roll_joint"  motor_index="10" direction="1"/>
+    <xacro:hw_joint name="right_ankle_pitch_joint" motor_index="11" direction="1"/>
+  </ros2_control>
+
+</robot>
