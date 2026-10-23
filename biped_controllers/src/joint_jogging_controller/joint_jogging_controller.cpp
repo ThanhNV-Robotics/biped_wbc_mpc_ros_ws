@@ -1,4 +1,4 @@
-#include "biped_controllers/joint_jogging_controller.hpp"
+#include "joint_jogging_controller/joint_jogging_controller.hpp"
 
 #include <algorithm>
 #include <cmath>

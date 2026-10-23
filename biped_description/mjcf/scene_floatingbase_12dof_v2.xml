@@ -29,4 +29,18 @@
   <geom type="box" size=".3 .6 .025" pos="3 0 .025" material="block" euler = "0 0 -0.3" solref="0.002 0.2" friction="1 0.3 0.3"/>
   <geom type="box" size=".3 .6 .025" pos="5 0 .025" material="block" euler = "0 0 0.2" solref="0.002 0.2" friction="1 0.3 0.3"/-->
 </worldbody>
+
+<!-- home: slight crouch, feet flat on the floor (torso height computed so the foot boxes just
+     touch it). Joint PD alone keeps it standing with the sim gains (checked 5 s, < 0.02 rad tilt).
+     Same joint values as HOME in biped_hardware/launch/sim_floating.launch.py.
+     qpos = free joint (x y z qw qx qy qz) + 12 joints in MJCF order
+            (hip pitch, hip roll, hip yaw, knee, ankle roll, ankle pitch; left, then right) -->
+<!-- <keyframe>
+  <key name="home" qpos="0 0 0.848 1 0 0 0  -0.2 0 0 0.4 0 -0.2  -0.2 0 0 0.4 0 -0.2"/>
+</keyframe> -->
+
+<keyframe>
+  <key name="home" qpos="0 0 0.862 1 0 0 0  0.0 0 0 0.0 0 0.0  0.0 0 0 0.0 0 0.0"/>
+</keyframe>
+
 </mujoco>

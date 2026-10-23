@@ -13,6 +13,7 @@ set(THIS_PACKAGE_DEPENDS
   rclcpp_lifecycle
   realtime_tools
   sensor_msgs
+  biped_wbc_core   # ROS-free WBC algorithms (state estimator, contact fusion, TSID)
 )
 
 find_package(ament_cmake REQUIRED)
@@ -21,7 +22,8 @@ foreach(dep IN ITEMS ${THIS_PACKAGE_DEPENDS})
 endforeach()
 
 add_library(${PROJECT_NAME} SHARED
-  src/joint_jogging_controller.cpp
+  src/joint_jogging_controller/joint_jogging_controller.cpp
+  src/wbc_controller/wbc_controller.cpp   # add once it compiles, plus its entry in biped_controllers.xml
 )
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME} PUBLIC

@@ -1,8 +1,0 @@
-# Request/Goal
-float64 hip_height
-float64 duration
----
-# Result
-float64 hip_height
----
-#Feedback

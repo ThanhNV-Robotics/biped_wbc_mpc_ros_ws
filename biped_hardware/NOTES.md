@@ -289,3 +289,17 @@ coupling of the gains not handled yet); start range = URDF limits; hardware star
 - Not tested through ROS yet: needs `ros-humble-mujoco-vendor` and `ros-humble-ros2-control-cmake`.
 - Next: floating-base scene (standing keyframe, odometry / TF instead of the static transform).
 
+
+### 2026-10-23 — floating-base simulation held at home (`launch/sim_floating.launch.py`)
+- Scene `scene_floatingbase_12dof_v2.xml` got keyframe `home`: hip pitch -0.2, knee 0.4, ankle
+  pitch -0.2 (both legs), torso z 0.848 so the foot boxes touch the floor.
+- `BipedSystem` starts ACTIVE there (`config/controllers_sim_floating.yaml`, loaded after
+  controllers.yaml): the physics runs from init, so limp motors would let the robot collapse before
+  a manual activation. A launch `parameters` dict or `-p` did not override the yaml's
+  `controller_manager:` section; a second yaml does.
+- `position_controller` spawned after the joint_state_broadcaster, then HOME published once.
+  TF world -> link0_torso from `/simulator/floating_base_state` (`scripts/odom_to_tf.py`).
+- Sim ankle gains 20 / 0.3 -> 80 / 0.8: with 20 the robot (20.7 kg) tips over within 1 s on joint
+  PD alone (needs 2 kp > m g h ~ 120 Nm/rad). Hanging scene not re-checked with the new gains.
+- Tested headless: stands for > 35 s sim time, torso z 0.842, pitch -0.03 rad, knees sag to 0.45
+  (kp 100 under load); no command timeout between the startup activation and the first write.

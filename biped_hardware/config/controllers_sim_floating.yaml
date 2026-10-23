@@ -1,0 +1,8 @@
+# Overrides for sim_floating.launch.py, loaded after controllers.yaml.
+controller_manager:
+  ros__parameters:
+    # BipedSystem ACTIVE from startup: the robot stands on the floor and the physics runs from the
+    # start, so limp motors would let it collapse before a manual activation. `none` matches no
+    # component (an empty list is not a valid parameter value); the controller_manager only warns.
+    hardware_components_initial_state:
+      inactive: [none]
