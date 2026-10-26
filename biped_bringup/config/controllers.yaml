@@ -82,7 +82,9 @@ wbc_controller:
       - right_knee_pitch_joint
       - right_ankle_roll_joint
       - right_ankle_pitch_joint
-    # Defaults in WBCController::on_init(); uncomment to change
+    # Defaults in ControllerParams (controller_params.hpp); uncomment to change
+    # config_package: biped_bringup
+    # config_file: config/tsid_wbc.yaml       # WBC yaml (default set in WBCController::on_init)
     # left_foot_frame: left_ankle_pitch_link
     # right_foot_frame: right_ankle_pitch_link
     # imu_name: imu                           # <sensor name> in biped_hw.urdf.xacro

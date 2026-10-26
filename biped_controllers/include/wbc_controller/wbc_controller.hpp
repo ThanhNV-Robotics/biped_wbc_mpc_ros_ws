@@ -21,6 +21,10 @@
 #include "biped_wbc/QP_tsid/QPtsid.hpp"
 #include "biped_wbc/planner/LIPTaskPlanner.hpp"
 
+#include "wbc_controller/controller_params.hpp"
+#include "wbc_controller/joint_map.hpp"
+#include "wbc_controller/robot_interface.hpp"
+
 
 
 namespace biped_controllers
@@ -42,36 +46,42 @@ public:
   controller_interface::return_type update(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
-  // creates QP_TSID, LIPTaskPlanner, StateEstimator and ContactFusion from the parameters;
-  // false (error logged) if a file is missing or invalid -> on_configure() fails
-  bool InitControlModules ();
+protected:
+  // Steps of the lifecycle, virtual so that a variant of the controller can replace one of them
+  // (e.g. a "cheater" controller whose setupStateEstimate() / estimate() use the simulator's
+  // ground truth, as LeggedCheaterController in legged_control).
 
-  // checks the `joints` parameter against the robot model (12 names, each an actuated 1-DoF
-  // joint, no duplicates) and builds the index maps ros2_control order <-> Pinocchio order;
-  // false (error logged) if a check fails -> on_configure() fails
-  bool BuildJointMap ();
+  // on_configure: QP_TSID (owns the robot model) and LIPTaskPlanner from the config yaml, control
+  // period dt_; false (error logged) if a file / value is invalid
+  virtual bool setupWbc ();
 
-  // sizes the per-cycle buffers from the robot model (called from on_configure, after the modules)
+  // on_configure, after setupWbc (needs the model and dt_): StateEstimator and ContactFusion;
+  // false (error logged) if a frame is invalid
+  virtual bool setupStateEstimate ();
+
+  // on_activate, after the bumpless hold and a first reading (sensor_ is valid): start the
+  // estimators and the planner from the current state
+  virtual void resetModules ();
+
+  // update(): sensor_ -> estimated state q_, v_ and contact_probability_ (for the next cycle)
+  virtual void estimate ();
+
+  // update(): estimated state -> joint command q_cmd_ / v_cmd_ / tau_cmd_ (Pinocchio order);
+  // false = no command this cycle, the last one is held
+  virtual bool computeCommand (const rclcpp::Time &time);
+
+  // on_configure: sizes the per-cycle buffers from the robot model (after setupWbc)
   void AllocateBuffers ();
 
-  // update(): joint + IMU state interfaces -> sensor_ (Pinocchio order); false if a value is not
-  // finite (the cycle keeps the last command)
-  bool ReadSensors ();
+  // robot model of all modules (owned by QP_TSID for now)
+  tsid::robots::RobotWrapper &robotModel () { return this->qp_tsid_controller_->getRobotWrapper(); }
 
-  // update(): q_cmd_ / v_cmd_ / tau_cmd_ -> command interfaces (ros2_control order)
-  void WriteCommands ();
+  // control period of all modules [s] (LIPPlanner sampling_frequency), set by setupWbc
+  double dt_ = 0.0;
 
-private:
-  // Parameters (declared in on_init, defaults there, overridden by controllers.yaml)
-  std::string urdf_package_;              // package of the URDF
-  std::string urdf_file_;                 // URDF path relative to the package share directory
-  std::string wbc_config_package_;        // package of the WBC yaml (TSID tasks, contacts, LIP planner)
-  std::string wbc_controller_config_path; // WBC yaml path relative to that package's share directory
-  std::vector<std::string> joint_names_;  // the 12 controlled joints, ros2_control names
-  std::string left_foot_frame_;           // URDF frames of the feet (estimator, contact fusion)
-  std::string right_foot_frame_;
-  std::string imu_name_;                  // ros2_control sensor name: interfaces <imu_name>/orientation.x ...
-  std::string enabled_interface_;         // hardware state interface, 1 = motors enabled
+  // Parameters (declared in on_init, read in on_configure; defaults in ControllerParams, the WBC
+  // yaml default in on_init, overridden by controllers.yaml)
+  ControllerParams params_; //struct type
 
 
   // Modules, created in on_configure(): their constructors need files (yaml, URDF) that are only
@@ -83,29 +93,17 @@ private:
   std::unique_ptr<StateEstimator> state_estimator_;  // state estimator module
   std::unique_ptr<ContactFusion> contact_fusion_;    // contact fusion module
 
-  // Joint order maps (built in on_configure by BuildJointMap). "ros2_control order" = order of
-  // joint_names_ (the `joints` parameter, used for the interfaces); "Pinocchio order" = order of
-  // the actuated joints in the model = order of q[7:], v[6:], tau of TSID and the estimators.
-  //   ros_to_pin_[i] = Pinocchio index of joint_names_[i]
-  //   pin_to_ros_[j] = index in joint_names_ of the j-th actuated joint of the model
-  std::vector<int> ros_to_pin_;
-  std::vector<int> pin_to_ros_;
+  // Joint order maps ros2_control (params_.joints) <-> Pinocchio (q[7:], v[6:], tau), built in
+  // on_configure once the robot model exists
+  JointMap joint_map_;
 
-  // IMU: ros2_control helper for the 10 state interfaces <imu_name>/orientation.x ...
-  // /linear_acceleration.z. Created in on_configure (its constructor needs imu_name_), claimed in
-  // state_interface_configuration(), bound in on_activate(), released in on_deactivate().
-  std::unique_ptr<semantic_components::IMUSensor> imu_;
-
-  // Joint interfaces: index of each joint's loaned interface in command_interfaces_ /
-  // state_interfaces_, in ros2_control order (joint_names_[i]). Found by name in on_activate (the
-  // loan order is not guaranteed), then used every cycle without searching.
-  std::vector<std::size_t> pos_cmd_idx_, vel_cmd_idx_, eff_cmd_idx_;       // command interfaces
-  std::vector<std::size_t> pos_state_idx_, vel_state_idx_, eff_state_idx_; // state interfaces
-  std::size_t enabled_state_idx_{0};  // index of enabled_interface_ (1 = motors enabled)
+  // ros2_control interfaces (joints, IMU, motors enabled): claim, bind, read, write, hold. Created
+  // in on_configure (needs the parameters and the joint map); works in Pinocchio order.
+  std::unique_ptr<RobotInterface> robot_;
 
   // Per-cycle buffers, sized once in on_configure() (AllocateBuffers): update() runs in the
   // real-time loop and only writes into them, it never allocates memory.
-  // Joint vectors are in Pinocchio order unless noted (see ros_to_pin_ / pin_to_ros_).
+  // Joint vectors are in Pinocchio order unless noted (see joint_map_).
   RobotSensor sensor_;                    // joint q / dq / tau + IMU of this cycle (estimator input)
   Eigen::VectorXd q_;                     // configuration [base pos 3, quat 4 (x y z w), joints] (nq)
   Eigen::VectorXd v_;                     // velocity [base twist 6 (base frame), joints] (nv)
@@ -113,9 +111,9 @@ private:
                                           // previous cycle, used by the state estimator
   Eigen::VectorXd dv_;                    // accelerations solved by TSID (nv)
   Eigen::VectorXd tau_;                   // joint torques solved by TSID (na)
-  Eigen::VectorXd q_cmd_;                 // commands written to the interfaces, ros2_control order (na)
-  Eigen::VectorXd v_cmd_;
-  Eigen::VectorXd tau_cmd_;
+  Eigen::VectorXd q_cmd_;                 // joint command to send (robot_->write): position (na)
+  Eigen::VectorXd v_cmd_;                 // velocity (na)
+  Eigen::VectorXd tau_cmd_;               // feedforward torque (na)
 };
 
 }  // namespace biped_controllers

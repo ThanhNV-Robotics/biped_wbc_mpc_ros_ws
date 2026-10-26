@@ -4,6 +4,34 @@ Newest entries first. Per-package details: `biped_hardware/NOTES.md`; how the la
 
 ---
 
+## 2026-10-27
+
+### QP_TSID tasks (`biped_wbc_core`)
+- `ContactInfo` removed; left / right handled separately. `setupContactTask` (Contact6d per foot,
+  sole corners from the URDF collision box, μ / f_min / f_max / kp / kd), `setupSwingTask`
+  (TaskSE3Equality per foot, world frame), `setupCoMTask`, `setupBaseOrientationTask`,
+  `setupPostureTask` (kp 10 added to the yaml), `setupActuationBoundsTask`. Tasks are created, not
+  yet added to the formulation; weight / priority stored in `TaskSetting`.
+- Torque limits from the URDF `<limit effort>` (`model.effortLimit`); `v2_biped_robot_12dof.urdf`
+  updated from the placeholder 1000 to 48 / 48 / 16 / 48 / 18 / 18 N·m. yaml `tau_max` = optional
+  override.
+
+### WBCController: B2 + bumpless activation
+- `update()` reads joints (Pinocchio order) + IMU every cycle and writes the hold command; motors
+  disabled → hold the measured pose; NaN → last command.
+- Found: activating with `q_cmd = measured q` dropped the PD gravity lag (ankle ≈ 0.007 rad ≈
+  0.5 N·m) → the robot sagged and rocked 2–10° in pitch. Fix: keep the position command the drives
+  already hold. Now < 1° and steady.
+
+### WBCController refactor (after reviewing `legged_control`, ROS 1)
+- Helpers in `biped_controllers/wbc_controller/`: `ControllerParams`, `JointMap`, `RobotInterface`;
+  lifecycle steps as protected virtual methods (`setupWbc`, `setupStateEstimate`, `resetModules`,
+  `estimate`, `computeCommand`). `wbc_controller.cpp` 568 → ~330 lines, same behaviour.
+- Parameters renamed: `wbc_config_package` → `config_package`, `wbc_tsid_yaml` → `config_file`.
+- `src/legged_control` (ROS 1 clone for reference) has a `COLCON_IGNORE`.
+
+---
+
 ## 2026-10-25
 
 ### New package `biped_bringup` (launch files + system configuration)

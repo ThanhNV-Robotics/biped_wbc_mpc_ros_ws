@@ -24,7 +24,10 @@ endforeach()
 
 add_library(${PROJECT_NAME} SHARED
   src/joint_jogging_controller/joint_jogging_controller.cpp
-  src/wbc_controller/wbc_controller.cpp   # add once it compiles, plus its entry in biped_controllers.xml
+  src/wbc_controller/wbc_controller.cpp
+  src/wbc_controller/controller_params.cpp  # parameters shared by the biped controllers
+  src/wbc_controller/joint_map.cpp          # joint order ros2_control <-> Pinocchio
+  src/wbc_controller/robot_interface.cpp    # ros2_control interfaces: claim, bind, read, write, hold
 )
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME} PUBLIC

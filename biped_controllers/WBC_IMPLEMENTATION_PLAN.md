@@ -1,6 +1,6 @@
 # WBC controller – implementation plan
 
-Status of 2026-10-26. Part A: what is done, in the order we did it. Part B: what comes next, in
+Status of 2026-10-27. Part A: what is done, in the order we did it. Part B: what comes next, in
 the order to do it. Each milestone names the lifecycle method it belongs to and ends with a check.
 
 Goal: `biped_controllers/WBCController`, a ros2_control controller that, every 500 Hz cycle, reads
@@ -17,8 +17,12 @@ on_init  -->  on_configure  -->  *_interface_configuration  -->  update  ... upd
 Two layers:
 - **`biped_wbc_core`** (no ROS): the algorithms – `StateEstimator`, `ContactFusion`,
   `LIPTaskPlanner`, `QP_TSID`. Testable with small standalone programs.
-- **`biped_controllers/WBCController`** (ros2_control): parameters, interfaces, the order of the
-  calls, conversions interfaces ↔ `RobotSensor` / Eigen.
+- **`biped_controllers/WBCController`** (ros2_control): the order of the calls and the controller
+  logic. Helpers next to it in `wbc_controller/` (A6): `ControllerParams` (parameters, paths),
+  `JointMap` (ros2_control ↔ Pinocchio order), `RobotInterface` (claim, bind, read, write, hold).
+  Lifecycle steps are protected virtual methods (`setupWbc`, `setupStateEstimate`,
+  `resetModules`, `estimate`, `computeCommand`), so a variant (e.g. a cheater estimator from the
+  simulator's ground truth) only overrides one of them.
 
 Run: `ros2 launch biped_bringup tsid_wbc.launch.py` (MuJoCo floating base, BipedSystem active from
 startup; until the WBC writes commands the motors hold the keyframe pose). After every C++ change:
@@ -55,18 +59,18 @@ ros2 node list | grep controller_manager    # before launching: must be empty (n
       contacts parsed from the yaml; getters `getRobotWrapper()`, `getContactInfo()`.
 
 ### A3. `on_init()` – parameters
-- [x] `urdf_package`, `urdf_file`, `wbc_config_package`, `wbc_tsid_yaml`, `joints`,
+- [x] `urdf_package`, `urdf_file`, `config_package`, `config_file` (renamed in A6), `joints`,
       `left_foot_frame`, `right_foot_frame`, `imu_name`, `enabled_interface` (`try / catch`, log).
 
 ### A4. `on_configure()` – build everything once
 - [x] Re-read all parameters (a `ros2 param set` between load and configure takes effect).
-- [x] `InitControlModules()`: paths via `ament_index_cpp`; `QP_TSID` → `LIPTaskPlanner` →
+- [x] `InitControlModules()` (since A6: `setupWbc()` + `setupStateEstimate()`): paths via `ament_index_cpp`; `QP_TSID` → `LIPTaskPlanner` →
       `StateEstimator`, `ContactFusion` on the QP_TSID robot; contact fusion soles = TSID contacts;
       `dt` = `1 / sampling_frequency` of the yaml (`get_update_rate()` is 0 in Humble; keep it equal
       to the controller_manager `update_rate` = 500).
-- [x] `BuildJointMap()`: 12 names, each an actuated 1-DoF joint of the model, no duplicates →
+- [x] `BuildJointMap()` (since A6: `JointMap::build`): 12 names, each an actuated 1-DoF joint of the model, no duplicates →
       `ros_to_pin_` / `pin_to_ros_` (tested with shuffled, wrong, duplicate and short lists).
-- [x] IMU helper `imu_` (`semantic_components::IMUSensor`).
+- [x] IMU helper `imu_` (`semantic_components::IMUSensor`, since A6 inside `RobotInterface`).
 - [x] `AllocateBuffers()`: `sensor_`, `q_ (19)`, `v_ (18)`, `contact_probability_ (2)`, `dv_ (18)`,
       `tau_ (12)`, `q_cmd_`, `v_cmd_`, `tau_cmd_ (12)`.
 
@@ -77,6 +81,20 @@ ros2 node list | grep controller_manager    # before launching: must be empty (n
 - [x] `on_deactivate()`: `release_interfaces()`.
 - Checked in the sim: 10 IMU interfaces claimed; orientation ≈ (0, 0.004, 0, 1),
   acceleration ≈ (−0.07, 0, 9.81).
+
+### A6. Refactor: helpers + virtual lifecycle steps (2026-10-27)
+- [x] `ControllerParams` (`controller_params.hpp/.cpp`): `declare(node)` in `on_init`,
+      `read(node)` in `on_configure` (checks, resolves `urdf_path` / `config_path`). Parameters
+      renamed `wbc_config_package` → `config_package`, `wbc_tsid_yaml` → `config_file`.
+- [x] `JointMap` (`joint_map.hpp/.cpp`, no ROS): `build(model, joints, error)`, `toPin` / `toRos`,
+      `toPinOrder` / `toRosOrder` (no allocation), `describe()`.
+- [x] `RobotInterface` (`robot_interface.hpp/.cpp`): interface names, `bind` / `release`,
+      `motorsEnabled`, `read(sensor)`, `holdCurrentCommand` (bumpless), `holdMeasured`,
+      `write(q, v, tau)` in **Pinocchio order**, `writeLastCommand`.
+- [x] `WBCController`: lifecycle + `setupWbc`, `setupStateEstimate`, `resetModules`, `estimate`,
+      `computeCommand` (protected virtual); `update()` = motors check → read → estimate →
+      computeCommand → write (or hold the last command).
+- Checked in the sim: same logs, 36 commands claimed, deactivate / re-activate bumpless.
 
 ---
 
@@ -90,18 +108,24 @@ ros2 node list | grep controller_manager    # before launching: must be empty (n
 - [x] `on_activate()`: find every loaned joint interface **by name** (`get_prefix_name()` /
       `get_interface_name()`, as `JointJoggingController`), store the indices; fail if one is
       missing; refuse if `enabled` is 0 (motors off).
-- [x] Hold command from the current state: `q_cmd_ = q`, `v_cmd_ = 0`, `tau_cmd_ = 0`.
+- [x] Hold command, **bumpless**: keep the position command the drives already hold (measured q
+      only if it is NaN), `v = 0`, `τ = 0`. Not `q_cmd_ = q`: under gravity the PD hold lags its
+      command (ankle ≈ 0.007 rad) and that lag is the holding torque; `p = q` dropped it, the robot
+      sagged and rocked (2–10° pitch).
 - **Check**: `ros2 control list_controllers -v`, `ros2 control list_hardware_interfaces` → 36
   commands `[claimed]`.
 
 ### B2. Read / write – `update()` (lifecycle step 4, first version: hold the pose)
-- [ ] Joints → `sensor_` in Pinocchio order: `sensor_.actuator_state.qj(ros_to_pin_[i]) = ...`
+- [x] Joints → `sensor_` in Pinocchio order: `RobotInterface::read` via `JointMap`
       (also `dqj`, `torquej`).
-- [ ] IMU → `sensor_.imu_sensor`: `get_orientation()` is {x, y, z, w} → `Quat(q[3], q[0], q[1], q[2])`,
+- [x] IMU → `sensor_.imu_sensor`: `get_orientation()` is {x, y, z, w} → `Quat(q[3], q[0], q[1], q[2])`,
       `get_angular_velocity()`, `get_linear_acceleration()`.
-- [ ] Write `q_cmd_`, `v_cmd_`, `tau_cmd_` to the command interfaces.
+- [x] Write `q_cmd_`, `v_cmd_`, `tau_cmd_` to the command interfaces.
 - Rules for `update()`: no allocation, no file / parameter access, `RCLCPP_*_THROTTLE` only.
-- **Check**: switching the controller on → the robot keeps standing exactly as before.
+- [x] Motors disabled in `update()` → `holdMeasured()` (error throttled, return OK: on Humble an
+      `ERROR` from update() does not stop the controller); NaN / Inf reading → last command.
+- **Check**: switching the controller on → the robot keeps standing exactly as before (done:
+  quaternion ≈ (1, 0, 0.005, 0), acceleration ≈ (−0.1, 0, 9.81)).
 
 ### B3. Estimation, still holding the pose – `update()` + reset in `on_activate()`
 - [ ] `on_activate()`: estimator base position from leg kinematics (`setBasePosEst`).
@@ -114,7 +138,9 @@ ros2 node list | grep controller_manager    # before launching: must be empty (n
   forces ≈ 203 N, contacts 1 1, pushes in the viewer. Tune `StateEstimatorParams`.
 
 ### B4. Leave safely – `on_deactivate()` (lifecycle step 5)
-- [ ] Final hold `p = q`, `v = 0`, `τ = 0` before releasing (the IMU release is done).
+- [ ] Open (decide later): what to command on deactivation. Now: release only, the last command
+      stays and the next controller takes it over bumplessly. A final `p = q` hold would drop the
+      gravity lag (sag, see B1).
 - **Check**: `switch_controllers --deactivate wbc_controller --activate position_controller` and
   back: no jump (re-add `position_controller` to `controllers.yaml` for this test).
 
