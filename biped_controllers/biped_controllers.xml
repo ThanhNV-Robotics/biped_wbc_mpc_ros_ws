@@ -8,4 +8,11 @@
       position commands (velocity = 0, effort = 0), starting at the measured pose. Test controller.
     </description>
   </class>
+
+  <class name="biped_controllers/WBCController"
+       type="biped_controllers::WBCController"
+       base_class_type="controller_interface::ControllerInterface">
+  <description>Whole-body controller: state estimation, contact fusion, TSID.</description>
+  </class>
+
 </library>

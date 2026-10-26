@@ -49,13 +49,15 @@ biped_hardware/
 │   └── udp_client.cpp
 ├── urdf/biped_hw.urdf.xacro   robot model from biped_description + <ros2_control> block
 │                              (use_sim:=true: MuJoCo instead of BipedSystem)
-├── config/controllers.yaml    controller_manager rate and controllers (robot and sim)
 ├── config/joint_gains.yaml    kp / kd of the robot
 ├── config/joint_gains_sim.yaml kp / kd of the simulation
-├── launch/hardware.launch.py  real robot bring-up
-├── launch/sim.launch.py       the same in MuJoCo (mujoco_ros2_control, PVT mode)
 └── biped_hardware.xml         pluginlib description (biped_hardware/BipedSystem)
 ```
+
+Launch files and controller configuration are in **`biped_bringup`**:
+`launch/hardware.launch.py` (real robot), `launch/sim.launch.py` (the same in MuJoCo,
+mujoco_ros2_control in PVT mode), `launch/sim_floating.launch.py`, `launch/tsid_wbc.launch.py`,
+`config/controllers.yaml` (controller_manager rate and controllers, robot and sim).
 
 ---
 
@@ -236,7 +238,7 @@ Verified on the robot 2026-10-23 with a test file (kp 0, kd 0.05): board log
 | Callback | Does |
 |---|---|
 The hardware starts **inactive** (`hardware_components_initial_state.inactive` in
-`config/controllers.yaml`), so launching ROS never enables a motor.
+`biped_bringup/config/controllers.yaml`), so launching ROS never enables a motor.
 
 | Callback | Does |
 |---|---|
@@ -283,9 +285,9 @@ cd ~/Documents/Programs/biped_wbc_mpc_ros_ws
 ./build.sh                                   # builds biped_description + biped_hardware
 source install/setup.bash
 
-ros2 launch biped_hardware hardware.launch.py              # with RViz, motors stay disabled
-ros2 launch biped_hardware hardware.launch.py enable:=true # motors enabled right after startup, holding the pose
-ros2 launch biped_hardware hardware.launch.py rviz:=false
+ros2 launch biped_bringup hardware.launch.py              # with RViz, motors stay disabled
+ros2 launch biped_bringup hardware.launch.py enable:=true # motors enabled right after startup, holding the pose
+ros2 launch biped_bringup hardware.launch.py rviz:=false
 ```
 
 Launch arguments: `enable` (default `false`), `model` (URDF in `biped_description/urdf`, default
@@ -323,7 +325,7 @@ the robot is the moment it is enabled (all 0 = limp).
 ### Move joints with sliders (read / write check)
 
 ```bash
-ros2 launch biped_hardware hardware.launch.py slider:=true
+ros2 launch biped_bringup hardware.launch.py slider:=true
 ```
 
 Activates the hardware, spawns `joint_jogging_controller` (package
@@ -334,7 +336,7 @@ robot):
 - every target starts at the measured pose; a joint follows its slider only after that slider has
   been moved (the GUI starts at 0, untouched joints keep holding their pose)
 - targets move at most `max_velocity` rad/s, then pass a 0.1 s low-pass filter (both in
-  `config/controllers.yaml`, `joint_jogging_controller`)
+  `biped_bringup/config/controllers.yaml`, `joint_jogging_controller`)
 - position targets only (velocity 0, effort 0); the motors track them with the configured kp / kd
 - Ctrl+C deactivates the hardware (motors disabled)
 
@@ -350,7 +352,7 @@ robot):
 
 ## Simulation (MuJoCo)
 
-`launch/sim.launch.py` runs the same ros2_control setup with `mujoco_ros2_control` in **PVT mode**
+`biped_bringup/launch/sim.launch.py` runs the same ros2_control setup with `mujoco_ros2_control` in **PVT mode**
 instead of `BipedSystem`: same component name, joints, interfaces (`BipedSystem/enabled`
 included), lifecycle (starts inactive and limp, activate = hold the current pose) and safety
 (20 ms command timeout → damping 1 s → disabled, `read()` error). So `controllers.yaml` and the
@@ -358,9 +360,9 @@ controllers in `biped_controllers` run unchanged. Details and the robot / sim co
 `mujoco_ros2_control/README.md`, section "Biped PVT Mode".
 
 ```bash
-ros2 launch biped_hardware sim.launch.py                  # hanging robot, motors disabled (limp)
-ros2 launch biped_hardware sim.launch.py enable:=true     # enabled, holding the pose
-ros2 launch biped_hardware sim.launch.py slider:=true     # enabled + sliders (jogging)
+ros2 launch biped_bringup sim.launch.py                  # hanging robot, motors disabled (limp)
+ros2 launch biped_bringup sim.launch.py enable:=true     # enabled, holding the pose
+ros2 launch biped_bringup sim.launch.py slider:=true     # enabled + sliders (jogging)
 ```
 
 - Scene: `biped_description/mjcf/scene_hanging_12dof_v2.xml`, the v2 robot with its torso welded

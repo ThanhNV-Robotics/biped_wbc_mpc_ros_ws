@@ -39,10 +39,10 @@ struct StateEstimatorParams
 // Orientation and angular velocity come directly from the IMU; joint states are passed through.
 // The contact probability per foot comes from ContactFusion, which itself needs this estimate,
 // so the loop runs with a one-tick delay (start in double support, p = [1, 1]):
-//   se.update(sensor, p_contact);                        // p_contact of the previous tick
+//   se.update(sensor, contact_probability);                      // of the previous tick
 //   se.getPinocchioState(q, v);
 //   cf.computeDisturbanceTorque(q, v, sensor.actuator_state.torquej);
-//   p_contact = cf.fuseContactProbability(s_phi, phi);   // used by the next se.update()
+//   contact_probability = cf.fuseContactProbability(s_phi, phi);   // used by the next se.update()
 // Foot kinematics use the TSID robot's pinocchio model (floating base) with its own pinocchio
 // Data, so it never overwrites the data used by the TSID formulation.
 class StateEstimator

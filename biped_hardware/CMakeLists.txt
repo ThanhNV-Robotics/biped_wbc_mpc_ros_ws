@@ -41,11 +41,10 @@ install(TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(DIRECTORY config launch urdf
+# urdf: biped_hw.urdf.xacro (robot + ros2_control block), config: joint gains read by it.
+# Launch files and controller configuration are in biped_bringup.
+install(DIRECTORY config urdf
   DESTINATION share/${PROJECT_NAME}
-)
-install(PROGRAMS scripts/odom_to_tf.py
-  DESTINATION lib/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)

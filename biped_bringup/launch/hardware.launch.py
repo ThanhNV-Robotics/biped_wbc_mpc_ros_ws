@@ -12,11 +12,11 @@ controller moves each joint slowly and smoothly to its slider value once that sl
 on the robot.
 
 Usage:
-  ros2 launch biped_hardware hardware.launch.py                 # motors stay disabled
-  ros2 launch biped_hardware hardware.launch.py enable:=true    # motors enabled, holding the pose
-  ros2 launch biped_hardware hardware.launch.py slider:=true    # enabled + sliders
-  ros2 launch biped_hardware hardware.launch.py rviz:=false board_ip:=192.168.10.10
-  ros2 launch biped_hardware hardware.launch.py slider:=true gains:=/path/to/my_gains.yaml
+  ros2 launch biped_bringup hardware.launch.py                 # motors stay disabled
+  ros2 launch biped_bringup hardware.launch.py enable:=true    # motors enabled, holding the pose
+  ros2 launch biped_bringup hardware.launch.py slider:=true    # enabled + sliders
+  ros2 launch biped_bringup hardware.launch.py rviz:=false board_ip:=192.168.10.10
+  ros2 launch biped_bringup hardware.launch.py slider:=true gains:=/path/to/my_gains.yaml
 
 By hand:
   ros2 control set_hardware_component_state BipedSystem active     # enable
@@ -39,19 +39,20 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    pkg_share = FindPackageShare('biped_hardware')
+    hw_share = FindPackageShare('biped_hardware')        # xacro, joint gains
+    bringup_share = FindPackageShare('biped_bringup')    # controllers yaml, scripts
 
     robot_description = ParameterValue(
         Command([
             PathJoinSubstitution([FindExecutable(name='xacro')]), ' ',
-            PathJoinSubstitution([pkg_share, 'urdf', 'biped_hw.urdf.xacro']),
+            PathJoinSubstitution([hw_share, 'urdf', 'biped_hw.urdf.xacro']),
             ' model:=', LaunchConfiguration('model'),
             ' board_ip:=', LaunchConfiguration('board_ip'),
             ' gains:=', LaunchConfiguration('gains'),
         ]),
         value_type=str,
     )
-    controllers_yaml = PathJoinSubstitution([pkg_share, 'config', 'controllers.yaml'])
+    controllers_yaml = PathJoinSubstitution([bringup_share, 'config', 'controllers.yaml'])
 
     # Publishes /joint_states from the position/velocity/effort state interfaces
     jsb_spawner = Node(
@@ -112,7 +113,7 @@ def generate_launch_description():
             description='NUCLEO-H755 address'),
         DeclareLaunchArgument(
             'gains',
-            default_value=PathJoinSubstitution([pkg_share, 'config', 'joint_gains.yaml']),
+            default_value=PathJoinSubstitution([hw_share, 'config', 'joint_gains.yaml']),
             description='kp / kd per joint, written to the motors at activation, then fixed'),
         DeclareLaunchArgument(
             'rviz',

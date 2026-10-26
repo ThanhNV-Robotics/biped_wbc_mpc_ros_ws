@@ -13,11 +13,11 @@ the framework. The controllers come from the same config/controllers.yaml; the g
 config/joint_gains_sim.yaml (see there why they differ from the robot's).
 
 Usage:
-  ros2 launch biped_hardware sim.launch.py                    # motors stay disabled (limp)
-  ros2 launch biped_hardware sim.launch.py enable:=true       # enabled, holding the pose
-  ros2 launch biped_hardware sim.launch.py slider:=true       # enabled + sliders (jogging)
-  ros2 launch biped_hardware sim.launch.py headless:=true rviz:=false
-  ros2 launch biped_hardware sim.launch.py gains:=/path/to/my_gains.yaml
+  ros2 launch biped_bringup sim.launch.py                    # motors stay disabled (limp)
+  ros2 launch biped_bringup sim.launch.py enable:=true       # enabled, holding the pose
+  ros2 launch biped_bringup sim.launch.py slider:=true       # enabled + sliders (jogging)
+  ros2 launch biped_bringup sim.launch.py headless:=true rviz:=false
+  ros2 launch biped_bringup sim.launch.py gains:=/path/to/my_gains.yaml
 
 By hand, as on the robot:
   ros2 control set_hardware_component_state BipedSystem active     # enable
@@ -36,13 +36,14 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    pkg_share = FindPackageShare('biped_hardware')
+    hw_share = FindPackageShare('biped_hardware')        # xacro, joint gains
+    bringup_share = FindPackageShare('biped_bringup')    # controllers yaml, scripts
     use_sim_time = {'use_sim_time': True}   # /clock from the MuJoCo physics thread
 
     robot_description = ParameterValue(
         Command([
             PathJoinSubstitution([FindExecutable(name='xacro')]), ' ',
-            PathJoinSubstitution([pkg_share, 'urdf', 'biped_hw.urdf.xacro']),
+            PathJoinSubstitution([hw_share, 'urdf', 'biped_hw.urdf.xacro']),
             ' use_sim:=true',
             ' model:=', LaunchConfiguration('model'),
             ' gains:=', LaunchConfiguration('gains'),
@@ -52,7 +53,7 @@ def generate_launch_description():
         ]),
         value_type=str,
     )
-    controllers_yaml = PathJoinSubstitution([pkg_share, 'config', 'controllers.yaml'])
+    controllers_yaml = PathJoinSubstitution([bringup_share, 'config', 'controllers.yaml'])
 
     jsb_spawner = Node(
         package='controller_manager',
@@ -104,7 +105,7 @@ def generate_launch_description():
             description='URDF file name inside biped_description/urdf'),
         DeclareLaunchArgument(
             'gains',
-            default_value=PathJoinSubstitution([pkg_share, 'config', 'joint_gains_sim.yaml']),
+            default_value=PathJoinSubstitution([hw_share, 'config', 'joint_gains_sim.yaml']),
             description='kp / kd per joint, fixed while active'),
         DeclareLaunchArgument(
             'mujoco_scene',

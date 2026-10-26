@@ -13,6 +13,7 @@ set(THIS_PACKAGE_DEPENDS
   rclcpp_lifecycle
   realtime_tools
   sensor_msgs
+  ament_index_cpp  # package share directories (URDF, WBC yaml)
   biped_wbc_core   # ROS-free WBC algorithms (state estimator, contact fusion, TSID)
 )
 

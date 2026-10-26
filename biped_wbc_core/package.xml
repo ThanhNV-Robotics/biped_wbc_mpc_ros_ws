@@ -15,6 +15,9 @@
   <depend>tsid</depend>
   <depend>yaml-cpp</depend>
 
+  <!-- visual tests in test/ (BUILD_VISUAL_TESTS) -->
+  <test_depend>mujoco_vendor</test_depend>
+  <test_depend>glfw3</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

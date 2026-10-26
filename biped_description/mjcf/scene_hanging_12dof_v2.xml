@@ -1,6 +1,6 @@
 <mujoco model="scene_hanging">
 <!-- v2 biped hanging in a "gantry": the torso is welded to the world 1.0 m above the floor, feet
-     clear of the ground. For checking the ros2_control framework (biped_hardware sim.launch.py,
+     clear of the ground. For checking the ros2_control framework (biped_bringup sim.launch.py,
      fixed_base:=true). Same robot model as scene_floatingbase_12dof_v2.xml: drop the weld for the
      floating-base simulation. -->
 <include file="v2_biped_robot_floatingbase_12dof.xml"/>

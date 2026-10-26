@@ -12,7 +12,7 @@ The whole-body controller will go into this package later.
 ## joint_jogging_controller
 
 ```bash
-ros2 launch biped_hardware hardware.launch.py slider:=true
+ros2 launch biped_bringup hardware.launch.py slider:=true
 ```
 
 That launch activates the hardware, spawns the controller and opens the sliders (remapped to
@@ -45,7 +45,7 @@ The motors track the position with their own kp / kd (the hardware sends PVT fra
 - The subscription runs in a normal thread and hands the slider values to `update()` through a
   `realtime_tools::RealtimeBuffer`: no locks and no allocation in the real-time loop.
 
-**Parameters** (`biped_hardware/config/controllers.yaml`)
+**Parameters** (`biped_bringup/config/controllers.yaml`)
 
 | Name | Default | Meaning |
 |---|---|---|

@@ -1,6 +1,41 @@
 # Development log
 
-Newest entries first. Per-package details: `biped_hardware/NOTES.md`.
+Newest entries first. Per-package details: `biped_hardware/NOTES.md`; how the launch files work: `biped_bringup/SIMLAUNCH.md`.
+
+---
+
+## 2026-10-25
+
+### New package `biped_bringup` (launch files + system configuration)
+
+- Moved from `biped_hardware` to `biped_bringup`: `launch/{hardware,sim,sim_floating,tsid_wbc}.launch.py`,
+  `config/controllers.yaml`, `config/controllers_sim_floating.yaml`, `scripts/odom_to_tf.py`,
+  `SIMLAUNCH.md`. Start everything with `ros2 launch biped_bringup <file>.launch.py`.
+- Stays in `biped_hardware`: the `BipedSystem` plugin, `urdf/biped_hw.urdf.xacro` and the joint
+  gains (`config/joint_gains*.yaml`, read by the xacro; keeps `$(find biped_hardware)` working and
+  the hardware package independent of the bringup package).
+- Launch files use `hw_share` (xacro, gains) and `bringup_share` (controllers yaml, scripts).
+- Run dependencies of the launch files (controllers, MuJoCo, broadcasters, RViz, ...) moved from
+  `biped_hardware/package.xml` to `biped_bringup/package.xml`. Docs and comments updated
+  (READMEs, SIMLAUNCH, WBC plan, MJCF comments); the old `NOTES.md` entries are kept as written.
+- `build/` + `install/` of `biped_hardware` rebuilt once (stale launch files in `install/`).
+- Tested: all 4 launch files load; `tsid_wbc` (joint_state_broadcaster, imu_sensor_broadcaster,
+  wbc_controller active), `sim enable:=true` and `sim_floating` start, hardware active.
+- **Open:** `sim_floating.launch.py` still spawns `position_controller`, which is no longer in
+  `controllers.yaml` → "type param was not defined". Re-add it to the yaml or drop the spawner +
+  HOME publish from the launch file.
+
+### Earlier today
+- Sim IMU: `<sensor name="imu">` in `biped_hw.urdf.xacro` (MJCF `baselink-quat/-gyro/-baseAcc`,
+  suffix params in the `<hardware>` block); `imu_sensor_broadcaster` in `controllers.yaml`.
+- `tsid_wbc.launch.py`: joint_state_broadcaster → imu_sensor_broadcaster → wbc_controller, plus
+  robot_state_publisher; RViz and the `wbc_active` option removed (kept simple).
+- `mujoco_ros2_control`: `is_pvt_mode()`; in PVT mode the pd_gains_file block and the per-joint
+  actuator-mode messages are skipped (no more "no PD gains loaded yet" warnings).
+- `WBCController::on_init()` (step 1 of `biped_controllers/WBC_IMPLEMENTATION_PLAN.md`, rewritten
+  by lifecycle step): parameters `urdf_package`, `urdf_file`, `joints`, foot frames, `imu_name`,
+  `enabled_interface`; joint list in `controllers.yaml`. Next: step 2 `on_configure()` (add
+  `ament_index_cpp` to `biped_controllers` first).
 
 ---
 

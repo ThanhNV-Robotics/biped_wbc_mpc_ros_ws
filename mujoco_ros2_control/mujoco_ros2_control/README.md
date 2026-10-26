@@ -389,7 +389,7 @@ See the original upstream documentation or [docs/TOOLS.md](docs/TOOLS.md).
 `<param name="pvt_mode">true</param>` makes the interface behave like the real robot's
 `biped_hardware/BipedSystem` (motor drives + NUCLEO board), so the same controllers and
 `controllers.yaml` run unchanged in simulation. Set up by `biped_hardware/urdf/biped_hw.urdf.xacro`
-with `use_sim:=true` and started by `ros2 launch biped_hardware sim.launch.py`. Code:
+with `use_sim:=true` and started by `ros2 launch biped_bringup sim.launch.py`. Code:
 `biped_pvt_drive.hpp` / `.cpp`.
 
 | | Robot (`BipedSystem`) | Simulation (PVT mode) |

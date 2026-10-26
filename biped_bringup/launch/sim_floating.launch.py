@@ -13,8 +13,8 @@ config/controllers.yaml, config/joint_gains_sim.yaml); differences:
     instead of a static transform.
 
 Usage:
-  ros2 launch biped_hardware sim_floating.launch.py
-  ros2 launch biped_hardware sim_floating.launch.py headless:=true rviz:=false
+  ros2 launch biped_bringup sim_floating.launch.py
+  ros2 launch biped_bringup sim_floating.launch.py headless:=true rviz:=false
 
 Other poses, in the joint order of position_controller in controllers.yaml:
   ros2 topic pub --once /position_controller/commands std_msgs/msg/Float64MultiArray "{data: [...]}"
@@ -36,13 +36,14 @@ HOME = HOME_LEG + HOME_LEG  # left, right
 
 
 def generate_launch_description():
-    pkg_share = FindPackageShare('biped_hardware')
+    hw_share = FindPackageShare('biped_hardware')        # xacro, joint gains
+    bringup_share = FindPackageShare('biped_bringup')    # controllers yaml, scripts
     use_sim_time = {'use_sim_time': True}   # /clock from the MuJoCo physics thread
 
     robot_description = ParameterValue(
         Command([
             PathJoinSubstitution([FindExecutable(name='xacro')]), ' ',
-            PathJoinSubstitution([pkg_share, 'urdf', 'biped_hw.urdf.xacro']),
+            PathJoinSubstitution([hw_share, 'urdf', 'biped_hw.urdf.xacro']),
             ' use_sim:=true',
             ' model:=', LaunchConfiguration('model'),
             ' gains:=', LaunchConfiguration('gains'),
@@ -52,7 +53,7 @@ def generate_launch_description():
         ]),
         value_type=str,
     )
-    controllers_yaml = PathJoinSubstitution([pkg_share, 'config', 'controllers.yaml'])
+    controllers_yaml = PathJoinSubstitution([bringup_share, 'config', 'controllers.yaml'])
 
     jsb_spawner = Node(
         package='controller_manager',
@@ -84,7 +85,7 @@ def generate_launch_description():
             description='URDF file name inside biped_description/urdf'),
         DeclareLaunchArgument(
             'gains',
-            default_value=PathJoinSubstitution([pkg_share, 'config', 'joint_gains_sim.yaml']),
+            default_value=PathJoinSubstitution([hw_share, 'config', 'joint_gains_sim.yaml']),
             description='kp / kd per joint, fixed while active'),
         DeclareLaunchArgument(
             'mujoco_scene',
@@ -116,7 +117,7 @@ def generate_launch_description():
             executable='ros2_control_node',
             output='screen',
             parameters=[{'robot_description': robot_description}, controllers_yaml,
-                        PathJoinSubstitution([pkg_share, 'config', 'controllers_sim_floating.yaml']),
+                        PathJoinSubstitution([bringup_share, 'config', 'controllers_sim_floating.yaml']),
                         use_sim_time]),
 
         jsb_spawner,
@@ -124,7 +125,7 @@ def generate_launch_description():
         start_send_home,
 
         Node(
-            package='biped_hardware',
+            package='biped_bringup',
             executable='odom_to_tf.py',
             output='screen',
             parameters=[use_sim_time]),

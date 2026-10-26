@@ -91,6 +91,14 @@ std::string get_hardware_parameter_or(const hardware_interface::HardwareInfo& ha
   return default_value;
 }
 
+// PVT mode (hardware param pvt_mode): BipedPvtDrive applies the motor law with the joint kp / kd;
+// the generic actuator modes and the pd_gains_file are not used
+bool is_pvt_mode(const hardware_interface::HardwareInfo& hardware_info)
+{
+  const std::string pvt_mode = get_hardware_parameter_or(hardware_info, "pvt_mode", "false");
+  return pvt_mode == "true" || pvt_mode == "True" || pvt_mode == "1";
+}
+
 bool is_mimic_joint(const std::string& joint_name, const hardware_interface::HardwareInfo& hardware_info)
 {
   for (const auto& joint : hardware_info.joints)
@@ -945,6 +953,8 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
   //       <joint_name>: <value>
   //     kd:
   //       <joint_name>: <value>
+  // Not used in PVT mode (gains from the joint params, see configure_pvt_drive)
+  if (!is_pvt_mode(get_hardware_info()))
   {
     std::string pd_gains_file = get_hardware_parameter_or(get_hardware_info(), "pd_gains_file", "");
     // Trim any stray whitespace
@@ -1364,8 +1374,7 @@ std::vector<hardware_interface::CommandInterface> MujocoSystemInterface::export_
 
 bool MujocoSystemInterface::configure_pvt_drive()
 {
-  const std::string pvt_mode = get_hardware_parameter_or(get_hardware_info(), "pvt_mode", "false");
-  if (pvt_mode != "true" && pvt_mode != "True" && pvt_mode != "1")
+  if (!is_pvt_mode(get_hardware_info()))
   {
     return true;
   }
@@ -2282,6 +2291,8 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
 {
   RCLCPP_INFO(get_logger(), "Registering joints...");
   urdf_joint_data_.resize(hardware_info.joints.size());
+  // PVT mode: per-joint actuator-mode messages do not apply (one summary from configure_pvt_drive)
+  const bool pvt = is_pvt_mode(hardware_info);
 
   for (size_t joint_index = 0; joint_index < hardware_info.joints.size(); joint_index++)
   {
@@ -2446,7 +2457,11 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
         else if (actuator_it->actuator_type == ActuatorType::MOTOR || actuator_it->actuator_type == ActuatorType::CUSTOM)
         {
           // Check if PD impedance gains are loaded - if so, velocity interface is valid for PD impedance mode
-          if (actuator_it->has_pd_gains)
+          if (pvt)
+          {
+            // PVT drive: velocity is the PVT velocity target
+          }
+          else if (actuator_it->has_pd_gains)
           {
             RCLCPP_INFO(get_logger(),
                         "Velocity command interface for joint %s: will be used for PD impedance mode (Kp=%.2f, Kd=%.2f)",
@@ -2474,7 +2489,8 @@ void MujocoSystemInterface::register_urdf_joints(const hardware_interface::Hardw
             actuator_name.c_str());
         if (actuator_it->actuator_type == ActuatorType::MOTOR || actuator_it->actuator_type == ActuatorType::CUSTOM)
         {
-          RCLCPP_INFO(get_logger(), "Using MuJoCo motor or custom actuator for the joint : '%s'", actuator_name.c_str());
+          RCLCPP_INFO_EXPRESSION(get_logger(), !pvt, "Using MuJoCo motor or custom actuator for the joint : '%s'",
+                                 actuator_name.c_str());
           // Direct effort control enabled for MOTOR or CUSTOM actuator
           actuator_it->is_effort_control_enabled = true;
         }

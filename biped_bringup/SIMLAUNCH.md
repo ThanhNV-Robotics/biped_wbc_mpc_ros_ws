@@ -1,8 +1,8 @@
 # What happens when you run `sim_floating.launch.py`
 
 ```bash
-ros2 launch biped_hardware sim_floating.launch.py            # MuJoCo viewer + RViz
-ros2 launch biped_hardware sim_floating.launch.py headless:=true rviz:=false
+ros2 launch biped_bringup sim_floating.launch.py            # MuJoCo viewer + RViz
+ros2 launch biped_bringup sim_floating.launch.py headless:=true rviz:=false
 ```
 
 Result: the v2 biped stands on the MuJoCo floor at the `home` pose, held by the simulated motors
@@ -43,7 +43,7 @@ ros2 launch
 
 Declared at the bottom of the file with `DeclareLaunchArgument`, read with
 `LaunchConfiguration('name')`, set on the command line with `name:=value`
-(`ros2 launch biped_hardware sim_floating.launch.py --show-args` lists them).
+(`ros2 launch biped_bringup sim_floating.launch.py --show-args` lists them).
 
 | Argument | Default | Goes to |
 |---|---|---|
@@ -96,7 +96,7 @@ What the `<ros2_control name="BipedSystem">` block becomes with `use_sim:=true`:
 | 1 | `robot_state_publisher` / `robot_state_publisher` | `/robot_state_publisher` | `robot_description`, `use_sim_time` |
 | 2 | `mujoco_ros2_control` / `ros2_control_node` | `/controller_manager` (+ `/mujoco_clock` inside the same process) | `robot_description`, `controllers.yaml`, `controllers_sim_floating.yaml`, `use_sim_time` |
 | 3 | `controller_manager` / `spawner` | `/spawner_joint_state_broadcaster` | args `joint_state_broadcaster --controller-manager /controller_manager` |
-| 4 | `biped_hardware` / `odom_to_tf.py` | `/odom_to_tf` | `use_sim_time` |
+| 4 | `biped_bringup` / `odom_to_tf.py` | `/odom_to_tf` | `use_sim_time` |
 | 5 | `rviz2` / `rviz2` (if `rviz:=true`) | `/rviz2` | `-d <share>/biped_description/rviz/display.rviz` |
 
 `use_sim_time: true` everywhere: time comes from `/clock` (MuJoCo sim time), not the PC clock.
@@ -296,15 +296,15 @@ ros2 control list_hardware_components     # BipedSystem: active
 
 | File | Package | Used by |
 |---|---|---|
-| `launch/sim_floating.launch.py` | biped_hardware | `ros2 launch` |
+| `launch/sim_floating.launch.py` | biped_bringup | `ros2 launch` |
 | `urdf/biped_hw.urdf.xacro` | biped_hardware | xacro (step 2) |
 | `urdf/v2_biped_robot_12dof.urdf` + `urdf/meshes/*.stl` | biped_description | xacro, robot_state_publisher, rviz2 |
 | `config/joint_gains_sim.yaml` | biped_hardware | xacro → kp / kd in the URDF |
-| `config/controllers.yaml` | biped_hardware | controller_manager + controllers |
-| `config/controllers_sim_floating.yaml` | biped_hardware | controller_manager (activate at startup) |
+| `config/controllers.yaml` | biped_bringup | controller_manager + controllers |
+| `config/controllers_sim_floating.yaml` | biped_bringup | controller_manager (activate at startup) |
 | `mjcf/scene_floatingbase_12dof_v2.xml` (keyframe `home`) | biped_description | MuJoCo plugin |
 | `mjcf/v2_biped_robot_floatingbase_12dof.xml` + `mjcf/meshes/*.stl` | biped_description | included by the scene |
-| `scripts/odom_to_tf.py` | biped_hardware | node `/odom_to_tf` |
+| `scripts/odom_to_tf.py` | biped_bringup | node `/odom_to_tf` |
 | `rviz/display.rviz` | biped_description | rviz2 (fixed frame `world`) |
 | `lib/mujoco_ros2_control/ros2_control_node`, `lib/libmujoco_ros2_control.so` | mujoco_ros2_control | controller_manager executable, hardware plugin |
 | `joint_state_broadcaster`, `forward_command_controller` | /opt/ros/humble | controller plugins |

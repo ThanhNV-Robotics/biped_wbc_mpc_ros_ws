@@ -1,0 +1,57 @@
+LIPPlanner:
+  Tswing: 1.0
+  sampling_frequency: 500 # Hz
+  com_height: 0.45  # com height
+  max_step_length: 0.3
+  hip_width: 0.27 #
+
+contact_tasks: # List of 6D rigid contacts
+  - contact_frame: "left_ankle_pitch_link"
+    mu: 0.8 # friction coefficient for friction cone constraint
+    f_min: 0.0 # minimum normal contact force
+    f_max: 1000.0 # maximum normal contact force
+    kp: 5.0 # proportional gain for contact acceleration
+    kd: 4.5 # derivative gain for contact acceleration (default 2*sqrt(kp) if omitted)
+    weight: 1e-3 # force regularization weight (w_force_reg)
+    sole_z: -0.040 # sole z offset in ankle link frame
+
+  - contact_frame: "right_ankle_pitch_link"
+    mu: 0.8 # friction coefficient for friction cone constraint
+    f_min: 0.0 # minimum normal contact force
+    f_max: 1000.0 # maximum normal contact force
+    kp: 5.0 # proportional gain for contact acceleration
+    kd: 4.5 # derivative gain for contact acceleration (default 2*sqrt(kp) if omitted)
+    weight: 1e-3 # force regularization weight (w_force_reg)
+    sole_z: -0.040 # sole z offset in ankle link frame
+
+com_task:
+  mask: [1.0, 1.0, 1.0] # selected axes to control: [x, y, z] (1=active, 0=unconstrained)
+  kp: 100.0 # proportional gain
+  weight: 0.5 # task weight in the QP cost function
+  priority: 1 # priority level (1 = soft motion task)
+
+base_orientation_task: # keep the base link upright
+  frame: "link0_torso" # base link frame
+  mask: [0, 0, 0, 1, 1, 1] # [x, y, z, roll, pitch, yaw] in the base frame; default: roll and pitch only
+  kp: 10.0 # proportional gain (kd defaults to 2*sqrt(kp))
+  weight: 1.0 # task weight in the QP cost function
+  priority: 1 # priority level (1 = soft motion task)
+
+swing_foot_task: # tracks the swing foot (contact frame) while it is in the air
+  kp: 50.0 # proportional gain (kd defaults to 2*sqrt(kp))
+  weight: 10.0 # task weight in the QP cost function
+  priority: 1 # priority level (1 = soft motion task)
+  contact_transition_time: 0.15 # [s] the lifting foot's contact force is ramped to zero over this time before removal
+
+actuation_bounds_task: # joint torque limit 
+#−τ_max ≤ τ ≤ τ_max      with   τ = S (M·v̇ + h − J_cᵀ f)
+  weight: 1.0
+  priority: 0 # priority 0 = hard constraint in TSID
+  # optional: overrides the URDF <limit effort> (v2 URDF has placeholder 1000), Pinocchio joint order
+  tau_max: [48, 48, 16, 48, 18, 18,   # left:  hip pitch, hip roll, hip yaw, knee, ankle roll, ankle pitch
+            48, 48, 16, 48, 18, 18]   # right
+
+posture_task: # joint space control task
+  kp: 10.0 # proportional gain (kd defaults to 2*sqrt(kp))
+  weight: 0.001 # task weight in the QP cost function
+  priority: 1

@@ -41,7 +41,7 @@ class ContactFusion
         double calculate_height_contact_probability(double pz);
 
         // Sole corners of foot i in its foot frame (3 x k), e.g. the TSID contact
-        // points (tsidTaskParser::ContactInfo::contact_points). Without them the
+        // points (e.g. QP_TSID::soleCornersFromUrdf). Without them the
         // foot frame origin is used as the only sole point.
         void setSoleCorners (size_t i, const Eigen::Matrix3Xd &corners) { sole_corners_[i] = corners; }
         // Latest sole height of foot i: world z of its lowest sole corner [m].
