@@ -6,6 +6,34 @@ Newest entries first. Per-package details: `biped_hardware/NOTES.md`; how the la
 
 ## 2026-10-27
 
+### B3: debug topic `/wbc_controller/estimate`
+- `std_msgs/Float64MultiArray` at 50 Hz through `realtime_tools::RealtimePublisher` (layout in
+  `wbc_controller.hpp` and in the message label). Standing check vs ground truth: velocity ≈ 0,
+  z +0.8 mm (MuJoCo contact penetration), x constant −4.8 mm (origin at activation).
+- `biped_controllers` now builds Release (`-O3 -DNDEBUG`) by default, as `biped_wbc_core`.
+- Timing (`EstimatorAlloc.Timing` + in the sim): `estimate()` ≈ 55–60 µs per cycle in the
+  controller (22 µs hot-cache offline), 3 % of the 2 ms budget.
+
+### B3: estimation running in `update()` (pose still held)
+- New `StateEstimator::reset(sensor)` and `ContactFusion::reset()`, called in `resetModules()`;
+  `estimate()` runs estimator → contact fusion every cycle.
+- Sim: base estimate matches ground truth (z 0.8608 vs 0.8600). Foot force ≈ 0 N because the legs
+  are straight: the leg Jacobian is singular there, so the observer cannot see f_z (contact
+  probability 0.53). Expected to work with bent knees.
+- Real-time: per-cycle estimation 73 → 0 heap allocations (KalmanFilter work buffers + LLT,
+  estimator / contact fusion member buffers, fixed-size leg SVD). New gtest
+  `biped_wbc_core/test/test_realtime/test_estimator_alloc.cpp` counts every malloc per call;
+  output unchanged.
+
+### Robot model owned by the controller
+- `WBCController::setupRobotModel()` creates the free-flyer `RobotWrapper` in `on_configure`, before
+  the modules; `QP_TSID(robot, yaml, urdf)` takes it by reference, `getRobotWrapper()` removed.
+  Reason: the estimators no longer depend on QP_TSID existing, and a controller without TSID (MPC,
+  estimator test) can reuse the setup.
+- `soleCornersFromUrdf` moved out of QP_TSID to `utils::soleCornersFromUrdf`
+  (`biped_wbc/common/urdf_geometry.hpp`); `urdfdom` declared in `biped_wbc_core`.
+- Sim: same behaviour as before.
+
 ### QP_TSID tasks (`biped_wbc_core`)
 - `ContactInfo` removed; left / right handled separately. `setupContactTask` (Contact6d per foot,
   sole corners from the URDF collision box, μ / f_min / f_max / kp / kd), `setupSwingTask`

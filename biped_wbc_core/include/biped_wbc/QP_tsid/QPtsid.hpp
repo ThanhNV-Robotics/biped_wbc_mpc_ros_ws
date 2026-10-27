@@ -24,22 +24,52 @@ namespace biped_controllers
     {
     public:
         // Constructors
-        QP_TSID(const std::string &yaml_config_path, const std::string &urdf_path);
+        // robot: free-flyer robot model, owned by the caller and shared with the other modules;
+        // it must outlive this object (TSID keeps a reference to it)
+        // urdf_path: the URDF of that model, read for the sole geometry of the contacts
+        QP_TSID(tsid::robots::RobotWrapper &robot, const std::string &yaml_config_path,
+                const std::string &urdf_path);
 
-        // helper functions
-        bool soleCornersFromUrdf(const std::string &link_name, const Eigen::Vector3d &normal,
-                                             Eigen::Matrix3Xd &corners) const;
-        // set up tasks function
+        // set up tasks function from config yaml
         void setupContactTask();
         void setupSwingTask();
         void setupCoMTask();
         void setupBaseOrientationTask();
         void setupPostureTask();
         void setupActuationBoundsTask();
+        
+        // reset/initialize
+        // set all the reference at the current state
+        // lifecycle: on_activate()
+        void reset(const Eigen::VectorXd &q, const Eigen::VectorXd &v);
 
-        // robot model (free flyer) used by TSID; the state estimator and the contact fusion use
-        // the same one, so it must outlive them
-        tsid::robots::RobotWrapper &getRobotWrapper() { return *this->robot_wrapper_; }
+        // Stack Initial-Walking Task
+        // add both contacts + CoM, base orientation, posture, torque limits (double support);
+        // (CoM reference: setCoMReference, reset() sets it to the current CoM)
+        // called once by the constructor
+        void StackInitialWalkingTask();
+
+        // base reference (world frame): pose, twist and acceleration [linear; angular]; only the
+        // axes of the base_orientation_task mask are tracked
+        void setBaseReference(const pinocchio::SE3 &pose, const Eigen::Matrix<double, 6, 1> &vel,
+                              const Eigen::Matrix<double, 6, 1> &acc);
+
+        // CoM reference (world frame): position, velocity, acceleration (3 each)
+        void setCoMReference(const Eigen::VectorXd &pos, const Eigen::VectorXd &vel,
+                             const Eigen::VectorXd &acc);
+
+        // posture reference: joint positions, velocities, accelerations (na each, Pinocchio order)
+        void setPostureReference(const Eigen::VectorXd &qj, const Eigen::VectorXd &dqj,
+                                 const Eigen::VectorXd &ddqj);
+
+        // solve the QP of this cycle (t [s]: drives the contact transitions); false if the QP failed
+        // (the last solution is kept)
+        bool solve(double t, const Eigen::VectorXd &q, const Eigen::VectorXd &v);
+        const Eigen::VectorXd &getAccelerations() const { return this->dv_sol_; }   // nv
+        const Eigen::VectorXd &getTorques() const { return this->tau_sol_; }        // na, Pinocchio order
+        // contact wrench [force; torque] of foot i (0 left, 1 right), world frame; zero in swing
+        const Eigen::Matrix<double, 6, 1> &getContactWrench(int i) const { return this->wrench_sol_[i]; }
+
     private:
         // weight / priority of a task, read from the yaml, used when the task is added to TSID
         struct TaskSetting
@@ -59,6 +89,10 @@ namespace biped_controllers
         // foot frames (contact_frame of the contact_tasks entries), used by the contact and swing tasks
         std::string left_foot_frame_;
         std::string right_foot_frame_;
+
+        tsid::robots::RobotWrapper &robot_wrapper_; // robot model, owned by the caller
+        // TSID problem (tasks, contacts, QP data) on robot_wrapper_, built in the initializer list
+        tsid::InverseDynamicsFormulationAccForce tsid_;
 
         // task settings (setup*Task)
         TaskSetting com_setting_;
@@ -82,13 +116,26 @@ namespace biped_controllers
         
         // Swing foot tasks are added to tsid also based on the planned motion
         std::shared_ptr<tsid::tasks::TaskSE3Equality> left_foot_swing_task ; 
-        std::shared_ptr<tsid::tasks::TaskSE3Equality> right_foot_swing_task ; 
+        std::shared_ptr<tsid::tasks::TaskSE3Equality> right_foot_swing_task ;
 
-        std::shared_ptr<tsid::robots::RobotWrapper> robot_wrapper_; // share pointer to the RobotWrapper
-        // TSID problem (tasks, contacts, QP data). A pointer: its constructor needs the robot,
-        // which only exists after the URDF is loaded in the constructor body. Declared after
-        // robot_wrapper_: it keeps a reference to the robot, so it must be destroyed first.
-        std::unique_ptr<tsid::InverseDynamicsFormulationAccForce> tsid_;        
-           
+        // Task Reference Trajectory objects
+        // references, preallocated (setReference copies from them, no allocation per cycle)
+        tsid::trajectories::TrajectorySample com_ref_;          // (3)
+        tsid::trajectories::TrajectorySample posture_ref_;      // (na)
+        tsid::trajectories::TrajectorySample base_ref_;         // (12, 6): SE3 as a 12-vector
+        tsid::trajectories::TrajectorySample swing_ref_[2];     // (12, 6)
+
+        // QP solver
+        // solver (the factory returns a raw pointer: owned here)
+        std::unique_ptr<tsid::solvers::SolverHQPBase> solver_;
+
+        // tsid (QP) solution, preallocated
+        Eigen::VectorXd dv_sol_, tau_sol_; // acceleration + joint torques
+        Eigen::VectorXd f_contact_;   // 12: 4 corners x 3 (one contact)
+        Eigen::Matrix<double, 6, 1> wrench_sol_[2]; // contact wrench 
+
+        bool contact_active_[2] = {true, true};
+        pinocchio::FrameIndex foot_id_[2];
+        pinocchio::FrameIndex base_id_;
     };
 } // namespace biped_controllers

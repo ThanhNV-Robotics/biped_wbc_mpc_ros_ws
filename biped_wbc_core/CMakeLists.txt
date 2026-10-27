@@ -12,12 +12,14 @@ endif()
 
 # Eigen3: math everywhere. pinocchio (4.x, apt ros-humble-pinocchio): rigid-body kinematics /
 # dynamics. tsid (1.x, apt ros-humble-tsid): task-space inverse dynamics, links pinocchio and
-# eiquadprog. yaml-cpp: gain files (common/utils.cpp).
+# eiquadprog. yaml-cpp: gain files (common/utils.cpp). urdfdom: URDF collision geometry
+# (common/urdf_geometry.cpp, the sole corners).
 set(THIS_PACKAGE_DEPENDS
   Eigen3
   pinocchio
   tsid
   yaml-cpp
+  urdfdom
 )
 
 find_package(ament_cmake REQUIRED)
@@ -28,6 +30,7 @@ endforeach()
 # One library with everything; add new .cpp files here
 add_library(${PROJECT_NAME} SHARED
   src/common/utils.cpp
+  src/common/urdf_geometry.cpp
   src/QP_tsid/QP_tsid.cpp
   src/planner/LIPTaskPlanner.cpp
   src/state_estimation/contact_fusion.cpp
@@ -46,6 +49,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   pinocchio::pinocchio
   tsid::tsid
   yaml-cpp
+  urdfdom::urdfdom_model
 )
 
 install(DIRECTORY include/
@@ -68,6 +72,13 @@ if(BUILD_TESTING)
   # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  # Real-time check: the per-cycle estimation calls must not allocate heap memory
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_estimator_alloc test/test_realtime/test_estimator_alloc.cpp)
+  target_link_libraries(test_estimator_alloc ${PROJECT_NAME})
+  target_compile_definitions(test_estimator_alloc PRIVATE
+    BIPED_URDF="${CMAKE_CURRENT_SOURCE_DIR}/../biped_description/urdf/v2_biped_robot_12dof.urdf")
 endif()
 
 # Visual tests (MuJoCo window, test/): only the tests use MuJoCo and GLFW, the library does not.

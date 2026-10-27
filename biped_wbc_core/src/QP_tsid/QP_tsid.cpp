@@ -1,30 +1,22 @@
 #include "biped_wbc/QP_tsid/QPtsid.hpp"
-#include <urdf_parser/urdf_parser.h>
+#include "biped_wbc/common/urdf_geometry.hpp"
 
 #include <cmath>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <pinocchio/algorithm/frames.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
-#include <urdf_parser/urdf_parser.h>
+#include <tsid/math/utils.hpp>
 
 namespace biped_controllers
 {
     // constructor
-    QP_TSID::QP_TSID(const std::string &yaml_config_path, const std::string &urdf_path)
+    QP_TSID::QP_TSID(tsid::robots::RobotWrapper &robot, const std::string &yaml_config_path,
+                     const std::string &urdf_path)
+    : yaml_config_path_(yaml_config_path), urdf_path_(urdf_path), robot_wrapper_(robot),
+      tsid_("tsid", robot, false) // TSID formulation on the caller's robot model
     {
-        this->yaml_config_path_ = yaml_config_path;
-        this->urdf_path_ = urdf_path;
-
         this->yaml_config_ = YAML::LoadFile(yaml_config_path); // read yaml config file
-
-        std::vector<std::string> package_dirs;
-        this->robot_wrapper_ = std::make_shared<tsid::robots::RobotWrapper>(urdf_path,
-                                                                            package_dirs, pinocchio::JointModelFreeFlyer(), false);
-
-        // TSID formulation on this robot (created after it: it needs the robot in its constructor)
-        this->tsid_ = std::make_unique<tsid::InverseDynamicsFormulationAccForce>("tsid", *this->robot_wrapper_, false);
 
         // create the tasks from the yaml (not added to the TSID formulation yet)
         this->setupContactTask(); // first: it sets the foot frames used by the swing tasks
@@ -33,73 +25,169 @@ namespace biped_controllers
         this->setupBaseOrientationTask();
         this->setupPostureTask();
         this->setupActuationBoundsTask();
+
+        //preallocate variables
+
+        //solver
+        this->solver_.reset(tsid::solvers::SolverHQPFactory::createNewSolver(
+        tsid::solvers::SOLVER_HQP_EIQUADPROG_FAST, "qp_solver"));
+
+        // preallocate: references, solution
+        this->com_ref_ = tsid::trajectories::TrajectorySample(3); 
+        this->posture_ref_ = tsid::trajectories::TrajectorySample(this->robot_wrapper_.na());
+        this->base_ref_ = tsid::trajectories::TrajectorySample(12, 6); 
+        this->swing_ref_[0] = tsid::trajectories::TrajectorySample(12, 6);
+        this->swing_ref_[1] = tsid::trajectories::TrajectorySample(12, 6);
+
+        // solution buffers, zero until the first solve
+        this->dv_sol_ = Eigen::VectorXd::Zero(this->robot_wrapper_.nv());
+        this->tau_sol_ = Eigen::VectorXd::Zero(this->robot_wrapper_.na());
+        this->f_contact_ = Eigen::VectorXd::Zero(12); // 3 force_dim x 4 points
+        for (auto &w : this->wrench_sol_)
+            w.setZero();
+
+        // frame ids (foot / base poses in reset, addContact, removeContact), looked up once:
+        // getFrameId searches the frames by name
+        this->foot_id_[0] = this->robot_wrapper_.model().getFrameId(this->left_foot_frame_);
+        this->foot_id_[1] = this->robot_wrapper_.model().getFrameId(this->right_foot_frame_);
+        this->base_id_ = this->base_orientation_task_->frame_id();
+
+        // initial task stack: double support (references are set by reset() before the first solve)
+        this->StackInitialWalkingTask();
     }
 
-    bool QP_TSID::soleCornersFromUrdf(const std::string &link_name, const Eigen::Vector3d &normal,
-                                      Eigen::Matrix3Xd &corners) const
+    void QP_TSID::reset(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
     {
-        if (this->urdf_path_.empty())
-            return false;
-        const urdf::ModelInterfaceSharedPtr urdf_model = urdf::parseURDFFile(this->urdf_path_);
-        if (!urdf_model)
-        {
-            std::cerr << "[tsidTaskParser] Warning: failed to parse URDF '" << this->urdf_path_ << "'" << std::endl;
-            return false;
-        }
-        const urdf::LinkConstSharedPtr link = urdf_model->getLink(link_name);
-        if (!link)
-        {
-            std::cerr << "[tsidTaskParser] Warning: '" << link_name
-                      << "' is not a URDF link, cannot read its collision geometry" << std::endl;
-            return false;
-        }
+        // kinematics of the current state into the formulation's data (frame poses, CoM)
+        pinocchio::Data &data = this->tsid_.data();
+        this->robot_wrapper_.computeAllTerms(data, q, v); // compute forward kinematics
 
-        // Among the link's collision boxes, take the face pointing most against the
-        // contact normal (the sole); with several boxes, the one lowest along -normal.
-        // URDF link frames coincide with Pinocchio's body frames, so the result is
-        // directly in the contact frame.
-        double best_height = std::numeric_limits<double>::infinity();
-        for (const auto &collision : link->collision_array)
-        {
-            if (!collision || !collision->geometry || collision->geometry->type != urdf::Geometry::BOX)
-                continue;
-            const auto box = std::static_pointer_cast<const urdf::Box>(collision->geometry);
-            const urdf::Pose &pose = collision->origin;
-            const Eigen::Vector3d center(pose.position.x, pose.position.y, pose.position.z);
-            const Eigen::Matrix3d R =
-                Eigen::Quaterniond(pose.rotation.w, pose.rotation.x, pose.rotation.y, pose.rotation.z).toRotationMatrix();
-            const Eigen::Vector3d half(box->dim.x / 2.0, box->dim.y / 2.0, box->dim.z / 2.0);
+        // per foot: contact task, swing task, force regularization weight
+        tsid::contacts::Contact6d *contact[2] = {this->left_foot_contact_task.get(), this->right_foot_contact_task.get()};
+        tsid::tasks::TaskSE3Equality *swing[2] = {this->left_foot_swing_task.get(), this->right_foot_swing_task.get()};
+        const double force_reg_weight[2] = {this->left_contact_force_reg_weight_, this->right_contact_force_reg_weight_};
 
-            int k = 0;
-            for (int a = 1; a < 3; ++a)
+        for (int i = 0; i < 2; ++i)
+        {
+            // contact reference = current foot pose (Contact6d starts at the identity pose: without
+            // this TSID pulls the foot to the world origin)
+            const pinocchio::SE3 oMf = this->robot_wrapper_.framePosition(data, this->foot_id_[i]);
+            contact[i]->setReference(oMf);
+
+            // swing reference = current foot pose too (no jump when the foot lifts off later)
+            tsid::math::SE3ToVector(oMf, this->swing_ref_[i].pos);
+            this->swing_ref_[i].vel.setZero();
+            this->swing_ref_[i].acc.setZero();
+            swing[i]->setReference(this->swing_ref_[i]);
+
+            // both feet in contact: a foot that was lifted gets its contact back, its swing task off
+            if (!this->contact_active_[i])
             {
-                if (std::abs(R.col(a).dot(normal)) > std::abs(R.col(k).dot(normal)))
-                    k = a;
-            }
-            const double s = (R.col(k).dot(normal) > 0.0) ? -1.0 : 1.0;
-            const Eigen::Vector3d face_center = center + s * half(k) * R.col(k);
-            const double height = face_center.dot(normal);
-            if (height >= best_height)
-                continue;
-            best_height = height;
-
-            // Corners ordered (-i,-j), (-i,+j), (+i,-j), (+i,+j) over the face's two in-plane axes
-            const int i = (k == 0) ? 1 : 0;
-            const int j = 3 - k - i;
-            corners.resize(3, 4);
-            int c = 0;
-            for (double si : {-1.0, 1.0})
-            {
-                for (double sj : {-1.0, 1.0})
-                {
-                    corners.col(c++) = face_center + si * half(i) * R.col(i) + sj * half(j) * R.col(j);
-                }
+                this->tsid_.removeTask(swing[i]->name());
+                this->tsid_.addRigidContact(*contact[i], force_reg_weight[i], 1.0, 0);
+                this->contact_active_[i] = true;
             }
         }
-        if (!std::isfinite(best_height))
-        {
-            std::cerr << "[tsidTaskParser] Warning: link '" << link_name << "' has no collision box" << std::endl;
+
+        // CoM reference = current CoM, at rest
+        this->com_ref_.pos = this->robot_wrapper_.com(data);
+        this->com_ref_.vel.setZero();
+        this->com_ref_.acc.setZero();
+        this->com_task_->setReference(this->com_ref_);
+
+        // base orientation reference = current base rotation, at rest (translation masked out)
+        tsid::math::SE3ToVector(this->robot_wrapper_.framePosition(data, this->base_id_), this->base_ref_.pos);
+        this->base_ref_.vel.setZero();
+        this->base_ref_.acc.setZero();
+        this->base_orientation_task_->setReference(this->base_ref_);
+
+        // posture reference = current joint positions (q: 7 base coordinates, then the na joints)
+        this->posture_ref_.pos = q.tail(this->robot_wrapper_.na());
+        this->posture_ref_.vel.setZero();
+        this->posture_ref_.acc.setZero();
+        this->posture_task_->setReference(this->posture_ref_);
+    }
+
+    void QP_TSID::StackInitialWalkingTask()
+    {
+        // add left / right leg contact tasks: (contact, force regularization weight, motion weight,
+        // motion priority 0 = hard constraint, the feet do not move)
+        this->tsid_.addRigidContact(*this->left_foot_contact_task, this->left_contact_force_reg_weight_, 1.0, 0);
+        this->tsid_.addRigidContact(*this->right_foot_contact_task, this->right_contact_force_reg_weight_, 1.0, 0);
+        this->contact_active_[0] = true;
+        this->contact_active_[1] = true;
+
+        // add CoM task: balance (CoM over the feet) and height
+        this->tsid_.addMotionTask(*this->com_task_, this->com_setting_.weight, this->com_setting_.priority, 0.0);
+
+        // add base orientation task: torso upright
+        this->tsid_.addMotionTask(*this->base_orientation_task_, this->base_orientation_setting_.weight,
+                                  this->base_orientation_setting_.priority, 0.0);
+
+        // add postural task - joint space tracking (low weight: only the redundant directions)
+        this->tsid_.addMotionTask(*this->posture_task_, this->posture_setting_.weight, this->posture_setting_.priority, 0.0);
+
+        // add torque limits (priority 0 by default: hard constraint)
+        this->tsid_.addActuationTask(*this->actuation_bounds_task_, this->actuation_bounds_setting_.weight,
+                                     this->actuation_bounds_setting_.priority, 0.0);
+
+        // swing tasks: not added here (only while a foot is in the air)
+    }
+
+    void QP_TSID::setBaseReference(const pinocchio::SE3 &pose, const Eigen::Matrix<double, 6, 1> &vel,
+                                   const Eigen::Matrix<double, 6, 1> &acc)
+    {
+        // written into the preallocated sample (SE3 as a 12-vector, derivatives 6D)
+        tsid::math::SE3ToVector(pose, this->base_ref_.pos);
+        this->base_ref_.vel = vel;
+        this->base_ref_.acc = acc;
+        this->base_orientation_task_->setReference(this->base_ref_);
+    }
+
+    void QP_TSID::setCoMReference(const Eigen::VectorXd &pos, const Eigen::VectorXd &vel,
+                                  const Eigen::VectorXd &acc)
+    {
+        // written into the preallocated sample (size 3: no allocation)
+        this->com_ref_.pos = pos;
+        this->com_ref_.vel = vel;
+        this->com_ref_.acc = acc;
+        this->com_task_->setReference(this->com_ref_);
+    }
+
+    void QP_TSID::setPostureReference(const Eigen::VectorXd &qj, const Eigen::VectorXd &dqj,
+                                      const Eigen::VectorXd &ddqj)
+    {
+        // written into the preallocated sample (same size: no allocation)
+        this->posture_ref_.pos = qj;
+        this->posture_ref_.vel = dqj;
+        this->posture_ref_.acc = ddqj;
+        this->posture_task_->setReference(this->posture_ref_);
+    }
+
+    bool QP_TSID::solve(double t, const Eigen::VectorXd &q, const Eigen::VectorXd &v)
+    {
+        // QP of this cycle from the current tasks, contacts and state
+        const tsid::solvers::HQPData &data = this->tsid_.computeProblemData(t, q, v);
+
+        // the problem size changes when a contact is added or removed: size the solver every call
+        this->solver_->resize(this->tsid_.nVar(), this->tsid_.nEq(), this->tsid_.nIn());
+
+        const tsid::solvers::HQPOutput &sol = this->solver_->solve(data);
+        if (sol.status != tsid::solvers::HQP_STATUS_OPTIMAL)
             return false;
+
+        // joint accelerations and torques
+        this->dv_sol_ = this->tsid_.getAccelerations(sol);
+        this->tau_sol_ = this->tsid_.getActuatorForces(sol);
+
+        // contact wrenches: the 12 corner forces -> 6D wrench (force generator matrix)
+        tsid::contacts::Contact6d *contact[2] = {this->left_foot_contact_task.get(), this->right_foot_contact_task.get()};
+        for (int i = 0; i < 2; ++i)
+        {
+            if (this->contact_active_[i] && this->tsid_.getContactForces(contact[i]->name(), sol, this->f_contact_))
+                this->wrench_sol_[i].noalias() = contact[i]->getForceGeneratorMatrix() * this->f_contact_;
+            else
+                this->wrench_sol_[i].setZero();
         }
         return true;
     }
@@ -126,14 +214,14 @@ namespace biped_controllers
 
             // contact frame: must exist in the model
             frame = cfg["contact_frame"].as<std::string>();
-            if (!this->robot_wrapper_->model().existFrame(frame))
+            if (!this->robot_wrapper_.model().existFrame(frame))
                 throw std::runtime_error("[QP_TSID] contact frame '" + frame + "' is not in the URDF");
 
             // sole corners (in the contact frame) from the foot's collision box in the URDF;
             // Contact6d needs exactly 4 points
             const Eigen::Vector3d normal = Eigen::Vector3d::UnitZ();
             Eigen::Matrix3Xd corners;
-            if (!this->soleCornersFromUrdf(frame, normal, corners) || corners.cols() != 4)
+            if (!utils::soleCornersFromUrdf(this->urdf_path_, frame, normal, corners) || corners.cols() != 4)
                 throw std::runtime_error("[QP_TSID] no 4-corner sole for '" + frame + "' in the URDF");
 
             // friction cone and normal force bounds
@@ -141,7 +229,7 @@ namespace biped_controllers
             const double f_min = cfg["f_min"].as<double>();
             const double f_max = cfg["f_max"].as<double>();
             auto contact = std::make_shared<tsid::contacts::Contact6d>(
-                "contact_" + side, *this->robot_wrapper_, frame, corners, normal, mu, f_min, f_max);
+                "contact_" + side, this->robot_wrapper_, frame, corners, normal, mu, f_min, f_max);
 
             // contact acceleration gains (kd defaults to 2*sqrt(kp), critical damping)
             const double kp = cfg["kp"].as<double>();
@@ -171,7 +259,7 @@ namespace biped_controllers
 
         auto make_swing = [this, kp, kd](const std::string &side, const std::string &frame)
         {
-            auto task = std::make_shared<tsid::tasks::TaskSE3Equality>("swing_" + side, *this->robot_wrapper_, frame);
+            auto task = std::make_shared<tsid::tasks::TaskSE3Equality>("swing_" + side, this->robot_wrapper_, frame);
             task->Kp(kp * Eigen::VectorXd::Ones(6));
             task->Kd(kd * Eigen::VectorXd::Ones(6));
             // the planner gives the foot trajectory in the world frame
@@ -190,7 +278,7 @@ namespace biped_controllers
         // gains (kd defaults to 2*sqrt(kp))
         const double kp = cfg["kp"].as<double>();
         const double kd = cfg["kd"] ? cfg["kd"].as<double>() : 2.0 * std::sqrt(kp);
-        this->com_task_ = std::make_shared<tsid::tasks::TaskComEquality>("com", *this->robot_wrapper_);
+        this->com_task_ = std::make_shared<tsid::tasks::TaskComEquality>("com", this->robot_wrapper_);
         this->com_task_->Kp(kp * Eigen::Vector3d::Ones());
         this->com_task_->Kd(kd * Eigen::Vector3d::Ones());
 
@@ -213,15 +301,17 @@ namespace biped_controllers
 
         // base frame: must exist in the model
         const std::string frame = cfg["frame"].as<std::string>();
-        if (!this->robot_wrapper_->model().existFrame(frame))
+        if (!this->robot_wrapper_.model().existFrame(frame))
             throw std::runtime_error("[QP_TSID] base frame '" + frame + "' is not in the URDF");
 
         // gains (kd defaults to 2*sqrt(kp))
         const double kp = cfg["kp"].as<double>();
         const double kd = cfg["kd"] ? cfg["kd"].as<double>() : 2.0 * std::sqrt(kp);
-        this->base_orientation_task_ = std::make_shared<tsid::tasks::TaskSE3Equality>("base_orientation", *this->robot_wrapper_, frame);
+        this->base_orientation_task_ = std::make_shared<tsid::tasks::TaskSE3Equality>("base_orientation", this->robot_wrapper_, frame);
         this->base_orientation_task_->Kp(kp * Eigen::VectorXd::Ones(6));
         this->base_orientation_task_->Kd(kd * Eigen::VectorXd::Ones(6));
+        // error and reference in the world frame (mask z = world vertical, e.g. the base height)
+        this->base_orientation_task_->useLocalFrame(false);
 
         // controlled axes [x, y, z, roll, pitch, yaw]: by default orientation only
         Eigen::VectorXd mask(6);
@@ -242,14 +332,30 @@ namespace biped_controllers
     void QP_TSID::setupPostureTask()
     {
         const YAML::Node cfg = this->yaml_config_["posture_task"];
-        const int na = this->robot_wrapper_->na();
+        const int na = this->robot_wrapper_.na();
 
-        // gains on every actuated joint (kd defaults to 2*sqrt(kp))
+        // default gains on every actuated joint (kd defaults to 2*sqrt(kp))
         const double kp = cfg["kp"] ? cfg["kp"].as<double>() : 10.0;
         const double kd = cfg["kd"] ? cfg["kd"].as<double>() : 2.0 * std::sqrt(kp);
-        this->posture_task_ = std::make_shared<tsid::tasks::TaskJointPosture>("posture", *this->robot_wrapper_);
-        this->posture_task_->Kp(kp * Eigen::VectorXd::Ones(na));
-        this->posture_task_->Kd(kd * Eigen::VectorXd::Ones(na));
+        Eigen::VectorXd Kp = kp * Eigen::VectorXd::Ones(na);
+        Eigen::VectorXd Kd = kd * Eigen::VectorXd::Ones(na);
+
+        // optional per-joint gains by joint name (joint_gain: {name: {kp, kd}}), in Pinocchio order
+        // (the joint's velocity index minus the 6 base velocities)
+        const pinocchio::Model &model = this->robot_wrapper_.model();
+        for (const auto &entry : cfg["joint_gain"])
+        {
+            const std::string name = entry.first.as<std::string>();
+            if (!model.existJointName(name))
+                throw std::runtime_error("[QP_TSID] posture_task/joint_gain: joint '" + name + "' is not in the URDF");
+            const int j = model.joints[model.getJointId(name)].idx_v() - 6;
+            Kp(j) = entry.second["kp"].as<double>();
+            Kd(j) = entry.second["kd"] ? entry.second["kd"].as<double>() : 2.0 * std::sqrt(Kp(j));
+        }
+
+        this->posture_task_ = std::make_shared<tsid::tasks::TaskJointPosture>("posture", this->robot_wrapper_);
+        this->posture_task_->Kp(Kp);
+        this->posture_task_->Kd(Kd);
 
         this->posture_setting_.weight = cfg["weight"].as<double>();
         this->posture_setting_.priority = cfg["priority"] ? cfg["priority"].as<unsigned int>() : 1;
@@ -258,12 +364,12 @@ namespace biped_controllers
     void QP_TSID::setupActuationBoundsTask()
     {
         const YAML::Node cfg = this->yaml_config_["actuation_bounds_task"];
-        const int na = this->robot_wrapper_->na();
+        const int na = this->robot_wrapper_.na();
 
         // torque limits -tau_max <= tau <= tau_max, in the model's joint order (Pinocchio order).
         // Default: the URDF <limit effort="..."> of each joint (effortLimit is nv long, the
         // actuated joints are its last na entries)
-        Eigen::VectorXd upper = this->robot_wrapper_->model().effortLimit.tail(na);
+        Eigen::VectorXd upper = this->robot_wrapper_.model().effortLimit.tail(na);
 
         // optional override from the yaml (e.g. while the URDF still has placeholder limits)
         if (cfg["tau_max"])
@@ -274,7 +380,7 @@ namespace biped_controllers
                                          " values, the robot has " + std::to_string(na) + " joints");
             upper = Eigen::Map<const Eigen::VectorXd>(tau_max.data(), na);
         }
-        this->actuation_bounds_task_ = std::make_shared<tsid::tasks::TaskActuationBounds>("actuation_bounds", *this->robot_wrapper_);
+        this->actuation_bounds_task_ = std::make_shared<tsid::tasks::TaskActuationBounds>("actuation_bounds", this->robot_wrapper_);
         this->actuation_bounds_task_->setBounds(-upper, upper);
 
         this->actuation_bounds_setting_.weight = cfg["weight"] ? cfg["weight"].as<double>() : 1.0;

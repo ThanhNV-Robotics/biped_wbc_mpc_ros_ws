@@ -56,7 +56,7 @@ ros2 node list | grep controller_manager    # before launching: must be empty (n
       lands on each foothold); outputs `getRef*`, `getStanceLeg`, `getPhase`, `getDt`; `reset()`,
       `setVelocityCommand(vx)`. Visual test: `ros2 run biped_wbc_core test_lip_task_planner`.
 - [x] `QP_TSID` (part): free-flyer robot from the URDF, `InverseDynamicsFormulationAccForce`,
-      contacts parsed from the yaml; getters `getRobotWrapper()`, `getContactInfo()`.
+      contacts parsed from the yaml (since A7 on the controller's robot model, see below).
 
 ### A3. `on_init()` – parameters
 - [x] `urdf_package`, `urdf_file`, `config_package`, `config_file` (renamed in A6), `joints`,
@@ -96,6 +96,19 @@ ros2 node list | grep controller_manager    # before launching: must be empty (n
       computeCommand → write (or hold the last command).
 - Checked in the sim: same logs, 36 commands claimed, deactivate / re-activate bumpless.
 
+### A7. Robot model owned by the controller (2026-10-27)
+- [x] `WBCController::setupRobotModel()` loads the URDF as a free-flyer `RobotWrapper`
+      (`robot_model_`, declared before the modules); `on_configure`: parameters → robot model →
+      joint map → `setupWbc` → `setupStateEstimate` → `RobotInterface` → buffers.
+- [x] `QP_TSID(robot, yaml, urdf)` takes the model by reference (the formulation `tsid_` is a
+      plain member); `getRobotWrapper()` removed. An estimator-only or MPC controller now gets the
+      model without QP_TSID.
+- [x] Sole corners: free function `utils::soleCornersFromUrdf(urdf, link, normal, corners)`
+      (`biped_wbc/common/urdf_geometry.hpp`), used by QP_TSID and the contact fusion setup.
+      `urdfdom` declared as a dependency of `biped_wbc_core`.
+- Every module keeps its own `pinocchio::Data`; only the model is shared.
+- Checked in the sim: same logs, no "No sole" warning, base z 0.860 steady, bumpless re-activate.
+
 ---
 
 # Part B – Next (in order)
@@ -128,14 +141,39 @@ ros2 node list | grep controller_manager    # before launching: must be empty (n
   quaternion ≈ (1, 0, 0.005, 0), acceleration ≈ (−0.1, 0, 9.81)).
 
 ### B3. Estimation, still holding the pose – `update()` + reset in `on_activate()`
-- [ ] `on_activate()`: estimator base position from leg kinematics (`setBasePosEst`).
-- [ ] `update()`: `state_estimator_->update(sensor_, contact_probability_)` →
-      `getPinocchioState(q_, v_)` → `contact_fusion_->computeDisturbanceTorque(q_, v_, τ)` →
-      `contact_probability_ = contact_fusion_->fuseContactProbability({true, true}, {0.5, 0.5})`.
-- [ ] Debug publisher (`realtime_tools::RealtimePublisher`, 50–100 Hz, created in `on_configure`):
-      base estimate, contact probabilities, foot forces.
-- **Check** vs `/simulator/floating_base_state` (PlotJuggler): base height / velocity, Σ foot
-  forces ≈ 203 N, contacts 1 1, pushes in the viewer. Tune `StateEstimatorParams`.
+- [x] `on_activate()` → `resetModules()`: `StateEstimator::reset(sensor)` (new: base above the
+      origin at the height where the soles touch z = 0, feet from leg kinematics, v = bias = 0,
+      P0; `setBasePosEst` alone left the filter's feet at the origin) and `ContactFusion::reset()`
+      (new: probability 1, observer / ground re-seeded; also used by the constructor). The first
+      reading is now checked (NaN → activation fails).
+- [x] `update()` → `estimate()`: `state_estimator_->update(sensor_, contact_probability_)` →
+      `getPinocchioState(q_, v_)` → `computeDisturbanceTorque(q_, v_, measured τ)` →
+      `contact_probability_ = fuseContactProbability(scheduled_contact_, contact_phase_)`
+      (members, both feet / phase 0.5 until the planner runs).
+- Sim (standing, straight legs): base z 0.8608 vs ground truth 0.8600, x within ±6 mm, velocity
+  < 1 cm/s, clean restart on re-activation. **Foot force ≈ 0 N** and contact probability 0.53:
+  with straight knees the leg Jacobian is singular (σ_min = 0, a 100 N vertical force gives 0 N·m
+  at every joint), so f_z is not observable from joint torques. Recheck with bent knees (B6 / B8).
+- [x] Real-time: the per-cycle estimation calls allocate nothing (was 73 allocations / cycle:
+      `StateEstimator::update` 21, `getPinocchioState` 4, `computeDisturbanceTorque` 28,
+      `fuseContactProbability` 20). `KalmanFilter`: preallocated work buffers, `noalias()`, LLT
+      solve instead of `inverse()`, `Eigen::Ref` inputs, `get_state()` by reference.
+      `StateEstimator`: `y_` member, `getPinocchioState` from the members. `ContactFusion`:
+      `p_` / `St_` / `x_` members, fixed-maximum-size leg matrices + SVD, sole height loop.
+      Guard: gtest `test_estimator_alloc` (counts every malloc, per call, over 1000 cycles; same
+      result before / after). Reuse it for QP_TSID and the planner.
+- [x] Debug topic `/wbc_controller/estimate` (`std_msgs/Float64MultiArray`, 50 Hz,
+      `realtime_tools::RealtimePublisher` created in `setupDebugPublisher()`, filled in
+      `publishDebug()` with `trylock`, message sized once). Layout (header + `layout.dim[0].label`):
+      base position [0-2], base velocity world [3-5], contact probability [6-7], f_z [8-9],
+      sole height [10-11], contact state [12-13], accelerometer bias [14-16].
+- [x] **Check** vs `/simulator/floating_base_state` (standing): velocity error ≈ 0; z +0.8 mm
+      (MuJoCo soft contact: the soles sink ≈ 0.8 mm, the estimator puts them at z = 0; the URDF
+      sole depth 0.04 m = `foot_sole_offset`); x −4.8 mm constant (estimator origin = robot
+      position at activation, simulator origin = spawn point).
+- [ ] With the viewer: push the robot, base velocity follows ground truth (PlotJuggler
+      `/wbc_controller/estimate/data[3]` vs `/simulator/floating_base_state/twist/twist/linear/x`).
+      Σ f_z ≈ 203 N and contacts 1 1 only with bent knees (B6). Tune `StateEstimatorParams` then.
 
 ### B4. Leave safely – `on_deactivate()` (lifecycle step 5)
 - [ ] Open (decide later): what to command on deactivation. Now: release only, the last command

@@ -32,7 +32,7 @@ com_task:
 
 base_orientation_task: # keep the base link upright
   frame: "link0_torso" # base link frame
-  mask: [0, 0, 0, 1, 1, 1] # [x, y, z, roll, pitch, yaw] in the base frame; default: roll and pitch only
+  mask: [0, 0, 0, 1, 1, 1] # [x, y, z, roll, pitch, yaw] in the world frame; default: orientation only
   kp: 10.0 # proportional gain (kd defaults to 2*sqrt(kp))
   weight: 1.0 # task weight in the QP cost function
   priority: 1 # priority level (1 = soft motion task)
@@ -55,3 +55,16 @@ posture_task: # joint space control task
   kp: 10.0 # proportional gain (kd defaults to 2*sqrt(kp))
   weight: 0.001 # task weight in the QP cost function
   priority: 1
+  joint_gain: # per-joint kp / kd, override the kp above (same as tsid_examples/config/tsid_config.yaml)
+    left_hip_pitch_joint:    {kp: 100.0, kd: 6.0}
+    left_hip_roll_joint:     {kp: 120.0, kd: 7.0}
+    left_hip_yaw_joint:      {kp: 60.0,  kd: 4.0}
+    left_knee_pitch_joint:   {kp: 120.0, kd: 7.0}
+    left_ankle_roll_joint:   {kp: 30.0,  kd: 1.6}
+    left_ankle_pitch_joint:  {kp: 30.0,  kd: 0.6}
+    right_hip_pitch_joint:   {kp: 100.0, kd: 6.0}
+    right_hip_roll_joint:    {kp: 120.0, kd: 7.0}
+    right_hip_yaw_joint:     {kp: 60.0,  kd: 4.0}
+    right_knee_pitch_joint:  {kp: 120.0, kd: 7.0}
+    right_ankle_roll_joint:  {kp: 30.0,  kd: 1.6}
+    right_ankle_pitch_joint: {kp: 30.0,  kd: 0.6}

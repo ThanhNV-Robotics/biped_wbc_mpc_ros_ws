@@ -60,6 +60,11 @@ public:
                  const StateEstimatorParams &params = StateEstimatorParams(),
                  bool verbose = false);
 
+  // Restart the filter for a robot standing on both feet (flat ground at z = 0): base above the
+  // origin (x = y = 0) at the height where the soles touch the ground, feet from the leg
+  // kinematics, zero velocity and bias, initial covariance. Call before the first update().
+  void reset(const RobotSensor &sensor);
+
   // One filter step with the latest sensor data. Joint order of sensor.actuator_state must be the
   // pinocchio model's joint order (= robot.model().names[2..]).
   // contact_probability: per foot in [0, 1], [left, right] (ContactFusion, previous tick). It
@@ -69,7 +74,7 @@ public:
   // Estimated state (world-frame base twist)
   RobotState getEstimatedRobotState() const;
   // Same, in pinocchio / TSID convention: q = [p, quat (x,y,z,w), qj] (nq), v = [v_B, w_B, dqj]
-  // with the base twist in the base frame (nv)
+  // with the base twist in the base frame (nv). Real-time: q, v sized nq / nv by the caller.
   void getPinocchioState(Eigen::VectorXd &q, Eigen::VectorXd &v) const;
 
   Vector3d getBasePosEst() const;
@@ -123,6 +128,7 @@ private:
   VectorXd ps_ = VectorXd::Zero(dimContact);   // p_B - p_foot
   VectorXd vs_ = VectorXd::Zero(dimContact);   // v_B
   VectorXd feet_heights_ = VectorXd::Zero(numContact);
+  VectorXd y_ = VectorXd::Zero(dimObserve);    // measurement [ps_, vs_, feet_heights_]
 
   std::vector<bool> contact_flag_{false, false};
 };

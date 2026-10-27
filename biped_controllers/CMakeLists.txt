@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.8)
 project(biped_controllers)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  # the controller runs Eigen code in the real-time loop: optimized, no Eigen debug asserts
+  # (same default as biped_wbc_core; override with --cmake-args -DCMAKE_BUILD_TYPE=Debug)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -13,6 +19,7 @@ set(THIS_PACKAGE_DEPENDS
   rclcpp_lifecycle
   realtime_tools
   sensor_msgs
+  std_msgs
   ament_index_cpp  # package share directories (URDF, WBC yaml)
   biped_wbc_core   # ROS-free WBC algorithms (state estimator, contact fusion, TSID)
 )

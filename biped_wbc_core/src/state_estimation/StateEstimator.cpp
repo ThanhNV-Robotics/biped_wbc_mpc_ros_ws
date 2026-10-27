@@ -122,6 +122,34 @@ Eigen::MatrixXd StateEstimator::buildR0(const StateEstimatorParams &p) {
   return R;
 }
 
+void StateEstimator::reset(const RobotSensor &sensor) {
+  // foot positions relative to the base (base frame) and the IMU orientation
+  getSensorMeasurement(sensor);
+  const Eigen::Matrix3d R_wb = imu_quat_.toRotationMatrix();
+
+  // sole i in the world (the measurement model of update()): p_B + R_wb p_f_i - offset e_z.
+  // Base above the origin, at the height where the mean sole height is 0
+  Vector3d p_base = Vector3d::Zero();
+  for (int i = 0; i < numContact; ++i) {
+    p_base.z() -= (R_wb * foot_pos_B_.segment<3>(3 * i)).z() / numContact;
+  }
+  p_base.z() += params_.foot_sole_offset;
+
+  // state x = [p_B, v_B = 0, sole left, sole right, bias = 0]; init() also resets P
+  Eigen::VectorXd x = Eigen::VectorXd::Zero(dimState);
+  x.segment<3>(0) = p_base;
+  for (int i = 0; i < numContact; ++i) {
+    x.segment<3>(6 + 3 * i) = p_base + R_wb * foot_pos_B_.segment<3>(3 * i);
+    x(6 + 3 * i + 2) -= params_.foot_sole_offset;
+  }
+  kf_.init(x);
+
+  // standing on both feet, baseline covariances
+  Q_ = Q0_;
+  R_ = R0_;
+  contact_flag_.assign(numContact, true);
+}
+
 void StateEstimator::update(const RobotSensor &sensor,
                             const Eigen::Ref<const Eigen::VectorXd> &contact_probability) {
 
@@ -181,11 +209,10 @@ void StateEstimator::update(const RobotSensor &sensor,
   const Vector3d g(0, 0, -9.81);
   const Vector3d accel = R_wb * imu_accel_mea_ + g;
 
-  Eigen::VectorXd y(dimObserve);
-  y << ps_, vs_, feet_heights_;
+  y_ << ps_, vs_, feet_heights_;
 
   kf_.predict(accel);
-  kf_.update(y);
+  kf_.update(y_);
 }
 
 void StateEstimator::getSensorMeasurement(const RobotSensor &sensor) {
@@ -224,9 +251,23 @@ RobotState StateEstimator::getEstimatedRobotState() const {
 }
 
 void StateEstimator::getPinocchioState(Eigen::VectorXd &q, Eigen::VectorXd &v) const {
-  q.resize(model_.nq);
+  // written straight from the members: going through getEstimatedRobotState() (as
+  // utils::robotStateToPinocchio) would copy the joint vectors into a RobotState every call
+  q.resize(model_.nq); // no-op when already sized (no allocation)
   v.resize(model_.nv);
-  utils::robotStateToPinocchio(getEstimatedRobotState(), q, v);
+  const Eigen::VectorXd &x = kf_.get_state();
+  const Eigen::Matrix3d R_wb = imu_quat_.toRotationMatrix();
+
+  // q = [p_B (world), quat (x, y, z, w), qj]
+  q.head<3>() = x.segment<3>(0);
+  q.segment<4>(3) = imu_quat_.coeffs();
+  q.tail(na_) = qj_mea_;
+
+  // v = [v_B, w_B, dqj], base twist in the base frame (w_B: the gyro, rotated to the world and
+  // back as in getEstimatedRobotState)
+  v.head<3>().noalias() = R_wb.transpose() * x.segment<3>(3);
+  v.segment<3>(3).noalias() = R_wb.transpose() * (R_wb * imu_gyro_mea_);
+  v.tail(na_) = dqj_mea_;
 }
 
 Vector3d StateEstimator::getBasePosEst() const {
