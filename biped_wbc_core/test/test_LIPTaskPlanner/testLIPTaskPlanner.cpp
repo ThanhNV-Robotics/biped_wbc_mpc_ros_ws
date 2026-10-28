@@ -1,11 +1,14 @@
-// Visual test of LIPTaskPlanner in MuJoCo (no physics): runs the planner in real time and shows
-// the same elements as tsid_examples/python/SimDraw.py:
+// Visual test of WalkPlanner (LIPTaskPlanner CoM + swing foot) in MuJoCo (no physics): runs the
+// planner in real time and shows the same elements as tsid_examples/python/SimDraw.py:
 //   CoM (blue) with its ground shadow and vertical projection, ZMP (crimson) with the foot sole
 //   outline, capture point (red cross), left / right foot (green / orange), pendulum rod ZMP -> CoM,
 //   legs feet -> CoM, CoM and ZMP trajectories. The camera follows the CoM.
+// WalkPlanner takes the landed foot from the forward kinematics of the robot state at each switch,
+// so the test runs an ideal robot: each cycle the leg IK puts the stance ankle on the support frame
+// and the swing ankle on its reference, base above the planned CoM.
 //
 // Usage:
-//   ros2 run biped_wbc_core test_lip_task_planner [task_planner.yaml] [LIP_model.xml]
+//   ros2 run biped_wbc_core test_lip_task_planner [tsid_wbc.yaml] [LIP_model.xml] [robot.urdf]
 // Keys: space = pause / run, up / down = forward velocity command +- 0.05 m/s, backspace = restart.
 // Mouse: left drag = rotate, right drag = move, scroll = zoom.
 
@@ -19,16 +22,22 @@
 #include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
-#include "biped_wbc/planner/LIPTaskPlanner.hpp"
+#include "biped_wbc/common/utils.hpp"
+#include "biped_wbc/planner/WalkPlanner.hpp"
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/multibody/joint/joint-free-flyer.hpp>
 
-using biped_controllers::LIPTaskPlanner;
+using biped_controllers::WalkPlanner;
 
 // default files (source tree, set by CMake); override with the command line
 #ifndef TASK_PLANNER_YAML
-#define TASK_PLANNER_YAML "task_planner.yaml"
+#define TASK_PLANNER_YAML "tsid_wbc.yaml"
 #endif
 #ifndef LIP_MODEL_XML
 #define LIP_MODEL_XML "LIP_model.xml"
+#endif
+#ifndef ROBOT_URDF
+#define ROBOT_URDF "v2_biped_robot_12dof.urdf"
 #endif
 
 namespace
@@ -112,12 +121,17 @@ int main(int argc, char **argv)
 {
     const std::string yaml_path = argc > 1 ? argv[1] : TASK_PLANNER_YAML;
     const std::string xml_path = argc > 2 ? argv[2] : LIP_MODEL_XML;
+    const std::string urdf_path = argc > 3 ? argv[3] : ROBOT_URDF;
+    const std::string feet[2] = {"left_ankle_pitch_link", "right_ankle_pitch_link"};
 
-    // ---- planner ----
-    std::unique_ptr<LIPTaskPlanner> planner;
+    // ---- robot model and planner ----
+    std::unique_ptr<tsid::robots::RobotWrapper> robot;
+    std::unique_ptr<WalkPlanner> planner;
     try
     {
-        planner = std::make_unique<LIPTaskPlanner>(yaml_path);
+        robot = std::make_unique<tsid::robots::RobotWrapper>(urdf_path, std::vector<std::string>{},
+                                                             pinocchio::JointModelFreeFlyer(), false);
+        planner = std::make_unique<WalkPlanner>(*robot, yaml_path, feet[0], feet[1]);
     }
     catch (const std::exception &e)
     {
@@ -126,6 +140,38 @@ int main(int argc, char **argv)
     }
     const double dt = planner->getDt();
     planner->setVelocityCommand(vx_cmd);
+
+    // ---- ideal robot: start pose, feet hip_width apart, base kBaseHeight above the ankles ----
+    const pinocchio::Model &model = robot->model();
+    pinocchio::Data data(model);
+    const double kHipWidth = 0.27, kBaseHeight = 0.72, kAnkleHeight = 0.05; // [m]
+    Eigen::VectorXd q0 = pinocchio::neutral(model);
+    q0.tail(robot->na()) = utils::computeIntialStandConfig(model, data, kHipWidth, kBaseHeight);
+    q0(2) = kBaseHeight + kAnkleHeight; // ankles kAnkleHeight above the ground (z = 0)
+    Eigen::VectorXd q = q0;
+    planner->reset(q);
+    int ik_failures = 0;
+
+    // leg IK: stance ankle on the support frame, swing ankle on its reference, base (upright) above
+    // the planned CoM at its start height -> q (kept if the IK does not converge)
+    const auto trackPlan = [&]() {
+        const pinocchio::SE3 oMb(Eigen::Matrix3d::Identity(),
+                                 Vector3d(planner->getRefCoMPosition().x(), planner->getRefCoMPosition().y(), q0(2)));
+        const pinocchio::SE3 oMstance = planner->getSupportFrame();
+        const pinocchio::SE3 oMswing(planner->getRefSwingFootRotation(), planner->getRefSwingFootPosition());
+        const bool left = planner->isLeftStance();
+        const pinocchio::SE3 bMl = oMb.actInv(left ? oMstance : oMswing);
+        const pinocchio::SE3 bMr = oMb.actInv(left ? oMswing : oMstance);
+        const utils::IkRes ik = utils::computeIK_Leg(model, data, bMl.rotation(), bMl.translation(),
+                                                     bMr.rotation(), bMr.translation());
+        if (ik.status != 0)
+        {
+            if (ik_failures++ == 0) std::fprintf(stderr, "leg IK did not converge (error %.2e): pose kept\n", ik.err.norm());
+            return;
+        }
+        q.head<3>() = oMb.translation();
+        q.tail(robot->na()) = ik.jointPosRes;
+    };
 
     // ---- MuJoCo model (markers only) ----
     char error[1000] = "";
@@ -186,7 +232,8 @@ int main(int argc, char **argv)
         // ---- restart / velocity command from the keyboard ----
         if (restart)
         {
-            planner->reset(Vector2d::Zero(), Vector3d(0.0, 0.135, 0.0), Vector3d(0.0, -0.135, 0.0));
+            q = q0;
+            planner->reset(q);
             com_hist.clear();
             zmp_hist.clear();
             restart = false;
@@ -201,7 +248,8 @@ int main(int argc, char **argv)
         }
         while (!paused && sim_time + dt <= wall)
         {
-            planner->planWalking();
+            planner->planWalking(q);
+            trackPlan();
             sim_time += dt;
             if (++ticks % std::max(1, static_cast<int>(0.01 / dt)) == 0)
             {
@@ -217,7 +265,10 @@ int main(int argc, char **argv)
         const Vector3d com = planner->getRefCoMPosition();
         const Vector2d zmp2 = planner->getRefZMP(), cp2 = planner->getRefCP();
         const Vector3d zmp(zmp2.x(), zmp2.y(), 0.0), cp(cp2.x(), cp2.y(), 0.0);
-        const Vector3d lf = planner->getRefLeftFootPosition(), rf = planner->getRefRightFootPosition();
+        // feet on the ground: ankles of the ideal robot, kAnkleHeight lower
+        pinocchio::framesForwardKinematics(model, data, q);
+        const Vector3d lf = data.oMf[model.getFrameId(feet[0])].translation() - Vector3d(0.0, 0.0, kAnkleHeight);
+        const Vector3d rf = data.oMf[model.getFrameId(feet[1])].translation() - Vector3d(0.0, 0.0, kAnkleHeight);
         setMocap(id_com, com);
         setMocap(id_shadow, Vector3d(com.x(), com.y(), 0.001));
         setMocap(id_zmp, Vector3d(zmp.x(), zmp.y(), 0.002));
@@ -250,8 +301,9 @@ int main(int argc, char **argv)
         const char *stance[] = {"left (right swings)", "right (left swings)", "double (init)"};
         char labels[200], values[200];
         std::snprintf(labels, sizeof(labels), "time\nstance\nphase\nvx command\n%s", paused ? "PAUSED" : "");
+        const int stance_id = !planner->isInitWalkingDone() ? 2 : (planner->isLeftStance() ? 0 : 1);
         std::snprintf(values, sizeof(values), "%.2f s\n%s\n%.2f\n%.2f m/s\n", sim_time,
-                      stance[planner->getStanceLeg()], planner->getPhase(), vx_cmd);
+                      stance[stance_id], planner->getPhase(), vx_cmd);
         mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport, labels, values, &con);
 
         glfwSwapBuffers(window);

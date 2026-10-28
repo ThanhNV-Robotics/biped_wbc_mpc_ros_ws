@@ -34,7 +34,7 @@ import rclpy
 from rclpy.node import Node
 from humanoid_mpc_msgs.msg import WalkingVelocityCommand
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from remote_control import XBoxControllerInterface
+from remote_control.xbox_controller_interface import XBoxControllerInterface
 from remote_control.tk_app import JoystickGui, LEDIndicatorGui
 
 

@@ -164,6 +164,49 @@ namespace biped_controllers
         this->posture_task_->setReference(this->posture_ref_);
     }
 
+    void QP_TSID::setSwingReference(int i, const pinocchio::SE3 &pose, const Eigen::Matrix<double, 6, 1> &vel,
+                                    const Eigen::Matrix<double, 6, 1> &acc)
+    {
+        // written into the preallocated sample (SE3 as a 12-vector, derivatives 6D)
+        tsid::math::SE3ToVector(pose, this->swing_ref_[i].pos);
+        this->swing_ref_[i].vel = vel;
+        this->swing_ref_[i].acc = acc;
+        tsid::tasks::TaskSE3Equality *swing[2] = {this->left_foot_swing_task.get(), this->right_foot_swing_task.get()};
+        swing[i]->setReference(this->swing_ref_[i]);
+    }
+
+    void QP_TSID::liftFoot(int i)
+    {
+        if (!this->contact_active_[i])
+            return;
+        tsid::contacts::Contact6d *contact[2] = {this->left_foot_contact_task.get(), this->right_foot_contact_task.get()};
+        tsid::tasks::TaskSE3Equality *swing[2] = {this->left_foot_swing_task.get(), this->right_foot_swing_task.get()};
+
+        // contact off (force ramped down by TSID), swing task on
+        this->tsid_.removeRigidContact(contact[i]->name(), this->contact_transition_time_);
+        this->tsid_.addMotionTask(*swing[i], this->swing_setting_.weight, this->swing_setting_.priority, 0.0);
+        this->contact_active_[i] = false;
+    }
+
+    void QP_TSID::landFoot(int i)
+    {
+        if (this->contact_active_[i])
+            return;
+        tsid::contacts::Contact6d *contact[2] = {this->left_foot_contact_task.get(), this->right_foot_contact_task.get()};
+        tsid::tasks::TaskSE3Equality *swing[2] = {this->left_foot_swing_task.get(), this->right_foot_swing_task.get()};
+        const double force_reg_weight[2] = {this->left_contact_force_reg_weight_, this->right_contact_force_reg_weight_};
+
+        // swing task off, contact on where the foot is (state of the last solve), not where it was
+        // planned: no pull toward the planned foothold
+        this->tsid_.removeTask(swing[i]->name(), 0.0);
+        // TSID ramped the max normal force to ~0 at liftoff and does not restore it: without this
+        // the landed foot carries (almost) no load
+        contact[i]->setMaxNormalForce(this->contact_f_max_[i]);
+        contact[i]->setReference(this->robot_wrapper_.framePosition(this->tsid_.data(), this->foot_id_[i]));
+        this->tsid_.addRigidContact(*contact[i], force_reg_weight[i], 1.0, 0);
+        this->contact_active_[i] = true;
+    }
+
     bool QP_TSID::solve(double t, const Eigen::VectorXd &q, const Eigen::VectorXd &v)
     {
         // QP of this cycle from the current tasks, contacts and state
@@ -244,6 +287,8 @@ namespace biped_controllers
 
         this->left_foot_contact_task = make_contact("left", this->left_foot_frame_, this->left_contact_force_reg_weight_);
         this->right_foot_contact_task = make_contact("right", this->right_foot_frame_, this->right_contact_force_reg_weight_);
+        this->contact_f_max_[0] = this->left_foot_contact_task->getMaxNormalForce();
+        this->contact_f_max_[1] = this->right_foot_contact_task->getMaxNormalForce();
     }
 
     void QP_TSID::setupSwingTask()
@@ -262,8 +307,8 @@ namespace biped_controllers
             auto task = std::make_shared<tsid::tasks::TaskSE3Equality>("swing_" + side, this->robot_wrapper_, frame);
             task->Kp(kp * Eigen::VectorXd::Ones(6));
             task->Kd(kd * Eigen::VectorXd::Ones(6));
-            // the planner gives the foot trajectory in the world frame
-            task->useLocalFrame(false);
+            // local frame (TSID default), as tsid_examples: the error is taken in the foot frame; the
+            // world-frame reference twist is mapped into it by TSID
             return task;
         };
 
@@ -351,6 +396,13 @@ namespace biped_controllers
             const int j = model.joints[model.getJointId(name)].idx_v() - 6;
             Kp(j) = entry.second["kp"].as<double>();
             Kd(j) = entry.second["kd"] ? entry.second["kd"].as<double>() : 2.0 * std::sqrt(Kp(j));
+        }
+
+        // critical damping (kd = 2*sqrt(kp)) on every joint unless use_critical_damping is false: it
+        // overrides the kd above, as parse_tsid_tasks.cpp of tsid_examples
+        if (!cfg["use_critical_damping"] || cfg["use_critical_damping"].as<bool>())
+        {
+            Kd = 2.0 * Kp.cwiseSqrt();
         }
 
         this->posture_task_ = std::make_shared<tsid::tasks::TaskJointPosture>("posture", this->robot_wrapper_);

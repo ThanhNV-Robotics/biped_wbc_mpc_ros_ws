@@ -1,4 +1,2 @@
-from .xbox_controller_interface import XBoxControllerInterface
-
-# from . import base_velocity_controller_gui
-from . import xbox_walking_command_publisher
+# no eager imports: the Xbox nodes need pygame, the keyboard node does not
+# (import XBoxControllerInterface from remote_control.xbox_controller_interface)

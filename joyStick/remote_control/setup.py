@@ -24,6 +24,7 @@ setup(
         "console_scripts": [
             "base_velocity_controller_gui = remote_control.base_velocity_controller_gui:main",
             "xbox_velocity_publisher = remote_control.xbox_walking_command_publisher:main",
+            "keyboard_motion_command = remote_control.keyboard_motion_command_publisher:main",
         ],
     },
 )

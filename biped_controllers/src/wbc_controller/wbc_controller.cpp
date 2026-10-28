@@ -1,6 +1,7 @@
 #include "wbc_controller/wbc_controller.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -103,6 +104,12 @@ namespace biped_controllers
         // debug topic of the estimate
         this->setupDebugPublisher();
 
+        // motion commands from the keyboard / joystick
+        this->setupCommandSubscriber();
+
+        // simulator ground truth instead of the base estimate (simulation only)
+        this->setupGroundTruthSubscriber();
+
         return controller_interface::CallbackReturn::SUCCESS;
     }
 
@@ -152,12 +159,15 @@ namespace biped_controllers
         this->resetModules();
         this->debug_counter_ = 0;
 
-        // stand-down test (command 2): joint target from the IK, once
-        if (!this->setupStandDown())
+        // targets of commands 1 / 2 (IK once), references held at the current state
+        if (!this->setupPostureTargets())
         {
             this->robot_ros_interface_->release();
             return controller_interface::CallbackReturn::ERROR;
         }
+
+        // a command sent before this activation is not replayed
+        this->last_command_seq_ = this->command_buffer_.readFromNonRT()->seq;
 
         RCLCPP_INFO(logger, "Active: %zu joints claimed (position / velocity / effort), holding the current pose",
                     this->params_.joints.size());
@@ -198,11 +208,12 @@ namespace biped_controllers
             return controller_interface::return_type::OK;
         }
 
-        // Get joystick command (B7)
-
         // estimate base state and contact state
         this->estimate();
         this->publishDebug();
+
+        // joystick / keyboard command (B7): may start a transition from the state just estimated
+        this->handleMotionCommand(time);
 
         // compute the joint command (planner + TSID, commands 1-5) and send it; no command yet
         // (B2: nothing computed) -> keep holding the last one, so the drives get a fresh command
@@ -257,8 +268,10 @@ namespace biped_controllers
             this->qp_tsid_controller_ = std::make_unique<QP_TSID>(this->robotModel(), this->params_.config_path,
                                                                   this->params_.urdf_path);
 
-            // LIP task planner: section "LIPPlanner" of the same yaml
-            this->lip_task_planner_ = std::make_unique<LIPTaskPlanner>(this->params_.config_path);
+            // walk planner: section "LIPPlanner" of the same yaml, support frames on the foot frames
+            this->walk_planner_ = std::make_unique<WalkPlanner>(this->robotModel(), this->params_.config_path,
+                                                                this->params_.left_foot_frame,
+                                                                this->params_.right_foot_frame);
         }
         catch (const std::exception &e)
         {
@@ -270,7 +283,7 @@ namespace biped_controllers
         // unless the controller has its own update_rate parameter (0 = every controller_manager
         // cycle, whose rate the controller cannot read), so it is only used as a cross-check.
         // sampling_frequency must equal controller_manager.update_rate (controllers.yaml).
-        this->dt_ = this->lip_task_planner_->getDt();
+        this->dt_ = this->walk_planner_->getDt();
         if (get_update_rate() > 0 && std::abs(this->dt_ * get_update_rate() - 1.0) > 1e-6)
         {
             RCLCPP_WARN(logger, "LIPPlanner sampling_frequency (%.0f Hz) differs from the controller update rate "
@@ -322,7 +335,7 @@ namespace biped_controllers
             }
         }
 
-        RCLCPP_INFO(logger, "Control modules ready: QP_TSID, LIPTaskPlanner, StateEstimator, ContactFusion (dt %.4f s)",
+        RCLCPP_INFO(logger, "Control modules ready: QP_TSID, WalkPlanner, StateEstimator, ContactFusion (dt %.4f s)",
                     this->dt_);
         return true;
     }
@@ -346,6 +359,11 @@ namespace biped_controllers
 
         // TSID: every reference at the estimated state, both feet in contact where they are now
         this->state_estimator_->getPinocchioState(this->q_, this->v_);
+        if (this->params_.use_ground_truth && !this->applyGroundTruth())
+        {
+            RCLCPP_WARN(get_node()->get_logger(), "use_ground_truth: no message on '%s' yet, starting from the estimate",
+                        this->params_.ground_truth_topic.c_str());
+        }
         this->qp_tsid_controller_->reset(this->q_, this->v_);
 
         // TODO (B6): planner reset(com, left foot, right foot) from the estimated state
@@ -360,6 +378,12 @@ namespace biped_controllers
         // cycle (the contact fusion below needs this cycle's state)
         this->state_estimator_->update(this->sensor_, this->contact_probability_);
         this->state_estimator_->getPinocchioState(this->q_, this->v_);
+        if (this->params_.use_ground_truth && !this->applyGroundTruth())
+        {
+            RCLCPP_WARN_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+                                 "use_ground_truth: no message on '%s': using the estimate",
+                                 this->params_.ground_truth_topic.c_str());
+        }
 
         // contact state: momentum observer with the measured joint torques -> foot forces, then
         // fused with the foot height and the planned contact -> probability for the next cycle
@@ -383,29 +407,31 @@ namespace biped_controllers
         //   command 5: transition from walking to stop (B11)
         // each fills q_cmd_ / v_cmd_ / tau_cmd_ from the TSID solution (dv_, tau_) and returns true
 
-        // for now: command 2 (stand-down test), started at the first cycle after activation
-        if (!this->stand_started_)
+        // walking (command 3): planner references
+        if (this->mode_ == Mode::WALK)
         {
-            this->stand_start_time_ = time;
-            this->stand_started_ = true;
+            return this->computeWalkCommand(time);
         }
-        const double t = (time - this->stand_start_time_).seconds();
 
-        // joint reference of this cycle: quintic from the activation pose to the IK target
-        utils::quinticTrajectory(this->qj_start_, this->qj_target_, t, kStandDuration, this->qj_ref_,
+        // commands 1 / 2, a transition from the last reference to the target of the
+        // command (handleMotionCommand); after it (or before any command) the target is held
+        const double t = time.seconds() - this->transition_start_time_;
+
+        // joint reference of this cycle: quintic to the joint target
+        utils::quinticTrajectory(this->qj_start_, this->qj_target_, t, kTransitionDuration, this->qj_ref_,
                                  this->dqj_ref_, this->ddqj_ref_);
         this->qp_tsid_controller_->setPostureReference(this->qj_ref_, this->dqj_ref_, this->ddqj_ref_);
 
         // CoM reference of this cycle: same timing, to the CoM of the target pose
-        utils::quinticTrajectory(this->com_start_, this->com_target_, t, kStandDuration, this->com_ref_,
+        utils::quinticTrajectory(this->com_start_, this->com_target_, t, kTransitionDuration, this->com_ref_,
                                  this->dcom_ref_, this->ddcom_ref_);
         this->qp_tsid_controller_->setCoMReference(this->com_ref_, this->dcom_ref_, this->ddcom_ref_);
 
         // TSID: accelerations and torques for it with both feet in contact; failed -> hold
-        if (!this->qp_tsid_controller_->solve(t, this->q_, this->v_))
+        if (!this->qp_tsid_controller_->solve(time.seconds(), this->q_, this->v_))
         {
             RCLCPP_ERROR_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
-                                  "TSID QP failed (t %.3f s): keeping the last command", t);
+                                  "TSID QP failed (t %.3f s): keeping the last command", time.seconds());
             return false;
         }
         this->dv_ = this->qp_tsid_controller_->getAccelerations();
@@ -419,10 +445,15 @@ namespace biped_controllers
     }
 
     // ---------------------------------------------------------------------
-    // on_activate: joint target of the stand-down test. IK once: both feet keep their pose relative
-    // to the base, only lower (base kStandBaseHeight above the ground). Not real-time (allocates).
+    // on_activate: targets of commands 1 / 2 and every reference at the current state. Not
+    // real-time (IK, allocates).
+    //   command 1 (homing): all joints 0
+    //   command 2 (init walking): IK once, both feet keep their pose relative to the base, only
+    //   lower (base kStandBaseHeight above the ground)
+    // The CoM of each target pose is kept in the left foot frame: startTransition places it on the
+    // foot where it is then (the feet do not move in these commands).
     // ---------------------------------------------------------------------
-    bool WBCController::setupStandDown ()
+    bool WBCController::setupPostureTargets ()
     {
         const auto logger = get_node()->get_logger();
         const pinocchio::Model &model = this->robotModel().model();
@@ -435,8 +466,8 @@ namespace biped_controllers
         const pinocchio::SE3 oMf[2] = {data.oMf[model.getFrameId(this->params_.left_foot_frame)],
                                        data.oMf[model.getFrameId(this->params_.right_foot_frame)]};
 
-        // IK target relative to the base: same foot x, y and orientation; foot z relative to the base
-        // = foot z in the world - desired base height (ground at z = 0 in the estimator)
+        // command 2: IK target relative to the base, same foot x, y and orientation; foot z relative
+        // to the base = foot z in the world - desired base height (ground at z = 0 in the estimator)
         pinocchio::SE3 bMf[2];
         for (int i = 0; i < 2; ++i)
         {
@@ -447,34 +478,316 @@ namespace biped_controllers
                                                      bMf[1].rotation(), bMf[1].translation());
         if (ik.status != 0)
         {
-            RCLCPP_ERROR(logger, "stand-down: IK for base height %.3f m did not converge (error %.2e)",
+            RCLCPP_ERROR(logger, "init walking: IK for base height %.3f m did not converge (error %.2e)",
                          kStandBaseHeight, ik.err.norm());
             return false;
         }
+        this->qj_stand_ = ik.jointPosRes;
 
-        // trajectory from the current joints to the target (buffers sized here, written in update)
+        // command 1: all joints 0
+        this->qj_home_ = Eigen::VectorXd::Zero(na);
+
+        // CoM of each target pose in the left foot frame (base pose does not matter: identity)
+        Eigen::VectorXd q_target = pinocchio::neutral(model);
+        const Eigen::VectorXd *qj_targets[2] = {&this->qj_home_, &this->qj_stand_};
+        Eigen::Vector3d *com_in_foot[2] = {&this->com_home_in_foot_, &this->com_stand_in_foot_};
+        for (int k = 0; k < 2; ++k)
+        {
+            q_target.tail(na) = *qj_targets[k];
+            const Eigen::Vector3d com = pinocchio::centerOfMass(model, data, q_target);
+            pinocchio::framesForwardKinematics(model, data, q_target);
+            *com_in_foot[k] = data.oMf[this->left_foot_id_].actInv(com);
+        }
+
+        // every reference at the current state, held until the first command (start = target)
         this->qj_start_ = this->q_.tail(na);
-        this->qj_target_ = ik.jointPosRes;
+        this->qj_target_ = this->qj_start_;
         this->qj_ref_ = this->qj_start_;
         this->dqj_ref_ = Eigen::VectorXd::Zero(na);
         this->ddqj_ref_ = Eigen::VectorXd::Zero(na);
-
-        // CoM at the start and at the target pose: base at the same x, y and orientation,
-        // kStandBaseHeight above the ground, joints at the IK target (the feet stay where they are)
-        Eigen::VectorXd q_target = this->q_;
-        q_target(2) = kStandBaseHeight;
-        q_target.tail(na) = this->qj_target_;
         this->com_start_ = pinocchio::centerOfMass(model, data, this->q_);
-        this->com_target_ = pinocchio::centerOfMass(model, data, q_target);
+        this->com_target_ = this->com_start_;
         this->com_ref_ = this->com_start_;
         this->dcom_ref_ = Eigen::VectorXd::Zero(3);
         this->ddcom_ref_ = Eigen::VectorXd::Zero(3);
-        this->stand_started_ = false;
+        this->transition_start_time_ = -std::numeric_limits<double>::infinity();
+        this->mode_ = Mode::STAND;
+        this->in_walking_pose_ = false;
 
-        RCLCPP_INFO(logger, "stand-down: base %.3f -> %.3f m over %.1f s (knee target %.3f / %.3f rad), "
-                    "CoM (%.3f %.3f %.3f) -> (%.3f %.3f %.3f)", oMb.translation().z(), kStandBaseHeight, kStandDuration,
-                    this->qj_target_(3), this->qj_target_(9), this->com_start_(0), this->com_start_(1), this->com_start_(2),
-                    this->com_target_(0), this->com_target_(1), this->com_target_(2));
+        RCLCPP_INFO(logger, "motion targets: base now %.3f m; homing: joints 0; init walking: base %.3f m "
+                    "(knee %.3f / %.3f rad); both over %.1f s", oMb.translation().z(), kStandBaseHeight,
+                    this->qj_stand_(3), this->qj_stand_(9), kTransitionDuration);
+        return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // on_configure: subscription of the motion commands. The callback (executor thread) only
+    // stores the command with a count; update() reads it without waiting (RealtimeBuffer).
+    // ---------------------------------------------------------------------
+    void WBCController::setupCommandSubscriber ()
+    {
+        // created once (on_configure may run again after a cleanup)
+        if (this->command_sub_)
+        {
+            return;
+        }
+        this->command_sub_ = get_node()->create_subscription<humanoid_mpc_msgs::msg::MotionCommand>(
+            "/humanoid/motion_command", rclcpp::QoS(10),
+            [this](const humanoid_mpc_msgs::msg::MotionCommand::SharedPtr msg)
+            {
+                MotionCommandSample sample;
+                sample.command = msg->command;
+                sample.seq = ++this->command_seq_;
+                this->command_buffer_.writeFromNonRT(sample);
+            });
+    }
+
+    // ---------------------------------------------------------------------
+    // on_configure, use_ground_truth only: the callback (executor thread) only stores the message;
+    // estimate() reads it without waiting (RealtimeBuffer).
+    // ---------------------------------------------------------------------
+    void WBCController::setupGroundTruthSubscriber ()
+    {
+        // created once (on_configure may run again after a cleanup)
+        if (!this->params_.use_ground_truth || this->ground_truth_sub_)
+        {
+            return;
+        }
+        this->ground_truth_sub_ = get_node()->create_subscription<nav_msgs::msg::Odometry>(
+            this->params_.ground_truth_topic, rclcpp::QoS(10),
+            [this](const nav_msgs::msg::Odometry::SharedPtr msg) { this->ground_truth_buffer_.writeFromNonRT(msg); });
+    }
+
+    // ---------------------------------------------------------------------
+    // Base state from the ground truth. MuJoCo free joint (mujoco_ros2_control): position and
+    // linear velocity in the world frame, angular velocity in the body frame; Pinocchio wants both
+    // velocities in the base frame. Real-time.
+    // ---------------------------------------------------------------------
+    bool WBCController::applyGroundTruth ()
+    {
+        const std::shared_ptr<nav_msgs::msg::Odometry> &msg = *this->ground_truth_buffer_.readFromRT();
+        if (!msg)
+        {
+            return false;
+        }
+        const auto &p = msg->pose.pose.position;
+        const auto &o = msg->pose.pose.orientation;
+        const auto &lin = msg->twist.twist.linear;
+        const auto &ang = msg->twist.twist.angular;
+        const Eigen::Quaterniond quat(o.w, o.x, o.y, o.z);
+
+        // pose: position, quaternion (x y z w)
+        this->q_.head<3>() << p.x, p.y, p.z;
+        this->q_.segment<4>(3) << o.x, o.y, o.z, o.w;
+
+        // twist in the base frame: linear rotated from the world frame, angular as is
+        this->v_.head<3>().noalias() = quat.toRotationMatrix().transpose() * Eigen::Vector3d(lin.x, lin.y, lin.z);
+        this->v_.segment<3>(3) << ang.x, ang.y, ang.z;
+        return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // update(): starts the transition of a new motion command. Real-time.
+    // ---------------------------------------------------------------------
+    void WBCController::handleMotionCommand (const rclcpp::Time &time)
+    {
+        // nothing new since the last cycle
+        const MotionCommandSample &cmd = *this->command_buffer_.readFromRT();
+        if (cmd.seq == this->last_command_seq_)
+        {
+            return;
+        }
+        this->last_command_seq_ = cmd.seq;
+        const auto logger = get_node()->get_logger();
+        const bool transition_running = time.seconds() - this->transition_start_time_ < kTransitionDuration;
+
+        // walking: every message keeps it going; the first one at rest starts it
+        if (cmd.command == humanoid_mpc_msgs::msg::MotionCommand::WALKING)
+        {
+            this->walk_cmd_time_ = time.seconds();
+            if (this->mode_ == Mode::WALK)
+            {
+                return;
+            }
+            if (transition_running || !this->in_walking_pose_)
+            {
+                RCLCPP_WARN_THROTTLE(logger, *get_node()->get_clock(), 2000,
+                                     "walking ignored: %s", transition_running ? "a transition is running"
+                                                                               : "send init walking first");
+                return;
+            }
+            this->startWalking(time);
+            return;
+        }
+        if (this->mode_ == Mode::WALK)
+        {
+            RCLCPP_WARN(logger, "motion command %u ignored while walking", cmd.command);
+            return;
+        }
+
+        // one transition at a time: the next one starts from a target, at rest
+        if (transition_running)
+        {
+            RCLCPP_WARN(logger, "motion command %u ignored: a transition is running", cmd.command);
+            return;
+        }
+
+        // target of the command
+        switch (cmd.command)
+        {
+        case humanoid_mpc_msgs::msg::MotionCommand::HOMING:
+            this->startTransition(this->qj_home_, this->com_home_in_foot_, time);
+            this->in_walking_pose_ = false;
+            RCLCPP_INFO(logger, "command 1: homing (joints to 0) over %.1f s", kTransitionDuration);
+            break;
+        case humanoid_mpc_msgs::msg::MotionCommand::INIT_WALKING:
+            this->startTransition(this->qj_stand_, this->com_stand_in_foot_, time);
+            this->in_walking_pose_ = true;
+            RCLCPP_INFO(logger, "command 2: init walking (base to %.3f m) over %.1f s", kStandBaseHeight,
+                        kTransitionDuration);
+            break;
+        default:
+            RCLCPP_WARN(logger, "unknown motion command %u ignored", cmd.command);
+            break;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // update(): new transition from the references of this cycle (no jump in the command) to the
+    // joint target and the CoM of that pose on the left foot. Real-time: writes into the buffers.
+    // ---------------------------------------------------------------------
+    void WBCController::startTransition (const Eigen::VectorXd &qj_target, const Eigen::Vector3d &com_in_foot,
+                                         const rclcpp::Time &time)
+    {
+        const pinocchio::Model &model = this->robotModel().model();
+
+        // left foot pose of the estimated state (FK on the preallocated data_)
+        pinocchio::forwardKinematics(model, this->data_, this->q_);
+        const pinocchio::SE3 &oMf = pinocchio::updateFramePlacement(model, this->data_, this->left_foot_id_);
+
+        // start at the current references, end at the target
+        this->qj_start_ = this->qj_ref_;
+        this->qj_target_ = qj_target;
+        this->com_start_ = this->com_ref_;
+        this->com_target_ = oMf.act(com_in_foot);
+        this->transition_start_time_ = time.seconds();
+    }
+
+    // ---------------------------------------------------------------------
+    // handleMotionCommand: start walking from the current state (standing at rest, init walking
+    // pose, both feet in contact).
+    // ---------------------------------------------------------------------
+    void WBCController::startWalking (const rclcpp::Time &time)
+    {
+        // planner from the estimated state: support frame on the left ankle, LIP at the CoM height
+        this->walk_planner_->reset(this->q_);
+
+        // base upright: roll = pitch = yaw = 0 (translation masked out in the task)
+        this->qp_tsid_controller_->setBaseReference(pinocchio::SE3::Identity(), this->zero6_, this->zero6_);
+
+        // joint command: from the last one until the first walk cycle (the posture reference stays
+        // the stand pose)
+        this->q_des_ = this->q_cmd_;
+        this->v_des_ = this->v_cmd_;
+
+        this->mode_ = Mode::WALK;
+        this->walk_cmd_time_ = time.seconds();
+        this->stop_requested_ = false;
+        RCLCPP_INFO(get_node()->get_logger(), "command 3: walking in place (CoM height %.3f m)",
+                    this->walk_planner_->getRefCoMPosition().z());
+    }
+
+    // ---------------------------------------------------------------------
+    // computeCommand while walking. Real-time except the contact switches (TSID adds / removes a
+    // task: allocates, twice per step).
+    // ---------------------------------------------------------------------
+    bool WBCController::computeWalkCommand (const rclcpp::Time &time)
+    {
+        const auto logger = get_node()->get_logger();
+        const int na = this->robotModel().na();
+
+        // key released (no WALKING message): finish the step, then stop and rest
+        if (!this->stop_requested_ && time.seconds() - this->walk_cmd_time_ > kWalkTimeout)
+        {
+            this->walk_planner_->requestStop();
+            this->stop_requested_ = true;
+            RCLCPP_INFO(logger, "walk command released: stopping");
+        }
+
+        // planner: one cycle (vx = 0, stepping in place)
+        this->walk_planner_->setVelocityCommand(0.0);
+        this->walk_planner_->planWalking(this->q_);
+        const bool swinging = this->walk_planner_->isSwinging();
+        const int swing_foot = this->walk_planner_->getSwingFoot();
+
+        // contacts from the plan (time based): land first, then lift with its swing reference set
+        for (int i = 0; i < 2; ++i)
+        {
+            const bool in_contact = !(swinging && swing_foot == i);
+            if (in_contact && !this->qp_tsid_controller_->isContactActive(i))
+            {
+                this->qp_tsid_controller_->landFoot(i);
+            }
+            this->scheduled_contact_[i] = in_contact;
+            this->contact_phase_[i] = this->walk_planner_->getPhase();
+        }
+        if (swinging)
+        {
+            this->swing_pose_.rotation() = this->walk_planner_->getRefSwingFootRotation();
+            this->swing_pose_.translation() = this->walk_planner_->getRefSwingFootPosition();
+            this->swing_vel_.head<3>() = this->walk_planner_->getRefSwingFootVelocity();
+            this->swing_vel_.tail<3>().setZero();
+            this->swing_acc_.head<3>() = this->walk_planner_->getRefSwingFootAcceleration();
+            this->swing_acc_.tail<3>().setZero();
+            this->qp_tsid_controller_->setSwingReference(swing_foot, this->swing_pose_, this->swing_vel_, this->swing_acc_);
+            if (this->qp_tsid_controller_->isContactActive(swing_foot))
+            {
+                this->qp_tsid_controller_->liftFoot(swing_foot);
+            }
+        }
+
+        // CoM reference of the planner (copied into the size-3 buffers: no temporary)
+        this->com_ref_ = this->walk_planner_->getRefCoMPosition();
+        this->dcom_ref_ = this->walk_planner_->getRefCoMVelocity();
+        this->ddcom_ref_ = this->walk_planner_->getRefCoMAcceleration();
+        this->qp_tsid_controller_->setCoMReference(this->com_ref_, this->dcom_ref_, this->ddcom_ref_);
+
+        // TSID with the contacts of the plan; failed -> hold
+        if (!this->qp_tsid_controller_->solve(time.seconds(), this->q_, this->v_))
+        {
+            RCLCPP_ERROR_THROTTLE(logger, *get_node()->get_clock(), 1000,
+                                  "TSID QP failed while walking (t %.3f s): keeping the last command", time.seconds());
+            return false;
+        }
+        this->dv_ = this->qp_tsid_controller_->getAccelerations();
+        this->tau_ = this->qp_tsid_controller_->getTorques();
+
+        // drive command: the measured joint state, so the drive PD is zero at the read instant and
+        // the TSID torque does the work (as torque control). Not q + v dt: kp * v * dt pushes along
+        // the joint velocity (negative damping), large on the light swing ankle
+        this->q_des_ = this->q_.tail(na);
+        this->v_des_ = this->v_.tail(na);
+        this->q_cmd_ = this->q_des_;
+        this->v_cmd_ = this->v_des_;
+        this->tau_cmd_ = this->tau_;
+
+        // at rest (double support) once the planned CoM has reached its CP (the middle of the feet,
+        // it converges after the stop phase): standing again, every reference held where it is (the
+        // next init walking / homing starts from here)
+        const Eigen::Vector2d com_to_cp = this->walk_planner_->getRefCP() - this->com_ref_.head<2>();
+        if (this->walk_planner_->getWalkPhase() == WalkPhase::REST && com_to_cp.norm() < kRestTolerance)
+        {
+            this->mode_ = Mode::STAND;
+            this->qj_ref_ = this->q_des_;
+            this->qj_start_ = this->q_des_;
+            this->qj_target_ = this->q_des_;
+            this->com_start_ = this->com_ref_;
+            this->com_target_ = this->com_ref_;
+            this->transition_start_time_ = -std::numeric_limits<double>::infinity();
+            this->v_des_.setZero();
+            this->scheduled_contact_.assign(2, true);
+            RCLCPP_INFO(logger, "walking stopped: standing at rest");
+        }
         return true;
     }
 
@@ -512,6 +825,17 @@ namespace biped_controllers
         this->q_cmd_ = Eigen::VectorXd::Zero(na);
         this->v_cmd_ = Eigen::VectorXd::Zero(na);
         this->tau_cmd_ = Eigen::VectorXd::Zero(na);
+
+        // walking: integrated joint command, swing foot reference
+        this->q_des_ = Eigen::VectorXd::Zero(na);
+        this->v_des_ = Eigen::VectorXd::Zero(na);
+        this->swing_pose_ = pinocchio::SE3::Identity();
+        this->swing_vel_.setZero();
+        this->swing_acc_.setZero();
+
+        // kinematics of a motion command start (startTransition)
+        this->data_ = pinocchio::Data(robot.model());
+        this->left_foot_id_ = robot.model().getFrameId(this->params_.left_foot_frame);
     }
 
     // ---------------------------------------------------------------------

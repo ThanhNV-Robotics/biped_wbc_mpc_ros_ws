@@ -62,6 +62,19 @@ namespace biped_controllers
         void setPostureReference(const Eigen::VectorXd &qj, const Eigen::VectorXd &dqj,
                                  const Eigen::VectorXd &ddqj);
 
+        // swing foot reference of foot i (0 left, 1 right), world frame: ankle pose, twist and
+        // acceleration [linear; angular]; tracked while the foot is lifted (liftFoot)
+        void setSwingReference(int i, const pinocchio::SE3 &pose, const Eigen::Matrix<double, 6, 1> &vel,
+                               const Eigen::Matrix<double, 6, 1> &acc);
+
+        // contact switching (planner timing): liftFoot removes the contact of foot i (its force
+        // ramps to zero over contact_transition_time) and adds its swing task (set the swing
+        // reference first); landFoot removes the swing task and adds the contact back at the
+        // foot's current pose. Not real-time: TSID allocates when tasks are added / removed
+        void liftFoot(int i);
+        void landFoot(int i);
+        bool isContactActive(int i) const { return this->contact_active_[i]; }
+
         // solve the QP of this cycle (t [s]: drives the contact transitions); false if the QP failed
         // (the last solution is kept)
         bool solve(double t, const Eigen::VectorXd &q, const Eigen::VectorXd &v);
@@ -100,6 +113,8 @@ namespace biped_controllers
         TaskSetting posture_setting_;
         TaskSetting actuation_bounds_setting_;
         TaskSetting swing_setting_;
+        double contact_f_max_[2] = {1000.0, 1000.0};   // max normal force [left, right] (f_max of the yaml):
+                                                       // restored at landing, TSID ramps it to ~0 at liftoff
         double left_contact_force_reg_weight_ = 1e-3;  // w_force_reg of addRigidContact
         double right_contact_force_reg_weight_ = 1e-3;
         double contact_transition_time_ = 0.15;        // [s] force ramp before a contact is removed

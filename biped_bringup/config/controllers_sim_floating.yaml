@@ -6,3 +6,9 @@ controller_manager:
     # component (an empty list is not a valid parameter value); the controller_manager only warns.
     hardware_components_initial_state:
       inactive: [none]
+
+wbc_controller:
+  ros__parameters:
+    # base pose / twist from the simulator's ground truth instead of the state estimator ("cheat"
+    # estimator, as Cheat_StateEstimator in tsid_examples); false = the state estimator
+    use_ground_truth: true

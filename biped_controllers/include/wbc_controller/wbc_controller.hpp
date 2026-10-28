@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -15,13 +16,15 @@
 #include "semantic_components/imu_sensor.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
+#include "humanoid_mpc_msgs/msg/motion_command.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 
 
 #include "biped_wbc/state_estimation/contact_fusion.hpp"
 #include "biped_wbc/state_estimation/StateEstimator.hpp"
 #include <tsid/robots/robot-wrapper.hpp>
 #include "biped_wbc/QP_tsid/QPtsid.hpp"
-#include "biped_wbc/planner/LIPTaskPlanner.hpp"
+#include "biped_wbc/planner/WalkPlanner.hpp"
 
 #include "wbc_controller/controller_params.hpp"
 #include "wbc_controller/joint_map.hpp"
@@ -53,7 +56,7 @@ protected:
   // (e.g. a "cheater" controller whose setupStateEstimate() / estimate() use the simulator's
   // ground truth, as LeggedCheaterController in legged_control).
 
-  // on_configure, after setupRobotModel: QP_TSID and LIPTaskPlanner from the config yaml, control
+  // on_configure, after setupRobotModel: QP_TSID and WalkPlanner from the config yaml, control
   // period dt_; false (error logged) if a file / value is invalid
   virtual bool setupWbc ();
 
@@ -79,10 +82,38 @@ protected:
   // on_configure: sizes the per-cycle buffers from the robot model
   void AllocateBuffers ();
 
-  // on_activate, after resetModules: stand-down test (command 2, B8). Joint target from the IK
-  // (once): feet where they are relative to the base, base kStandBaseHeight above the ground.
+  // on_activate, after resetModules: joint targets of commands 1 / 2 and the CoM of each target
+  // pose relative to the left foot (IK once); every reference held at the current state.
   // false (error logged) if the IK does not converge
-  bool setupStandDown ();
+  bool setupPostureTargets ();
+
+  // on_configure: subscription /humanoid/motion_command (keyboard / joystick, B7)
+  void setupCommandSubscriber ();
+
+  // update(), after estimate(): a new motion command starts its transition (startTransition);
+  // ignored while a transition runs. Real-time.
+  void handleMotionCommand (const rclcpp::Time &time);
+
+  // quintic from the current references (bumpless) to the joint target and to the CoM of that pose,
+  // placed on the left foot where it is now; starts at time. Real-time (no allocation).
+  void startTransition (const Eigen::VectorXd &qj_target, const Eigen::Vector3d &com_in_foot,
+                        const rclcpp::Time &time);
+
+  // handleMotionCommand, first WALKING message at rest in the init walking pose: walk planner from
+  // the estimated state, base upright, joint command integrated from the last one. Real-time
+  // except the planner reset (FK, CoM: no allocation)
+  void startWalking (const rclcpp::Time &time);
+
+  // computeCommand while walking (vx = 0: stepping in place): planner -> contacts, CoM, swing foot
+  // -> TSID; stop when the WALKING messages stop; back to standing at rest. false = QP failed
+  bool computeWalkCommand (const rclcpp::Time &time);
+
+  // on_configure, params_.use_ground_truth only: subscription of the simulator's ground truth
+  void setupGroundTruthSubscriber ();
+
+  // use_ground_truth: base pose and twist of q_ / v_ from the last ground truth message (joints
+  // stay measured); false if none arrived yet. Real-time
+  bool applyGroundTruth ();
 
   // on_configure: debug topic ~/estimate (see debug_pub_)
   void setupDebugPublisher ();
@@ -111,7 +142,7 @@ protected:
   // known there, and pluginlib constructs the controller without arguments, so they cannot be
   // plain members.
   std::unique_ptr<QP_TSID> qp_tsid_controller_;      // tsid qp module
-  std::unique_ptr<LIPTaskPlanner> lip_task_planner_; // LIP task planner module
+  std::unique_ptr<WalkPlanner> walk_planner_;       // walk planner module (LIP CoM + swing foot)
   std::unique_ptr<StateEstimator> state_estimator_;  // state estimator module
   std::unique_ptr<ContactFusion> contact_fusion_;    // contact fusion module
 
@@ -140,18 +171,54 @@ protected:
   Eigen::VectorXd v_cmd_;                 // velocity (na)
   Eigen::VectorXd tau_cmd_;               // feedforward torque (na)
 
-  // Stand-down test (command 2, B8): quintic joint trajectory from the pose at activation to the
-  // IK target over kStandDuration, tracked by the TSID posture task (both feet in contact)
-  static constexpr double kStandBaseHeight = 0.78;  // [m] base above the ground at the end
-  static constexpr double kStandDuration = 2.0;     // [s]
-  Eigen::VectorXd qj_start_;              // joints at activation (na)
-  Eigen::VectorXd qj_target_;             // IK target (na)
-  Eigen::VectorXd qj_ref_, dqj_ref_, ddqj_ref_;  // trajectory sample of this cycle (na)
-  // CoM: quintic from the CoM at activation to the CoM of the target pose (TSID CoM task), world
-  Eigen::VectorXd com_start_, com_target_;       // (3)
+  // Commands 1 (homing) and 2 (init walking): quintic joint trajectory from the current reference
+  // to a target over kTransitionDuration, tracked by the TSID posture task, and a quintic CoM
+  // reference to the CoM of the target pose (both feet in contact). Between commands the last
+  // target is held.
+  static constexpr double kStandBaseHeight = 0.84;    // [m] base above the ground, command 2
+  static constexpr double kTransitionDuration = 2.0;  // [s]
+  Eigen::VectorXd qj_home_;               // command 1 target: all joints 0 (na)
+  Eigen::VectorXd qj_stand_;              // command 2 target: IK, base kStandBaseHeight high (na)
+  Eigen::Vector3d com_home_in_foot_;      // CoM of each target pose in the left foot frame
+  Eigen::Vector3d com_stand_in_foot_;
+  Eigen::VectorXd qj_start_, qj_target_;  // transition running / last one (na)
+  Eigen::VectorXd qj_ref_, dqj_ref_, ddqj_ref_;     // trajectory sample of this cycle (na)
+  Eigen::VectorXd com_start_, com_target_;          // world (3)
   Eigen::VectorXd com_ref_, dcom_ref_, ddcom_ref_;  // sample of this cycle (3)
-  rclcpp::Time stand_start_time_;         // time of the first update() after activation
-  bool stand_started_ = false;
+  // [s] update time of the last start; -inf = none yet (the targets are held)
+  double transition_start_time_ = -std::numeric_limits<double>::infinity();
+  pinocchio::Data data_;                  // FK of the left foot in startTransition (sized in on_configure)
+  pinocchio::FrameIndex left_foot_id_ = 0;
+
+  // Walking (command 3): stepping in place while the WALKING messages arrive (key held)
+  enum class Mode { STAND, WALK };
+  Mode mode_ = Mode::STAND;               // STAND: commands 1 / 2 (transitions); WALK: walk planner
+  bool in_walking_pose_ = false;          // last transition was init walking (walking allowed)
+  static constexpr double kWalkTimeout = 0.3;  // [s] no WALKING message -> stop
+  static constexpr double kRestTolerance = 0.002; // [m] planned CoM - CP at rest -> standing again
+  double walk_cmd_time_ = 0.0;            // [s] update time of the last WALKING message
+  bool stop_requested_ = false;           // the planner was asked to stop (this walk)
+  Eigen::VectorXd q_des_, v_des_;         // joint command while walking: the measured joint state (na)
+  pinocchio::SE3 swing_pose_;             // swing foot reference of this cycle (world)
+  Eigen::Matrix<double, 6, 1> swing_vel_, swing_acc_; // [linear; angular]
+  Eigen::Matrix<double, 6, 1> zero6_ = Eigen::Matrix<double, 6, 1>::Zero();
+
+  // Ground truth (params_.use_ground_truth, simulation only): the subscriber thread writes the
+  // last message, estimate() reads it
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr ground_truth_sub_;
+  realtime_tools::RealtimeBuffer<std::shared_ptr<nav_msgs::msg::Odometry>> ground_truth_buffer_;
+
+  // Motion command (/humanoid/motion_command): the subscriber thread writes, update() reads.
+  // seq counts the messages so update() sees a repeated command as a new one.
+  struct MotionCommandSample
+  {
+    uint8_t command = 0;
+    uint64_t seq = 0;
+  };
+  rclcpp::Subscription<humanoid_mpc_msgs::msg::MotionCommand>::SharedPtr command_sub_;
+  realtime_tools::RealtimeBuffer<MotionCommandSample> command_buffer_;
+  uint64_t command_seq_ = 0;               // subscriber thread: messages received
+  uint64_t last_command_seq_ = 0;          // update(): last message handled
 
   // Debug topic ~/estimate (std_msgs/Float64MultiArray, 50 Hz), for PlotJuggler. data layout
   // (world frame, [left, right] per foot):

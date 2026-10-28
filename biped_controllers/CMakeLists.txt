@@ -20,6 +20,8 @@ set(THIS_PACKAGE_DEPENDS
   realtime_tools
   sensor_msgs
   std_msgs
+  humanoid_mpc_msgs  # motion commands (keyboard / joystick)
+  nav_msgs           # simulator ground truth (use_ground_truth)
   ament_index_cpp  # package share directories (URDF, WBC yaml)
   biped_wbc_core   # ROS-free WBC algorithms (state estimator, contact fusion, TSID)
 )

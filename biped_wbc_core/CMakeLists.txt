@@ -33,6 +33,7 @@ add_library(${PROJECT_NAME} SHARED
   src/common/urdf_geometry.cpp
   src/QP_tsid/QP_tsid.cpp
   src/planner/LIPTaskPlanner.cpp
+  src/planner/WalkPlanner.cpp
   src/state_estimation/contact_fusion.cpp
   src/state_estimation/kalman_filter.cpp
   src/state_estimation/StateEstimator.cpp
@@ -88,13 +89,14 @@ if(BUILD_VISUAL_TESTS)
   find_package(mujoco_vendor REQUIRED)  # target mujoco::mujoco
   find_package(glfw3 REQUIRED)          # target glfw
 
-  # LIPTaskPlanner in real time: ros2 run biped_wbc_core test_lip_task_planner [yaml] [xml]
+  # WalkPlanner in real time: ros2 run biped_wbc_core test_lip_task_planner [yaml] [xml] [urdf]
   add_executable(test_lip_task_planner test/test_LIPTaskPlanner/testLIPTaskPlanner.cpp)
   target_link_libraries(test_lip_task_planner ${PROJECT_NAME} mujoco::mujoco glfw)
   # default input files: the scene next to the test, the planner settings of biped_bringup
   target_compile_definitions(test_lip_task_planner PRIVATE
     LIP_MODEL_XML="${CMAKE_INSTALL_PREFIX}/share/${PROJECT_NAME}/test/LIP_model.xml"
-    TASK_PLANNER_YAML="${CMAKE_CURRENT_SOURCE_DIR}/../biped_bringup/config/task_planner.yaml")
+    TASK_PLANNER_YAML="${CMAKE_CURRENT_SOURCE_DIR}/../biped_bringup/config/tsid_wbc.yaml"
+    ROBOT_URDF="${CMAKE_CURRENT_SOURCE_DIR}/../biped_description/urdf/v2_biped_robot_12dof.urdf")
   install(TARGETS test_lip_task_planner DESTINATION lib/${PROJECT_NAME})
   install(FILES test/test_LIPTaskPlanner/LIP_model.xml DESTINATION share/${PROJECT_NAME}/test)
 endif()

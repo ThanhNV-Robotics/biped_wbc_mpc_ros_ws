@@ -30,6 +30,10 @@ struct ControllerParams
   std::string imu_name = "imu";
   // hardware state interface: 1 = motors enabled, 0 = off
   std::string enabled_interface = "BipedSystem/enabled";
+  // simulation only ("cheat" estimator, as Cheat_StateEstimator of tsid_examples): base pose and
+  // twist from the simulator's ground truth (nav_msgs/Odometry) instead of the state estimator
+  bool use_ground_truth = false;
+  std::string ground_truth_topic = "/simulator/floating_base_state";
 
   // resolved by read(): absolute paths of the URDF and of the config yaml
   std::string urdf_path;

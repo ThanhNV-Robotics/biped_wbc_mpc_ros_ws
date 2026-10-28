@@ -1,6 +1,8 @@
 #include "biped_wbc/planner/LIPTaskPlanner.hpp"
+#include "biped_wbc/common/data_type.hpp"
 
 #include <stdexcept>
+#include <yaml-cpp/yaml.h>
 
 namespace biped_controllers
 
@@ -8,9 +10,9 @@ namespace biped_controllers
     // Reads the planner settings from the "LIPPlanner" section of a yaml file, e.g.
     //   LIPPlanner:
     //     Tswing: 1.0               # [s] swing (step) duration
-    //     sampling_frequence: 500   # [Hz] planner rate -> dt = 1 / f
+    //     sampling_frequency: 500   # [Hz] planner rate -> dt = 1 / f
     //     com_height: 0.45          # [m] CoM height of the LIP model
-    //     max_step_length: 0.3      # [m]
+    // (the foot keys of the section, e.g. max_step_length, hip_width, are FootPlanner's)
     // A key that is missing keeps its default from the header. A missing file / section or an
     // invalid value throws std::runtime_error (a constructor cannot return an error code); the
     // caller, e.g. WBCController::on_configure(), catches it and fails cleanly.
@@ -49,22 +51,17 @@ namespace biped_controllers
             }
         };
 
-        // swing duration and LIP CoM height
-        read("Tswing", this->T_);
-        read("com_height", this->zc_);
-        read("max_step_length", this->max_step_length_);
-        read("hip_width", this->hip_width_);
-        read("step_height", this->step_height_); // optional, default 0.1 m
-
         // the yaml gives the rate, the planner works with the sampling time
         double frequency = 1.0 / this->dt_;
         read("sampling_frequency", frequency);
+        read("Tswing", this->T_);
+        read("com_height", this->zc_);
 
         // check the values before using them (a zero rate or height would divide by zero later)
-        if (this->T_ <= 0.0 || this->zc_ <= 0.0 || frequency <= 0.0 || this->max_step_length_ < 0.0)
+        if (this->T_ <= 0.0 || this->zc_ <= 0.0 || frequency <= 0.0)
         {
-            throw std::runtime_error("LIPTaskPlanner: Tswing, com_height and sampling_frequency must be > 0, "
-                                     "max_step_length >= 0 (file '" + CONFIG_YAML_PATH + "')");
+            throw std::runtime_error("LIPTaskPlanner: Tswing, com_height and sampling_frequency must be > 0 "
+                                     "(file '" + CONFIG_YAML_PATH + "')");
         }
         this->dt_ = 1.0 / frequency;
 
@@ -72,10 +69,8 @@ namespace biped_controllers
         // default zc_)
         this->w_ = std::sqrt(this->g_ / this->zc_);
 
-        // start like WalkPlanner.py: CoM at the origin, feet at y = +-hip_width / 2; call reset()
-        // with the robot's state before walking
-        this->reset(Vector2d::Zero(), Vector3d(0.0, 0.5 * this->hip_width_, 0.0),
-                    Vector3d(0.0, -0.5 * this->hip_width_, 0.0));
+        // start like WalkPlanner.py: CoM at the origin
+        this->reset(Vector2d::Zero());
     }
 
     // CoM dynamics of the LIP: the CoM is pulled toward the capture point
@@ -114,23 +109,8 @@ namespace biped_controllers
     // Walking planner (port of tsid_examples/python/WalkPlanner.py)
     // ---------------------------------------------------------------------
 
-    // quadratic Bezier curve with control points P = (P0, P1, P2) at s in [0, 1] (bezier_1D with
-    // 3 points), and its first / second derivative with respect to s
-    static double bezier2(const Vector3d &P, double s)
-    {
-        return (1.0 - s) * (1.0 - s) * P(0) + 2.0 * (1.0 - s) * s * P(1) + s * s * P(2);
-    }
-    static double bezier2_ds(const Vector3d &P, double s)
-    {
-        return 2.0 * (1.0 - s) * (P(1) - P(0)) + 2.0 * s * (P(2) - P(1));
-    }
-    static double bezier2_dds(const Vector3d &P)
-    {
-        return 2.0 * (P(2) - 2.0 * P(1) + P(0));
-    }
-
-    // restart from the robot's state: CoM at rest (CP = CoM), feet where they are, init phase next
-    void LIPTaskPlanner::reset(const Vector2d &com, const Vector3d &left_foot, const Vector3d &right_foot)
+    // restart from the robot's state: CoM at rest (CP = CoM), init phase next
+    void LIPTaskPlanner::reset(const Vector2d &com)
     {
         // LIP state at rest
         this->com_ = com;
@@ -138,147 +118,76 @@ namespace biped_controllers
         this->cp_d_ = com;
         this->zmp_d_ = com;
 
-        // feet standing still
-        this->left_foot_pos_ = left_foot;
-        this->right_foot_pos_ = right_foot;
-        this->left_foot_vel_.setZero();
-        this->right_foot_vel_.setZero();
-        this->left_foot_acc_.setZero();
-        this->right_foot_acc_.setZero();
-
-        // walking state: init phase first, then the right foot swings (left stance)
+        // walking state: init phase first
         this->done_init_walking_ = false;
-        this->left_stance_ = true;
         this->phi_com_ = 0.0;
-        this->swing_start_.setZero();
-        this->foothold_x_ = 0.0;
-        this->Px_d_.setZero();
-        this->Pz_d_.setZero();
+        this->cp0_ = com;
+        this->phase_start_ = true;
     }
 
-    // step length from the forward velocity command (WalkPlanner.computeStepLength)
-    void LIPTaskPlanner::setVelocityCommand(double vx)
-    {
-        this->step_length_ = std::clamp(vx * this->T_, 0.0, this->max_step_length_);
-    }
 
-    // ZMP that brings the CP from where it is now to cp_d_ at the end of the step.
-    // CP solution with a constant ZMP p over the remaining time t_r: cp(t_r) = p + e^{w t_r} (cp - p).
-    // Solved for p so that cp(t_r) = cp_d:  p = (cp_d - b cp) / (1 - b), b = e^{w t_r}
-    // Recomputed every tick from the current CP (closed loop): any CP error, from the integration
-    // or later from the robot's estimated CP, is corrected within the same step.
+    // ZMP, constant over the phase, that brings the CP from cp0_ (its value at the phase start) to
+    // cp_d_ at the end of the phase (as walk_planner.cpp of tsid_examples, commit 4de357c).
+    // CP solution with a constant ZMP p over T: cp(T) = p + e^{w T} (cp0 - p), solved for p so
+    // that cp(T) = cp_d:  p = (cp_d - b cp0) / (1 - b), b = e^{w T}
     Vector2d LIPTaskPlanner::zmpForTargetCP() const
     {
-        const double t_remaining = this->T_ * (1.0 - this->phi_com_);
-        // near the end of the step b -> 1 and the formula is singular: keep the last ZMP
-        if (t_remaining < this->zmp_hold_time_) return this->zmp_d_;
-        const double b = std::exp(this->w_ * t_remaining);
-        return (this->cp_d_ - b * this->cp_) / (1.0 - b);
+        const double b = std::exp(this->w_ * this->T_);
+        return (this->cp_d_ - b * this->cp0_) / (1.0 - b);
     }
 
-    // latch the liftoff position; the foot lands step_length ahead of the stance foot
-    // (WalkPlanner.start_swing)
-    void LIPTaskPlanner::startSwing(const Vector3d &swing_foot, const Vector3d &stance_foot)
+    // one planning cycle (WalkPlanner.init_walking / plan_walking, CoM part). The init phase and
+    // the steps differ only in cp_target and the ZMP limits (WalkPlanner).
+    void LIPTaskPlanner::planWalking(const Vector2d &cp_target, const Vector2d &zmp_min, const Vector2d &zmp_max)
     {
-        this->swing_start_ = swing_foot;
-        this->foothold_x_ = stance_foot.x() + this->step_length_; // landing x, also the target CP x
-        const double dx = this->foothold_x_ - this->swing_start_.x();
-        // Bezier control points as offsets from liftoff: x moves dx, z peaks at step_height
-        // (a quadratic Bezier peaks at half its middle point, so the middle point is 2 h)
-        this->Px_d_ << 0.0, 0.5 * dx, dx;
-        this->Pz_d_ << 0.0, 2.0 * this->step_height_, 0.0;
-    }
-
-    // swing foot at phase phi: position from the Bezier offsets (assigned, never accumulated),
-    // velocity / acceleration from its derivatives (d/dt = d/dphi / T); y stays constant
-    // (WalkPlanner.update_swing_foot)
-    void LIPTaskPlanner::updateSwingFoot(Vector3d &pos, Vector3d &vel, Vector3d &acc, double phi) const
-    {
-        const double T2 = this->T_ * this->T_;
-        pos.x() = this->swing_start_.x() + bezier2(this->Px_d_, phi);
-        pos.z() = this->swing_start_.z() + bezier2(this->Pz_d_, phi);
-        vel << bezier2_ds(this->Px_d_, phi) / this->T_, 0.0, bezier2_ds(this->Pz_d_, phi) / this->T_;
-        acc << bezier2_dds(this->Px_d_) / T2, 0.0, bezier2_dds(this->Pz_d_) / T2;
-    }
-
-    // init phase: shift the CP over the left foot in one Tswing (WalkPlanner.init_walking)
-    void LIPTaskPlanner::initWalking()
-    {
-        // ramp up the phase
+        // timing base: phase of the init phase / current step
         this->phi_com_ += this->dt_ / this->T_;
 
-        // target: CP over the left foot (x, y)
-        this->cp_d_ = this->left_foot_pos_.head<2>();
+        // first cycle of a phase: the CP the phase starts from (in the frame of this phase)
+        if (this->phase_start_)
+        {
+            this->cp0_ = this->cp_;
+            this->phase_start_ = false;
+        }
+
+        // drive the CP to the target by the end of the phase
+        this->cp_d_ = cp_target;
 
         if (this->phi_com_ >= 1.0)
         {
-            // move the ZMP onto the left foot and start the first step: right foot swings
-            this->zmp_d_ = this->left_foot_pos_.head<2>();
+            // end of the phase: the foot at the target becomes the stance foot, ZMP onto it; the
+            // next phase is a step
+            this->zmp_d_ = this->cp_d_;
             this->phi_com_ = 0.0;
             this->done_init_walking_ = true;
-            this->startSwing(this->right_foot_pos_, this->left_foot_pos_);
+            this->phase_start_ = true;
         }
         else
         {
-            this->zmp_d_ = this->zmpForTargetCP();
-        }
-    }
-
-    // one planning cycle (WalkPlanner.plan_walking)
-    void LIPTaskPlanner::planWalking()
-    {
-        // feet are still unless they swing (set below)
-        this->left_foot_vel_.setZero();
-        this->right_foot_vel_.setZero();
-        this->left_foot_acc_.setZero();
-        this->right_foot_acc_.setZero();
-
-        //------------------------------------------
-        // Init walking: move the CoM to the left side
-        //------------------------------------------
-        if (!this->done_init_walking_)
-        {
-            this->initWalking();
-        }
-        //------------------------------------------
-        // Walking: alternate stance / swing legs
-        //------------------------------------------
-        else
-        {
-            this->phi_com_ += this->dt_ / this->T_;
-
-            // the stance and swing feet of this step
-            Vector3d &stance_pos = this->left_stance_ ? this->left_foot_pos_ : this->right_foot_pos_;
-            Vector3d &swing_pos = this->left_stance_ ? this->right_foot_pos_ : this->left_foot_pos_;
-            Vector3d &swing_vel = this->left_stance_ ? this->right_foot_vel_ : this->left_foot_vel_;
-            Vector3d &swing_acc = this->left_stance_ ? this->right_foot_acc_ : this->left_foot_acc_;
-
-            // drive the CP to the swing foot's foothold by the end of the step
-            this->cp_d_ << this->foothold_x_, swing_pos.y();
-
-            if (this->phi_com_ >= 1.0)
-            {
-                // land exactly on the foothold, at rest
-                this->updateSwingFoot(swing_pos, swing_vel, swing_acc, 1.0);
-                swing_vel.setZero();
-                swing_acc.setZero();
-
-                // the landed foot becomes the stance foot: ZMP onto it, the other foot swings
-                this->left_stance_ = !this->left_stance_;
-                this->phi_com_ = 0.0;
-                this->zmp_d_ = swing_pos.head<2>();
-                    this->startSwing(stance_pos, swing_pos); // old stance foot lifts off
-            }
-            else
-            {
-                this->zmp_d_ = this->zmpForTargetCP();
-                this->updateSwingFoot(swing_pos, swing_vel, swing_acc, this->phi_com_);
-            }
+            // inside the limits (e.g. the stance sole): the CP may then miss cp_d a bit
+            this->zmp_d_ = this->zmpForTargetCP().cwiseMax(zmp_min).cwiseMin(zmp_max);
         }
 
         // integrate the LIP (exact discretization): CP driven by the ZMP, CoM driven by the new CP
         this->ComputeCP(this->zmp_d_);
         this->ComputeCoM(this->cp_);
+    }
+
+    void LIPTaskPlanner::setComHeight(double zc)
+    {
+        if (zc <= 0.0) return;
+        this->zc_ = zc;
+        this->w_ = std::sqrt(this->g_ / this->zc_);
+    }
+
+    // same motion, other frame: every planar point of the state x -> R x + t (the phase is kept)
+    void LIPTaskPlanner::transformState(const Eigen::Matrix2d &R, const Vector2d &t)
+    {
+        this->com_ = R * this->com_ + t;
+        this->cp_ = R * this->cp_ + t;
+        this->zmp_d_ = R * this->zmp_d_ + t;
+        this->cp_d_ = R * this->cp_d_ + t;
+        this->cp0_ = R * this->cp0_ + t;
     }
 
     // CoM reference at the LIP height
@@ -300,12 +209,4 @@ namespace biped_controllers
         const Vector2d ddcom = this->w_ * this->w_ * (this->com_ - this->zmp_d_);
         return Vector3d(ddcom.x(), ddcom.y(), 0.0);
     }
-
-    // DSt in the init phase (both feet on the ground), then the current stance leg
-    LegState LIPTaskPlanner::getStanceLeg() const
-    {
-        if (!this->done_init_walking_) return DSt;
-        return this->left_stance_ ? LSt : RSt;
-    }
-
 }
