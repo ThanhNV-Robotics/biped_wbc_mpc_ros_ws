@@ -33,6 +33,7 @@
 #include <hardware_interface/system_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 #include <rclcpp/macros.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp>
@@ -359,6 +360,15 @@ private:
   realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>::SharedPtr floating_base_realtime_publisher_;
   nav_msgs::msg::Odometry floating_base_msg_;
 
+  // Ground-truth foot contact forces (hardware param contact_force_bodies, empty = off): the force
+  // of the environment on each body, world frame, summed over its contacts (self-collisions
+  // skipped), as Cheat_StateEstimator of tsid_examples. Published with the odometry as
+  // [fx fy fz] per body, in contact_force_bodies order
+  std::vector<int> contact_force_body_ids_;
+  std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float64MultiArray>> contact_force_publisher_;
+  realtime_tools::RealtimePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr contact_force_realtime_publisher_;
+  std_msgs::msg::Float64MultiArray contact_force_msg_;
+
   // Free joint data
   int free_joint_id_ = -1;
   int free_joint_qpos_adr_ = -1;
@@ -403,6 +413,21 @@ private:
   std::atomic<bool> steps_interrupted_{ false };
   std::atomic<bool> keyboard_step_requested_{ false };
   std::atomic<uint64_t> step_count_{ 0 };
+
+  // Lock-step (hardware param lockstep, PVT mode): one physics step per write() of the controller
+  // manager, as a simulation that runs its controller in the physics loop (tsid_examples). The
+  // physics waits for the next write (lockstep_timeout_ms of wall time at most: before the control
+  // loop runs, e.g. at startup, it steps alone), so the sim runs at the speed of the control loop
+  bool lockstep_{ false };
+  double lockstep_timeout_ms_{ 50.0 };
+  int lockstep_steps_{ 1 };  // physics steps per write: control period / MJCF timestep
+  // lock-step pacing: never faster than real time (slower when the control loop is slow)
+  std::chrono::steady_clock::time_point lockstep_sync_wall_{};
+  double lockstep_sync_sim_{ -1.0 };
+  std::mutex lockstep_mutex_;
+  std::condition_variable lockstep_cv_;
+  uint64_t lockstep_writes_{ 0 };   // write() calls (guarded by lockstep_mutex_)
+  uint64_t lockstep_stepped_{ 0 };  // writes the physics has stepped for (physics thread)
   std::mutex steps_cv_mutex_;
   std::condition_variable steps_cv_;
 

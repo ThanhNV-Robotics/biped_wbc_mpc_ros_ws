@@ -34,6 +34,10 @@ struct ControllerParams
   // twist from the simulator's ground truth (nav_msgs/Odometry) instead of the state estimator
   bool use_ground_truth = false;
   std::string ground_truth_topic = "/simulator/floating_base_state";
+  // pure torque control: claim only the joint effort commands and send the TSID torque (the drive
+  // runs with kp = kd = 0: mujoco_ros2_control torque mode, it holds the pose with its gains until
+  // the claim). false: PVT command (position, velocity, feedforward torque) with the drive gains
+  bool torque_mode = false;
 
   // resolved by read(): absolute paths of the URDF and of the config yaml
   std::string urdf_path;

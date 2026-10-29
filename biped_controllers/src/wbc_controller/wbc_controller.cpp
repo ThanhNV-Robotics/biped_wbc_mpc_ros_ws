@@ -374,9 +374,13 @@ namespace biped_controllers
     // ---------------------------------------------------------------------
     void WBCController::estimate ()
     {
-        // base state: IMU + leg kinematics, weighted by the contact probability of the previous
-        // cycle (the contact fusion below needs this cycle's state)
-        this->state_estimator_->update(this->sensor_, this->contact_probability_);
+        // base state: IMU + leg kinematics of the legs in contact. Contact = the planned contact of the
+        // gait phase (timing based, 1 stance / 0 swing, scheduled_contact_ of the last cycle), not
+        // the fused contact probability below (it lags the liftoff: the lifting leg's kinematics
+        // would still be trusted)
+        const Eigen::Vector2d planned_contact(this->scheduled_contact_[0] ? 1.0 : 0.0,
+                                              this->scheduled_contact_[1] ? 1.0 : 0.0);
+        this->state_estimator_->update(this->sensor_, planned_contact);
         this->state_estimator_->getPinocchioState(this->q_, this->v_);
         if (this->params_.use_ground_truth && !this->applyGroundTruth())
         {

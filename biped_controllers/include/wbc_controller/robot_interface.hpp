@@ -33,8 +33,8 @@ class RobotInterface
 public:
   RobotInterface(const ControllerParams &params, const JointMap &joint_map);
 
-  // interfaces to claim: <joint>/position, velocity, effort (command and state), the IMU's 10 state
-  // interfaces and the motors-enabled state interface
+  // interfaces to claim: <joint>/position, velocity, effort (command and state; torque_mode: effort
+  // command only), the IMU's 10 state interfaces and the motors-enabled state interface
   std::vector<std::string> commandInterfaceNames() const;
   std::vector<std::string> stateInterfaceNames() const;
 
@@ -64,7 +64,8 @@ public:
   // disabled, so there is no jump once they are enabled again. Real-time.
   void holdMeasured();
 
-  // command in Pinocchio order (na each): position, velocity, feedforward torque. Real-time.
+  // command in Pinocchio order (na each): position, velocity, feedforward torque (torque_mode: the
+  // torque only, q / v are not sent). Real-time.
   void write(const Eigen::Ref<const Eigen::VectorXd> &q, const Eigen::Ref<const Eigen::VectorXd> &v,
              const Eigen::Ref<const Eigen::VectorXd> &tau);
 
@@ -74,6 +75,7 @@ public:
 
 private:
   std::vector<std::string> joints_;  // ros2_control names, ros2_control order
+  bool torque_mode_ = false;         // effort commands only (pos_cmd_ / vel_cmd_ stay nullptr)
   std::string enabled_interface_;    // e.g. BipedSystem/enabled
   JointMap joint_map_;
 

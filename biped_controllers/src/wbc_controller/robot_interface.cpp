@@ -8,7 +8,8 @@ namespace biped_controllers
 {
 
 RobotInterface::RobotInterface(const ControllerParams &params, const JointMap &joint_map)
-: joints_(params.joints), enabled_interface_(params.enabled_interface), joint_map_(joint_map)
+: joints_(params.joints), torque_mode_(params.torque_mode), enabled_interface_(params.enabled_interface),
+  joint_map_(joint_map)
 {
   // IMU helper: the names of its 10 state interfaces come from imu_name (= <sensor name> in
   // biped_hw.urdf.xacro)
@@ -23,12 +24,15 @@ RobotInterface::RobotInterface(const ControllerParams &params, const JointMap &j
 
 std::vector<std::string> RobotInterface::commandInterfaceNames() const
 {
-  // PVT command of every joint
+  // PVT command of every joint; torque mode: the effort only (the drive then applies it alone)
   std::vector<std::string> names;
   for (const auto &joint : this->joints_)
   {
-    names.push_back(joint + "/" + hardware_interface::HW_IF_POSITION);
-    names.push_back(joint + "/" + hardware_interface::HW_IF_VELOCITY);
+    if (!this->torque_mode_)
+    {
+      names.push_back(joint + "/" + hardware_interface::HW_IF_POSITION);
+      names.push_back(joint + "/" + hardware_interface::HW_IF_VELOCITY);
+    }
     names.push_back(joint + "/" + hardware_interface::HW_IF_EFFORT);
   }
   return names;
@@ -90,8 +94,8 @@ bool RobotInterface::bind(std::vector<hardware_interface::LoanedCommandInterface
     this->pos_state_[i] = find(state_interfaces, joint, hardware_interface::HW_IF_POSITION);
     this->vel_state_[i] = find(state_interfaces, joint, hardware_interface::HW_IF_VELOCITY);
     this->eff_state_[i] = find(state_interfaces, joint, hardware_interface::HW_IF_EFFORT);
-    if (!this->pos_cmd_[i] || !this->vel_cmd_[i] || !this->eff_cmd_[i] || !this->pos_state_[i] ||
-        !this->vel_state_[i] || !this->eff_state_[i])
+    const bool pv_cmd = this->torque_mode_ || (this->pos_cmd_[i] && this->vel_cmd_[i]);
+    if (!pv_cmd || !this->eff_cmd_[i] || !this->pos_state_[i] || !this->vel_state_[i] || !this->eff_state_[i])
     {
       error = "missing interfaces for joint '" + joint + "'";
       this->release();
@@ -172,7 +176,7 @@ bool RobotInterface::holdCurrentCommand(std::string &error)
       error = "joint '" + this->joints_[i] + "' has no valid position";
       return false;
     }
-    const double p = this->pos_cmd_[i]->get_value();
+    const double p = this->pos_cmd_[i] ? this->pos_cmd_[i]->get_value() : q;
     this->q_cmd_(i) = std::isfinite(p) ? p : q;
     this->v_cmd_(i) = 0.0;
     this->tau_cmd_(i) = 0.0;
@@ -214,8 +218,11 @@ void RobotInterface::writeCommand()
 {
   for (std::size_t i = 0; i < this->joints_.size(); ++i)
   {
-    this->pos_cmd_[i]->set_value(this->q_cmd_(i));
-    this->vel_cmd_[i]->set_value(this->v_cmd_(i));
+    if (!this->torque_mode_)
+    {
+      this->pos_cmd_[i]->set_value(this->q_cmd_(i));
+      this->vel_cmd_[i]->set_value(this->v_cmd_(i));
+    }
     this->eff_cmd_[i]->set_value(this->tau_cmd_(i));
   }
 }

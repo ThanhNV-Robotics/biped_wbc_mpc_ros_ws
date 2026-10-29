@@ -18,6 +18,8 @@
  */
 
 #include "mujoco_ros2_control/mujoco_system_interface.hpp"
+
+#include <sstream>
 #include "array_safety.h"
 
 #include <fmt/compile.h>
@@ -770,6 +772,14 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
     RCLCPP_INFO(get_logger(), "Loading 'mujoco_model' from: '%s'", model_path_.c_str());
   }
 
+  // Lock-step with the control loop (PVT mode only)
+  {
+    const std::string lockstep = get_hardware_parameter_or(get_hardware_info(), "lockstep", "false");
+    lockstep_ = lockstep == "true" || lockstep == "True" || lockstep == "1";
+    lockstep_timeout_ms_ = std::stod(get_hardware_parameter_or(get_hardware_info(), "lockstep_timeout_ms", "50"));
+    lockstep_steps_ = std::max(1, std::stoi(get_hardware_parameter_or(get_hardware_info(), "lockstep_steps", "1")));
+  }
+
   // Pull the initial speed factor from the hardware parameters, if present
   sim_speed_factor_ = std::stod(get_hardware_parameter(get_hardware_info(), "sim_speed_factor").value_or("-1"));
   if (sim_speed_factor_ > 0)
@@ -1076,6 +1086,34 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
         "Publishing floating base odometry using the free joint : '%s' attached to the body '%s' on topic: '%s'",
         mj_id2name(mj_model_, mjtObj::mjOBJ_JOINT, free_joint_id_), floating_base_msg_.child_frame_id.c_str(),
         odom_topic_name.c_str());
+  }
+
+  // Ground-truth foot contact forces: bodies by name (space separated), off when empty
+  {
+    std::istringstream bodies(get_hardware_parameter_or(get_hardware_info(), "contact_force_bodies", ""));
+    std::string body;
+    while (bodies >> body)
+    {
+      const int id = mj_name2id(mj_model_, mjOBJ_BODY, body.c_str());
+      if (id < 0)
+      {
+        RCLCPP_FATAL(get_logger(), "contact_force_bodies: no body '%s' in the MJCF", body.c_str());
+        return hardware_interface::CallbackReturn::FAILURE;
+      }
+      contact_force_body_ids_.push_back(id);
+    }
+    if (!contact_force_body_ids_.empty())
+    {
+      const std::string topic =
+          get_hardware_parameter_or(get_hardware_info(), "contact_force_topic", "/simulator/foot_contact_force");
+      contact_force_publisher_ = clock_node_->create_publisher<std_msgs::msg::Float64MultiArray>(topic, 100);
+      contact_force_realtime_publisher_ =
+          std::make_shared<realtime_tools::RealtimePublisher<std_msgs::msg::Float64MultiArray>>(
+              contact_force_publisher_);
+      contact_force_msg_.data.assign(3 * contact_force_body_ids_.size(), 0.0);
+      RCLCPP_INFO(get_logger(), "Publishing the ground-truth contact forces of %zu bodies on '%s'",
+                  contact_force_body_ids_.size(), topic.c_str());
+    }
   }
 
   // Pull joint and sensor information
@@ -1580,10 +1618,46 @@ hardware_interface::return_type
 MujocoSystemInterface::perform_command_mode_switch(const std::vector<std::string>& start_interfaces,
                                                    const std::vector<std::string>& stop_interfaces)
 {
-  // PVT mode: there are no modes. Position, velocity and effort always form one PVT command;
-  // the drive keeps the last command when a controller stops (as the robot).
+  // PVT mode: position, velocity and effort form one PVT command; the drive keeps the last command
+  // when a controller stops (as the robot). Exception, torque mode: a controller that claims the
+  // effort commands of the drive joints without their position commands gets tau = tau_ff (the
+  // numerical TSID simulation's torque control); when it releases them the drive holds the
+  // current pose with the PVT gains again
   if (pvt_drive_)
   {
+    const auto claims = [this](const std::vector<std::string>& interfaces, const std::string& type) {
+      for (const auto& j : pvt_drive_->joints())
+      {
+        if (std::find(interfaces.begin(), interfaces.end(), j.name + "/" + type) != interfaces.end())
+        {
+          return true;
+        }
+      }
+      return false;
+    };
+    const bool release = pvt_drive_->torque_mode() && claims(stop_interfaces, hardware_interface::HW_IF_EFFORT);
+    const bool torque = claims(start_interfaces, hardware_interface::HW_IF_EFFORT) &&
+                        !claims(start_interfaces, hardware_interface::HW_IF_POSITION);
+    if (release || torque)
+    {
+      // the commands of a mode start where the joints are: hold pose, zero torque
+      double sim_time;
+      {
+        std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+        sim_time = mj_data_control_->time;
+      }
+      for (std::size_t i = 0; i < pvt_joint_index_.size(); ++i)
+      {
+        auto& joint = urdf_joint_data_[pvt_joint_index_[i]];
+        pvt_q_[i] = joint.position_interface.state_;
+        joint.position_interface.command_ = pvt_q_[i];
+        joint.velocity_interface.command_ = 0.0;
+        joint.effort_interface.command_ = 0.0;
+      }
+      pvt_drive_->set_torque_mode(torque, pvt_q_, sim_time);
+      RCLCPP_WARN(get_logger(), torque ? "Torque mode: tau = effort command (kp = kd = 0)" :
+                                         "PVT mode: holding the current pose with the joint kp / kd");
+    }
     return hardware_interface::return_type::OK;
   }
 
@@ -1843,6 +1917,42 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
       floating_base_msg_.twist.twist.angular.z = mj_data_control_->qvel[free_joint_qvel_adr_ + 5];
     }
 
+    // Ground-truth foot contact forces: environment on each body, world frame (as
+    // Cheat_StateEstimator::computeContactForces of tsid_examples)
+    if (contact_force_realtime_publisher_)
+    {
+      std::fill(contact_force_msg_.data.begin(), contact_force_msg_.data.end(), 0.0);
+      mjtNum f_c[6];  // contact force / torque in the contact frame
+      for (int c = 0; c < mj_data_control_->ncon; ++c)
+      {
+        const mjContact& con = mj_data_control_->contact[c];
+        const int b1 = mj_model_->geom_bodyid[con.geom[0]];
+        const int b2 = mj_model_->geom_bodyid[con.geom[1]];
+        for (std::size_t i = 0; i < contact_force_body_ids_.size(); ++i)
+        {
+          const int foot = contact_force_body_ids_[i];
+          if (b1 != foot && b2 != foot)
+          {
+            continue;
+          }
+          // self-collisions skipped: the other body must not belong to the robot
+          const int other = (b1 == foot) ? b2 : b1;
+          if (mj_model_->body_rootid[other] == mj_model_->body_rootid[foot])
+          {
+            continue;
+          }
+          mj_contactForce(mj_model_, mj_data_control_, c, f_c);
+          // contact frame rows [normal, tangent1, tangent2] in world; f_c acts on geom[1]
+          const double sign = (b2 == foot) ? 1.0 : -1.0;
+          for (int k = 0; k < 3; ++k)
+          {
+            const double f_W = con.frame[k] * f_c[0] + con.frame[3 + k] * f_c[1] + con.frame[6 + k] * f_c[2];
+            contact_force_msg_.data[3 * i + k] += sign * f_W;
+          }
+        }
+      }
+    }
+
     // Contact sensors — scan active contacts and flag matching bodies
     if (!contact_sensor_data_.empty())
     {
@@ -1879,6 +1989,15 @@ hardware_interface::return_type MujocoSystemInterface::read(const rclcpp::Time& 
     floating_base_realtime_publisher_->tryPublish(floating_base_msg_);
 #else
     floating_base_realtime_publisher_->try_publish(floating_base_msg_);
+#endif
+  }
+
+  if (contact_force_realtime_publisher_)
+  {
+#if ROS_DISTRO_HUMBLE
+    contact_force_realtime_publisher_->tryPublish(contact_force_msg_);
+#else
+    contact_force_realtime_publisher_->try_publish(contact_force_msg_);
 #endif
   }
 
@@ -1926,6 +2045,15 @@ hardware_interface::return_type MujocoSystemInterface::write(const rclcpp::Time&
       sim_time = mj_data_control_->time;
     }
     pvt_drive_->set_commands(pvt_pos_, pvt_vel_, pvt_eff_, sim_time);
+    // lock-step: the physics may take its next step with these commands
+    if (lockstep_)
+    {
+      {
+        std::lock_guard<std::mutex> lock(lockstep_mutex_);
+        ++lockstep_writes_;
+      }
+      lockstep_cv_.notify_one();
+    }
     return hardware_interface::return_type::OK;
   }
 
@@ -3067,9 +3195,19 @@ void MujocoSystemInterface::PhysicsLoop()
   // run until asked to exit
   while (!sim_->exitrequest.load())
   {
+    // lock-step: wait for the next write() of the control loop (not holding the sim mutex)
+    bool lockstep_step = false;
+    if (lockstep_ && pvt_drive_ && sim_->run)
+    {
+      std::unique_lock<std::mutex> lock(lockstep_mutex_);
+      lockstep_cv_.wait_for(lock, std::chrono::duration<double, std::milli>(lockstep_timeout_ms_),
+                            [this] { return lockstep_writes_ != lockstep_stepped_; });
+      lockstep_stepped_ = lockstep_writes_;
+      lockstep_step = true;
+    }
     // sleep for 1 ms or yield, to let main thread run
     //  yield results in busy wait - which has better timing but kills battery life
-    if (sim_->run && sim_->busywait)
+    else if (sim_->run && sim_->busywait)
     {
       std::this_thread::yield();
     }
@@ -3105,8 +3243,60 @@ void MujocoSystemInterface::PhysicsLoop()
       // run only if model is present
       if (mj_model_)
       {
+        // lock-step: lockstep_steps_ steps (one control period) with the commands of the last
+        // write(), then the new state and clock for the control loop's next read()
+        if (sim_->run && lockstep_step)
+        {
+          bool diverged = false;
+          for (int k = 0; k < lockstep_steps_ && !diverged; ++k)
+          {
+            {
+              std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+              mju_copy(mj_data_->ctrl, mj_data_control_->ctrl, static_cast<int>(mj_model_->nu));
+              mju_copy(mj_data_->qfrc_applied, mj_data_control_->qfrc_applied, static_cast<int>(mj_model_->nu));
+              pvt_drive_->apply(mj_data_);  // PVT law every step, from the current state
+            }
+            mj_step(mj_model_, mj_data_);
+            const char* message = Diverged(mj_model_->opt.disableflags, mj_data_);
+            if (message)
+            {
+              sim_->run = 0;
+              mju::strcpy_arr(sim_->load_error, message);
+              diverged = true;
+            }
+            else
+            {
+              step_count_.fetch_add(1);
+            }
+          }
+          if (!diverged)
+          {
+            {
+              std::lock_guard<std::mutex> data_lock(control_data_mutex_);
+              mj_copyData(mj_data_control_, mj_model_, mj_data_);
+            }
+            // at most real time: wait until the wall clock catches up with the sim time (re-synced
+            // after a pause, a reset or a lag of more than 0.1 s)
+            const auto now = std::chrono::steady_clock::now();
+            const double ahead = (mj_data_->time - lockstep_sync_sim_) -
+                                 std::chrono::duration<double>(now - lockstep_sync_wall_).count();
+            if (lockstep_sync_sim_ < 0.0 || ahead < -0.1 || ahead > 0.1)
+            {
+              lockstep_sync_wall_ = now;
+              lockstep_sync_sim_ = mj_data_->time;
+            }
+            else if (ahead > 0.0)
+            {
+              std::this_thread::sleep_for(std::chrono::duration<double>(ahead));
+            }
+            publish_clock();
+            sim_->AddToHistory();
+            update_sim_display();
+          }
+        }
+
         // running
-        if (sim_->run)
+        else if (sim_->run)
         {
           // If the sim was unpaused while a StepSimulation call was in progress,
           // abort the remaining pending steps so the service call unblocks cleanly.

@@ -25,6 +25,10 @@ namespace mujoco_ros2_control
 ///   ENABLED   PVT law with the gains
 ///   DAMPING   command older than command_timeout, or a non-finite command: kp = 0,
 ///             kd = damping_kd, no torque for damping_duration, then DISABLED (as the firmware)
+///
+/// Torque mode (set_torque_mode): ENABLED applies tau = tau_ff only (kp = kd = 0), as the numerical
+/// TSID simulation (tsid_examples) applies its torques. Set while a controller claims only the
+/// effort commands; off again (PVT, holding the current pose) when it releases them.
 class BipedPvtDrive
 {
 public:
@@ -77,6 +81,12 @@ public:
   void enable(const std::vector<double>& q, double sim_time);
   /// DISABLED at once (zero torque)
   void disable();
+  /// true: tau = tau_ff only. false: PVT law, targets reset to q (hold the current pose)
+  void set_torque_mode(bool on, const std::vector<double>& q, double sim_time);
+  bool torque_mode() const
+  {
+    return torque_mode_.load();
+  }
   /// Why the drive left ENABLED on its own (timeout / non-finite command); cleared by enable()
   std::string fault() const;
 
@@ -101,6 +111,7 @@ private:
 
   Setpoint sp_;               // physics thread copy of cmd_ (preallocated, no allocation in apply)
   std::atomic<State> state_{ State::DISABLED };
+  std::atomic<bool> torque_mode_{ false };
   double damping_start_{ 0.0 };
 };
 

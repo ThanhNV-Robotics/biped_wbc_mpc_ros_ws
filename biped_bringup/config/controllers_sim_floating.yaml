@@ -11,4 +11,6 @@ wbc_controller:
   ros__parameters:
     # base pose / twist from the simulator's ground truth instead of the state estimator ("cheat"
     # estimator, as Cheat_StateEstimator in tsid_examples); false = the state estimator
-    use_ground_truth: true
+    use_ground_truth: false
+    # pure torque: claims only the effort commands, the drive applies the TSID torque (kp = kd = 0)
+    torque_mode: true

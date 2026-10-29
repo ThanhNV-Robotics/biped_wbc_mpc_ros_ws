@@ -31,6 +31,9 @@
   <xacro:arg name="mujoco_scene" default="scene_hanging_12dof_v2.xml"/>
   <xacro:arg name="headless" default="false"/>
   <xacro:arg name="initial_keyframe" default="hang"/>
+  <!-- sim: one physics step per control cycle (tsid_ref.launch.py), false = real-time physics -->
+  <xacro:arg name="lockstep" default="false"/>
+  <xacro:arg name="lockstep_steps" default="1"/>  <!-- physics steps per control cycle (500 Hz: 2) -->
 
   <xacro:property name="gains" value="${xacro.load_yaml('$(arg gains)')}"/>
 
@@ -66,6 +69,13 @@
         <param name="command_timeout">0.1</param>
         <param name="damping_kd">1.0</param>
         <param name="damping_duration">1.0</param>
+        <!-- ground-truth foot contact forces on /simulator/foot_contact_force (as tsid_examples'
+             Cheat_StateEstimator: contact = vertical force > 20 N) -->
+        <param name="contact_force_bodies">left_ankle_pitch_link right_ankle_pitch_link</param>
+        <!-- lock-step: the physics steps once per controller manager write (its period must be
+             the MJCF timestep), as a simulation with the controller in the physics loop -->
+        <param name="lockstep">$(arg lockstep)</param>
+        <param name="lockstep_steps">$(arg lockstep_steps)</param>
 
         <param name="orientation_mjcf_suffix">-quat</param>
         <param name="angular_velocity_mjcf_suffix">-gyro</param>

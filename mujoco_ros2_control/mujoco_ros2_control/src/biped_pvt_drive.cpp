@@ -101,6 +101,24 @@ void BipedPvtDrive::disable()
   state_ = State::DISABLED;
 }
 
+void BipedPvtDrive::set_torque_mode(bool on, const std::vector<double>& q, double sim_time)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!on)
+  {
+    // back to PVT: hold where the joints are now, not at a stale position command
+    for (std::size_t i = 0; i < joints_.size(); ++i)
+    {
+      cmd_.pos[i] = q[i];
+      cmd_.vel[i] = 0.0;
+      cmd_.eff[i] = 0.0;
+    }
+    cmd_.finite = true;
+    cmd_.time = sim_time;
+  }
+  torque_mode_ = on;
+}
+
 std::string BipedPvtDrive::fault() const
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -143,6 +161,7 @@ void BipedPvtDrive::apply(mjData* d)
     state_ = state;
   }
 
+  const bool torque = torque_mode_.load();
   for (std::size_t i = 0; i < joints_.size(); ++i)
   {
     const auto& j = joints_[i];
@@ -151,7 +170,7 @@ void BipedPvtDrive::apply(mjData* d)
     double tau = 0.0;
     if (state == State::ENABLED)
     {
-      tau = j.kp * (sp_.pos[i] - q) + j.kd * (sp_.vel[i] - dq) + sp_.eff[i];
+      tau = torque ? sp_.eff[i] : j.kp * (sp_.pos[i] - q) + j.kd * (sp_.vel[i] - dq) + sp_.eff[i];
     }
     else if (state == State::DAMPING)
     {

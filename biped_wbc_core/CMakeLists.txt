@@ -89,9 +89,20 @@ if(BUILD_VISUAL_TESTS)
   find_package(mujoco_vendor REQUIRED)  # target mujoco::mujoco
   find_package(glfw3 REQUIRED)          # target glfw
 
+  # MuJoCo LIP simulator: test-only helper linked into the visual tests (not installed, not part
+  # of biped_wbc_core). Included as "mjSimulator/LIPSimulator.hpp"
+  add_library(lip_simulator STATIC test/mjSimulator/LIPSimulator.cpp)
+  target_compile_features(lip_simulator PUBLIC cxx_std_17)
+  target_include_directories(lip_simulator PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test)
+  # PUBLIC: a test linking lip_simulator also gets biped_wbc_core, MuJoCo and GLFW
+  target_link_libraries(lip_simulator PUBLIC ${PROJECT_NAME} mujoco::mujoco glfw)
+
   # WalkPlanner in real time: ros2 run biped_wbc_core test_lip_task_planner [yaml] [xml] [urdf]
   add_executable(test_lip_task_planner test/test_LIPTaskPlanner/testLIPTaskPlanner.cpp)
-  target_link_libraries(test_lip_task_planner ${PROJECT_NAME} mujoco::mujoco glfw)
+  target_link_libraries(test_lip_task_planner lip_simulator)
+
+  add_executable(test_lip_planner test/test_LIPTaskPlanner/testLIPPlanner.cpp)
+  target_link_libraries(test_lip_planner lip_simulator)
   # default input files: the scene next to the test, the planner settings of biped_bringup
   target_compile_definitions(test_lip_task_planner PRIVATE
     LIP_MODEL_XML="${CMAKE_INSTALL_PREFIX}/share/${PROJECT_NAME}/test/LIP_model.xml"

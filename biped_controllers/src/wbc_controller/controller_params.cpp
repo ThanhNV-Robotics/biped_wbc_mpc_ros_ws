@@ -28,6 +28,7 @@ void ControllerParams::declare(rclcpp_lifecycle::LifecycleNode &node) const
   declare("enabled_interface", this->enabled_interface);
   declare("use_ground_truth", this->use_ground_truth);
   declare("ground_truth_topic", this->ground_truth_topic);
+  declare("torque_mode", this->torque_mode);
 }
 
 bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
@@ -46,6 +47,7 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   this->enabled_interface = node.get_parameter("enabled_interface").as_string();
   this->use_ground_truth = node.get_parameter("use_ground_truth").as_bool();
   this->ground_truth_topic = node.get_parameter("ground_truth_topic").as_string();
+  this->torque_mode = node.get_parameter("torque_mode").as_bool();
 
   // values without a usable default
   if (this->joints.empty())
@@ -77,6 +79,10 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   RCLCPP_INFO(logger, "%zu joints, feet '%s' / '%s', IMU '%s', enabled interface '%s'", this->joints.size(),
               this->left_foot_frame.c_str(), this->right_foot_frame.c_str(), this->imu_name.c_str(),
               this->enabled_interface.c_str());
+  if (this->torque_mode)
+  {
+    RCLCPP_WARN(logger, "torque_mode: only the effort commands are claimed, tau = TSID torque (drive kp = kd = 0)");
+  }
   if (this->use_ground_truth)
   {
     RCLCPP_WARN(logger, "use_ground_truth: base state from '%s' (simulation only), not from the state estimator",

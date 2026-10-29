@@ -30,8 +30,12 @@ namespace biped_controllers {
     //   ahead, the stance width aside of the stance ankle) on a cycloid (zero velocity at both
     //   ends); the CP is driven to the end-of-step CP of the periodic gait, with a ZMP constant over
     //   the step and clamped to the stance sole
-    //   stop (requestStop(), at the next phase end): both feet down, CP to the middle of the feet
-    //   (shifted by the CoM bias)
+    //   last step (the step after requestStop()): as a step, but the end-of-step CP is the middle
+    //   between the stance ankle and the foothold (shifted by the CoM bias), so the CP is between
+    //   the feet when the swing foot lands. (The periodic gait ends a step with the CP on the new
+    //   stance ankle: moving it back to the middle then needs the ZMP outside that foot.)
+    //   stop (after the last step): both feet down, CP held in the middle of the feet (shifted by
+    //   the CoM bias)
     //   rest: double support, CoM at rest over the middle of the feet, until the next reset()
     // The LIP height is the CoM height and the stance width the ankle distance of the pose at
     // reset() (the robot walks at that height, on that width).
@@ -49,8 +53,9 @@ namespace biped_controllers {
             // on the left ankle, CoM at rest, LIP height = CoM height of q, init phase next
             void reset(const Eigen::VectorXd &q);
 
-            // stop walking: the current phase ends as planned (a swing foot lands), then the stop
-            // phase and rest. Cleared by reset()
+            // stop walking: the current phase ends as planned (a swing foot lands), then one last
+            // step that brings the CP to the middle of the feet, then the stop phase and rest (from
+            // the init phase: the stop phase at once). Cleared by reset()
             void requestStop() { this->stop_requested_ = true; }
 
             // forward speed [m/s] -> step length (clamped to [0, max_step_length]), used from the
@@ -118,7 +123,8 @@ namespace biped_controllers {
             double ankle_height_{0.0};           // ankle above the ground [m] (reset): LIP zc -> ankle frame
 
             WalkPhase phase_ = WalkPhase::INIT;  // phase of this cycle
-            bool stop_requested_ = false;        // requestStop(): stop at the next phase end
+            bool stop_requested_ = false;        // requestStop(): last step from the next phase end on
+            bool last_step_ = false;             // this step ends walking: its CP target is between the feet
             Vector2d stop_target_ = Vector2d::Zero(); // CP target of STOP / REST: middle of the feet (support frame)
             Vector2d com_bias_ = Vector2d::Zero();    // CoM - middle of the feet at reset (support frame axes)
             bool left_stance_ = true;            // true: left foot stands, right foot swings

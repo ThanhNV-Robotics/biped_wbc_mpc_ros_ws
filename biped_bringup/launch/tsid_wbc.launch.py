@@ -37,6 +37,8 @@ def generate_launch_description():
             ' mujoco_scene:=', LaunchConfiguration('mujoco_scene'),
             ' initial_keyframe:=', LaunchConfiguration('initial_keyframe'),
             ' headless:=', LaunchConfiguration('headless'),
+            ' lockstep:=', LaunchConfiguration('lockstep'),
+            ' lockstep_steps:=', LaunchConfiguration('lockstep_steps'),
         ]),
         value_type=str,
     )
@@ -87,6 +89,15 @@ def generate_launch_description():
             'initial_keyframe',
             default_value='home',
             description='Keyframe of the scene to start from'),
+        DeclareLaunchArgument(
+            'lockstep',
+            default_value='false',
+            description='Physics in lock-step with the 500 Hz control loop (2 MuJoCo steps per cycle); '
+                        'false = real-time physics, asynchronous to the control loop'),
+        DeclareLaunchArgument(
+            'lockstep_steps',
+            default_value='2',
+            description='Physics steps per control cycle in lock-step (500 Hz control, 1 ms MuJoCo timestep: 2)'),
         DeclareLaunchArgument(
             'headless',
             default_value='false',

@@ -85,7 +85,7 @@ namespace biped_controllers {
         // double support: support frame on the left ankle; ankle height above the ground (z = 0 in
         // the estimator), so that the CoM is zc above the ground
         this->left_stance_ = true;
-        this->oMs_ = this->supportFrame(q, true);
+        this->oMs_ = this->supportFrame(q, true); // set support frame to left ankle
         this->ankle_height_ = this->oMs_.translation().z();
 
         // right foot standing where it is (support frame), at rest
@@ -106,8 +106,9 @@ namespace biped_controllers {
         this->phi_prev_ = 0.0;
         this->phase_ = WalkPhase::INIT;
         this->stop_requested_ = false;
+        this->last_step_ = false;
 
-        this->toWorld();
+        this->toWorld(); // transform swing trajectory to global frame
     }
 
     void WalkPlanner::setVelocityCommand(double vx)
@@ -124,13 +125,22 @@ namespace biped_controllers {
         //   step: end-of-step CP of the periodic gait with a constant ZMP at the stance ankle,
         //         sagittal s b / (b - 1), lateral y_f b / (b + 1) (b = e^{w T}, y_f = foothold y);
         //         ZMP on the stance sole
+        //   last step: middle between the stance ankle and the foothold shifted by the CoM bias (the CP
+        //         is between the feet at touchdown); ZMP on the stance sole
         //   stop / rest: middle of the feet shifted by the CoM bias, double support
         Vector2d cp_target = this->com_bias_;
         Vector2d zmp_min = Vector2d::Constant(-1e9), zmp_max = Vector2d::Constant(1e9);
         if (this->phase_ == WalkPhase::STEP)
         {
             const double b = std::exp(this->lip_.getOmega() * this->T_);
-            cp_target << this->foothold_.x() * b / (b - 1.0), this->foothold_.y() * b / (b + 1.0);
+            if (this->last_step_)
+            {
+                cp_target += 0.5 * this->foothold_.head<2>();
+            }
+            else
+            {
+                cp_target << this->foothold_.x() * b / (b - 1.0), this->foothold_.y() * b / (b + 1.0);
+            }
             zmp_min << this->sole_x_min_, -this->sole_y_half_;
             zmp_max << this->sole_x_max_, this->sole_y_half_;
         }
@@ -143,7 +153,7 @@ namespace biped_controllers {
         this->lip_.planWalking(cp_target, zmp_min, zmp_max);
 
         // phase wrapped (time based): next phase
-        if (this->lip_.getPhase() < this->phi_prev_)
+        if (this->lip_.getPhase() < this->phi_prev_) // end of phase
         {
             this->endOfPhase(q);
         }
@@ -155,11 +165,11 @@ namespace biped_controllers {
             this->computeSwingTrajectory(this->lip_.getPhase());
         }
 
-        this->toWorld();
+        this->toWorld(); 
     }
 
-    // INIT -> STEP (right foot first) or STOP; STEP -> STEP (support switch) or STOP (after the
-    // switch: the landed foot stays down); STOP -> REST; REST stays
+    // INIT -> STEP (right foot first) or STOP; STEP -> STEP (support switch; the last step once a stop
+    // is requested) or, after the last step, STOP (the landed foot stays down); STOP -> REST; REST stays
     void WalkPlanner::endOfPhase(const Eigen::VectorXd &q)
     {
         switch (this->phase_)
@@ -177,9 +187,13 @@ namespace biped_controllers {
             break;
         case WalkPhase::STEP:
             this->switchSupport(q, false);
-            if (this->stop_requested_)
+            if (this->last_step_)
             {
                 this->startStop();
+            }
+            else if (this->stop_requested_)
+            {
+                this->last_step_ = true;
             }
             break;
         case WalkPhase::STOP:
@@ -210,9 +224,12 @@ namespace biped_controllers {
             this->left_stance_ = !this->left_stance_;
         }
         const pinocchio::SE3 oMs_old = this->oMs_;
-        this->oMs_ = this->supportFrame(q, this->left_stance_);
+
+        
+        this->oMs_ = this->supportFrame(q, this->left_stance_); // switch support frame left<->right
 
         // LIP state into the new frame (both frames yaw only: the planar part is exact)
+        // A.actInv(B) = A.inverse() * B
         const pinocchio::SE3 sMs_old = this->oMs_.actInv(oMs_old);
         this->lip_.transformState(sMs_old.rotation().topLeftCorner<2, 2>(), sMs_old.translation().head<2>());
 
