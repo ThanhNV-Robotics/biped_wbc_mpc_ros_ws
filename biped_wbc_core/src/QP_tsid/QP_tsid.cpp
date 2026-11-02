@@ -190,6 +190,7 @@ namespace biped_controllers
 
     void QP_TSID::landFoot(int i)
     {
+        // input: i - foot index, 0 = left, 1 = right
         if (this->contact_active_[i])
             return;
         tsid::contacts::Contact6d *contact[2] = {this->left_foot_contact_task.get(), this->right_foot_contact_task.get()};

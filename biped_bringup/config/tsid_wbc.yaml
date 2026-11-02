@@ -4,6 +4,7 @@ LIPPlanner:
   com_height: 0.45  # com height
   max_step_length: 0.3
   hip_width: 0.27 #
+  step_height: 0.1 # [m] swing foot peak height above the ground (at mid-swing)
 
 contact_tasks: # List of 6D rigid contacts
   - contact_frame: "left_ankle_pitch_link"

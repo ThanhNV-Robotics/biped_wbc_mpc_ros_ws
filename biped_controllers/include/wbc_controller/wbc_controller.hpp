@@ -104,7 +104,7 @@ protected:
   // except the planner reset (FK, CoM: no allocation)
   void startWalking (const rclcpp::Time &time);
 
-  // computeCommand while walking (vx = 0: stepping in place): planner -> contacts, CoM, swing foot
+  // computeCommand while walking (walk_vx of the yaml, 0 = in place): planner -> contacts, CoM, swing foot
   // -> TSID; stop when the WALKING messages stop; back to standing at rest. false = QP failed
   bool computeWalkCommand (const rclcpp::Time &time);
 
@@ -165,6 +165,11 @@ protected:
   std::vector<bool> scheduled_contact_;   // [left, right] planned stance (contact fusion input);
                                           // both feet until the planner runs
   std::vector<double> contact_phase_;     // [left, right] subphase in [0, 1] of that plan
+  // use_time_base false: the contact estimator saw the swing foot off the ground in this step
+  // (a touchdown counts only after it, not the contact it still reports right after the liftoff)
+  bool liftoff_seen_ = false;
+  bool landed_ = false;                   // the swing foot of this step touched down: in contact
+  int prev_swing_foot_ = -1;              // swing foot of the last cycle, -1 = none
   Eigen::VectorXd dv_;                    // accelerations solved by TSID (nv)
   Eigen::VectorXd tau_;                   // joint torques solved by TSID (na)
   Eigen::VectorXd q_cmd_;                 // joint command to send (robot_->write): position (na)
@@ -196,6 +201,7 @@ protected:
   bool in_walking_pose_ = false;          // last transition was init walking (walking allowed)
   static constexpr double kWalkTimeout = 0.3;  // [s] no WALKING message -> stop
   static constexpr double kRestTolerance = 0.002; // [m] planned CoM - CP at rest -> standing again
+  static constexpr double kMinTouchdownPhase = 0.5; // use_time_base false: earlier touchdowns ignored
   double walk_cmd_time_ = 0.0;            // [s] update time of the last WALKING message
   bool stop_requested_ = false;           // the planner was asked to stop (this walk)
   Eigen::VectorXd q_des_, v_des_;         // joint command while walking: the measured joint state (na)

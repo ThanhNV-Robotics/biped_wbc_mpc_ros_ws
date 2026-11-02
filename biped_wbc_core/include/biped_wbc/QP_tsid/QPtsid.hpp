@@ -113,7 +113,7 @@ namespace biped_controllers
         TaskSetting posture_setting_;
         TaskSetting actuation_bounds_setting_;
         TaskSetting swing_setting_;
-        double contact_f_max_[2] = {1000.0, 1000.0};   // max normal force [left, right] (f_max of the yaml):
+        double contact_f_max_[2] = {1000.0, 1000.0};  // max normal force [left, right] (f_max of the yaml):
                                                        // restored at landing, TSID ramps it to ~0 at liftoff
         double left_contact_force_reg_weight_ = 1e-3;  // w_force_reg of addRigidContact
         double right_contact_force_reg_weight_ = 1e-3;

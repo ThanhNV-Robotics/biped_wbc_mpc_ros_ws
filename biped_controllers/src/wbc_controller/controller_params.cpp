@@ -29,6 +29,8 @@ void ControllerParams::declare(rclcpp_lifecycle::LifecycleNode &node) const
   declare("use_ground_truth", this->use_ground_truth);
   declare("ground_truth_topic", this->ground_truth_topic);
   declare("torque_mode", this->torque_mode);
+  declare("walk_vx", this->walk_vx);
+  declare("use_time_base", this->use_time_base);
 }
 
 bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
@@ -48,6 +50,8 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   this->use_ground_truth = node.get_parameter("use_ground_truth").as_bool();
   this->ground_truth_topic = node.get_parameter("ground_truth_topic").as_string();
   this->torque_mode = node.get_parameter("torque_mode").as_bool();
+  this->walk_vx = node.get_parameter("walk_vx").as_double();
+  this->use_time_base = node.get_parameter("use_time_base").as_bool();
 
   // values without a usable default
   if (this->joints.empty())
@@ -58,6 +62,12 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   if (this->config_file.empty())
   {
     RCLCPP_ERROR(logger, "parameter 'config_file' is empty");
+    return false;
+  }
+  // forward walking only (the planner clamps the step to [0, max_step_length])
+  if (this->walk_vx < 0.0)
+  {
+    RCLCPP_ERROR(logger, "parameter 'walk_vx' = %.3f m/s: must be >= 0 (forward walking only)", this->walk_vx);
     return false;
   }
 
@@ -79,6 +89,10 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   RCLCPP_INFO(logger, "%zu joints, feet '%s' / '%s', IMU '%s', enabled interface '%s'", this->joints.size(),
               this->left_foot_frame.c_str(), this->right_foot_frame.c_str(), this->imu_name.c_str(),
               this->enabled_interface.c_str());
+  RCLCPP_INFO(logger, "walk_vx: %.3f m/s%s", this->walk_vx, this->walk_vx == 0.0 ? " (stepping in place)" : "");
+  RCLCPP_INFO(logger, "use_time_base: %s", this->use_time_base
+                                               ? "true (step ends after Tswing)"
+                                               : "false (swing foot lands at the touchdown of the contact estimator)");
   if (this->torque_mode)
   {
     RCLCPP_WARN(logger, "torque_mode: only the effort commands are claimed, tau = TSID torque (drive kp = kd = 0)");

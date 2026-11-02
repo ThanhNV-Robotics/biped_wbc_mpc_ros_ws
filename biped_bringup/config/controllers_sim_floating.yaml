@@ -14,3 +14,11 @@ wbc_controller:
     use_ground_truth: false
     # pure torque: claims only the effort commands, the drive applies the TSID torque (kp = kd = 0)
     torque_mode: true
+    # [m/s] forward walking speed while the walk key is held: step length = walk_vx * Tswing,
+    # clamped to [0, max_step_length] of tsid_wbc.yaml (0.3 m with Tswing 1 s: max 0.3 m/s);
+    # 0 = stepping in place
+    walk_vx: 0.1
+    # contact switching while walking: true = time based (the swing foot lands at the end of the
+    # step, the planner's phase variable); false = the contact estimator (the foot lands at the
+    # detected touchdown, from step phase 0.5 on; Tswing is the time-out). The CoM plan stays time based
+    use_time_base: false

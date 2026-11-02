@@ -374,10 +374,10 @@ namespace biped_controllers
     // ---------------------------------------------------------------------
     void WBCController::estimate ()
     {
-        // base state: IMU + leg kinematics of the legs in contact. Contact = the planned contact of the
-        // gait phase (timing based, 1 stance / 0 swing, scheduled_contact_ of the last cycle), not
-        // the fused contact probability below (it lags the liftoff: the lifting leg's kinematics
-        // would still be trusted)
+        // base state: IMU + leg kinematics of the legs in contact. Contact = the contact in effect
+        // (scheduled_contact_ of the last cycle, 1 stance / 0 swing: the planner's phase, and with
+        // use_time_base false the swing foot from its detected touchdown on), not the fused contact
+        // probability below (it lags the liftoff: the lifting leg's kinematics would still be trusted)
         const Eigen::Vector2d planned_contact(this->scheduled_contact_[0] ? 1.0 : 0.0,
                                               this->scheduled_contact_[1] ? 1.0 : 0.0);
         this->state_estimator_->update(this->sensor_, planned_contact);
@@ -685,6 +685,9 @@ namespace biped_controllers
     {
         // planner from the estimated state: support frame on the left ankle, LIP at the CoM height
         this->walk_planner_->reset(this->q_);
+        this->prev_swing_foot_ = -1; // touchdown detection: no step yet
+        this->liftoff_seen_ = false;
+        this->landed_ = false;
 
         // base upright: roll = pitch = yaw = 0 (translation masked out in the task)
         this->qp_tsid_controller_->setBaseReference(pinocchio::SE3::Identity(), this->zero6_, this->zero6_);
@@ -697,8 +700,8 @@ namespace biped_controllers
         this->mode_ = Mode::WALK;
         this->walk_cmd_time_ = time.seconds();
         this->stop_requested_ = false;
-        RCLCPP_INFO(get_node()->get_logger(), "command 3: walking in place (CoM height %.3f m)",
-                    this->walk_planner_->getRefCoMPosition().z());
+        RCLCPP_INFO(get_node()->get_logger(), "command 3: walking at %.3f m/s (CoM height %.3f m)",
+                    this->params_.walk_vx, this->walk_planner_->getRefCoMPosition().z());
     }
 
     // ---------------------------------------------------------------------
@@ -718,16 +721,41 @@ namespace biped_controllers
             RCLCPP_INFO(logger, "walk command released: stopping");
         }
 
-        // planner: one cycle (vx = 0, stepping in place)
-        this->walk_planner_->setVelocityCommand(0.0);
+        // planner: one cycle at the walking speed of the yaml (walk_vx, 0 = stepping in place). Its
+        // timing (CoM plan, support switch) is time based in both modes
+        this->walk_planner_->setVelocityCommand(this->params_.walk_vx);
         this->walk_planner_->planWalking(this->q_);
         const bool swinging = this->walk_planner_->isSwinging();
         const int swing_foot = this->walk_planner_->getSwingFoot();
 
-        // contacts from the plan (time based): land first, then lift with its swing reference set
+        // early touchdown (use_time_base false): the contact estimator (estimate() of this cycle)
+        // has seen the swing foot off the ground in this step and now on it, past kMinTouchdownPhase.
+        // The foot lands in TSID at once and stays down until the planner's step ends; a late
+        // touchdown lands at the end of the step (Tswing, the time-out)
+        if (swinging && swing_foot != this->prev_swing_foot_)
+        {
+            this->liftoff_seen_ = false; // new step
+            this->landed_ = false;
+        }
+        if (!this->params_.use_time_base && swinging && !this->landed_)
+        {
+            const bool contact = this->contact_fusion_->getContactState(swing_foot);
+            this->liftoff_seen_ = this->liftoff_seen_ || !contact;
+            if (this->liftoff_seen_ && contact && this->walk_planner_->getPhase() >= kMinTouchdownPhase)
+            {
+                this->landed_ = true;
+                RCLCPP_INFO(logger, "touchdown of the %s foot detected at step phase %.2f: contact on",
+                            swing_foot == 0 ? "left" : "right", this->walk_planner_->getPhase());
+            }
+        }
+        this->prev_swing_foot_ = swinging ? swing_foot : -1;
+        const bool in_swing = swinging && !this->landed_;
+
+        // contacts: the plan, the swing foot down once landed; land first, then lift with its
+        // swing reference set
         for (int i = 0; i < 2; ++i)
         {
-            const bool in_contact = !(swinging && swing_foot == i);
+            const bool in_contact = !(in_swing && swing_foot == i);
             if (in_contact && !this->qp_tsid_controller_->isContactActive(i))
             {
                 this->qp_tsid_controller_->landFoot(i);
@@ -735,7 +763,7 @@ namespace biped_controllers
             this->scheduled_contact_[i] = in_contact;
             this->contact_phase_[i] = this->walk_planner_->getPhase();
         }
-        if (swinging)
+        if (in_swing)
         {
             this->swing_pose_.rotation() = this->walk_planner_->getRefSwingFootRotation();
             this->swing_pose_.translation() = this->walk_planner_->getRefSwingFootPosition();
@@ -756,6 +784,7 @@ namespace biped_controllers
         this->ddcom_ref_ = this->walk_planner_->getRefCoMAcceleration();
         this->qp_tsid_controller_->setCoMReference(this->com_ref_, this->dcom_ref_, this->ddcom_ref_);
 
+        // QP solver
         // TSID with the contacts of the plan; failed -> hold
         if (!this->qp_tsid_controller_->solve(time.seconds(), this->q_, this->v_))
         {
@@ -763,6 +792,8 @@ namespace biped_controllers
                                   "TSID QP failed while walking (t %.3f s): keeping the last command", time.seconds());
             return false;
         }
+
+        // Output acceleration and torque cmd
         this->dv_ = this->qp_tsid_controller_->getAccelerations();
         this->tau_ = this->qp_tsid_controller_->getTorques();
 

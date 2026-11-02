@@ -38,6 +38,14 @@ struct ControllerParams
   // runs with kp = kd = 0: mujoco_ros2_control torque mode, it holds the pose with its gains until
   // the claim). false: PVT command (position, velocity, feedforward torque) with the drive gains
   bool torque_mode = false;
+  // [m/s] forward walking speed of the walk command (step length = walk_vx * Tswing, clamped to
+  // [0, max_step_length] of the planner yaml); 0 = stepping in place
+  double walk_vx = 0.0;
+  // contact switching while walking. true: time based, the swing foot lands at the end of the
+  // step (Tswing, phase variable of the planner). false: the swing foot lands in TSID when the
+  // contact estimator (contact fusion) detects it on the ground, from step phase 0.5 on (Tswing
+  // is the time-out). The planner's timing (CoM plan, support switch) and the liftoff stay time based
+  bool use_time_base = true;
 
   // resolved by read(): absolute paths of the URDF and of the config yaml
   std::string urdf_path;

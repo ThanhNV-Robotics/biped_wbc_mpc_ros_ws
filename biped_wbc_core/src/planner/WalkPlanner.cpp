@@ -153,6 +153,7 @@ namespace biped_controllers {
         this->lip_.planWalking(cp_target, zmp_min, zmp_max);
 
         // phase wrapped (time based): next phase
+        // switching stand/swing based on phase timing 
         if (this->lip_.getPhase() < this->phi_prev_) // end of phase
         {
             this->endOfPhase(q);
