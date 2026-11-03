@@ -944,15 +944,19 @@ namespace biped_controllers
         // 0.5 with both feet down (double support, as tsid_examples); a LATE swing foot is scheduled
         // in contact (paper Sec. VI, s_phi = 1), its stance phase counting from the step end (the
         // prior favors a contact more as the foot gets later)
-        for (int i = 0; i < 2; ++i)
+        for (int i = 0; i < 2; ++i) // i = 0 left, 1 right foot
         {
+            // in contact unless it is the foot currently swinging (SWING / EARLY / LATE)
             const bool in_contact = !(in_swing && swing_foot == i);
+            // landed foot (CONTACT, or the stance foot): add its TSID contact if not active yet
             if (in_contact && !this->qp_tsid_controller_->isContactActive(i))
             {
                 this->qp_tsid_controller_->landFoot(i);
             }
+            // LATE swing foot: still swinging in TSID, but the fusion prior expects its contact
             const bool late_foot = !in_contact && this->swing_state_ == SwingState::LATE;
-            this->scheduled_contact_[i] = in_contact || late_foot;
+            this->scheduled_contact_[i] = in_contact || late_foot; // s_phi of the contact fusion
+            // phase prior: LATE = time past the step end / Tswing, walking = swing phase, else 0.5
             this->contact_phase_[i] = late_foot  ? this->walk_planner_->getLateTime() / this->walk_planner_->getTswing()
                                       : swinging ? this->walk_planner_->getPhase()
                                                  : 0.5;
