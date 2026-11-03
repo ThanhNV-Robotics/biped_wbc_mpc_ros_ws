@@ -49,8 +49,7 @@ biped_hardware/
 │   └── udp_client.cpp
 ├── urdf/biped_hw.urdf.xacro   robot model from biped_description + <ros2_control> block
 │                              (use_sim:=true: MuJoCo instead of BipedSystem)
-├── config/joint_gains.yaml    kp / kd of the robot
-├── config/joint_gains_sim.yaml kp / kd of the simulation
+├── config/joint_gains.yaml    kp / kd of the robot (section `robot`), also used by MuJoCo
 └── biped_hardware.xml         pluginlib description (biped_hardware/BipedSystem)
 ```
 
@@ -369,6 +368,7 @@ ros2 launch biped_bringup sim.launch.py slider:=true     # enabled + sliders (jo
   1.0 m above the floor (keyframe `hang`). The floating-base scene comes next.
 - The sim ankle is a **serial** roll / pitch chain: `ankle_kinematics.hpp` is only used on the
   robot, and the ankle kp / kd act on the joints directly in sim.
-- Gains: `config/joint_gains_sim.yaml` (argument `gains:=`). The MJCF links are light, so keep
-  kd low (see the file).
+- Gains: section `robot` of `config/joint_gains.yaml`, as the robot; the ankle joints take the sum
+  of the two ankle motors' gains (`parallel_ankles`). The MJCF links are light, so keep kd low (see
+  the file).
 - The controller manager runs on the simulation clock (`use_sim_time`, `/clock` from MuJoCo).

@@ -397,7 +397,7 @@ with `use_sim:=true` and started by `ros2 launch biped_bringup sim.launch.py`. C
 | Commands per joint | `position`, `velocity`, `effort` (one PVT command) | same; no `kp` / `kd` / `feedforward_effort` interfaces, no mode switching |
 | States | `position`, `velocity`, `effort`, `<hw>/enabled` | same (`effort` = `qfrc_actuator`) |
 | Law | motor: `tau = kp (p - q) + kd (v - dq) + tau_ff` | same, evaluated in the physics thread **before every `mj_step`** |
-| Gains | joint params `kp` / `kd` (from `joint_gains.yaml`), fixed | same params (sim default: `joint_gains_sim.yaml`) |
+| Gains | joint params `kp` / `kd` (section `robot` of `joint_gains.yaml`), fixed | same params (section `robot` too; ankles: sum of the two motors' gains, `parallel_ankles`) |
 | Inactive | motors disabled, limp | zero torque |
 | Activate | checks (joints inside URDF limits, ...), hold current pose | joints inside the MJCF range (+0.01 rad), hold current pose |
 | No command for 20 ms | firmware damps (kd 1) for 1 s, then disables; `read()` returns ERROR | same, in sim time (`command_timeout`, `damping_kd`, `damping_duration`) |

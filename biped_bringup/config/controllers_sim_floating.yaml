@@ -18,6 +18,11 @@ wbc_controller:
     # clamped to [0, max_step_length] of tsid_wbc.yaml (0.3 m with Tswing 1 s: max 0.3 m/s);
     # 0 = stepping in place
     walk_vx: 0.1
+    # [rad/s] yaw rate at a full turn command (angular_velocity_z = +-1 of
+    # /humanoid/walking_velocity_command, e.g. Ctrl+A / Ctrl+D of keyboard_motion_command);
+    # the heading of a step changes by at most max_turn_per_step of tsid_wbc.yaml. Turning is in place
+    # (no forward step while a turn is commanded)
+    max_yaw_rate: 0.2
     # contact switching while walking: true = time based (the swing foot lands at the end of the
     # step, the planner's phase variable); false = the contact estimator (the foot lands at the
     # detected touchdown, from step phase 0.5 on; Tswing is the time-out). The CoM plan stays time based

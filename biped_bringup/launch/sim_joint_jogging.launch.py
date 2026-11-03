@@ -10,7 +10,7 @@ reports the error as BipedSystem does. The sim ankle is a serial roll / pitch ch
 
 Default scene: the robot hangs 1.0 m above the floor (torso welded to the world), for checking
 the framework. The controllers come from the same config/controllers.yaml; the gains from
-config/joint_gains_sim.yaml (see there why they differ from the robot's).
+section `robot` of config/joint_gains.yaml, as the robot (ankles: sum of the two motors' gains).
 
 Usage:
   ros2 launch biped_bringup sim.launch.py                    # motors stay disabled (limp)
@@ -105,7 +105,7 @@ def generate_launch_description():
             description='URDF file name inside biped_description/urdf'),
         DeclareLaunchArgument(
             'gains',
-            default_value=PathJoinSubstitution([hw_share, 'config', 'joint_gains_sim.yaml']),
+            default_value=PathJoinSubstitution([hw_share, 'config', 'joint_gains.yaml']),
             description='kp / kd per joint, fixed while active'),
         DeclareLaunchArgument(
             'mujoco_scene',

@@ -10,6 +10,10 @@
 #include <yaml-cpp/yaml.h>
 
 namespace biped_controllers {
+    // yaw of a rotation (z up), and an angle wrapped to [-pi, pi]
+    static double yawOf(const Eigen::Matrix3d &R) { return std::atan2(R(1, 0), R(0, 0)); }
+    static double wrapAngle(double a) { return std::remainder(a, 2.0 * M_PI); }
+
     // Reads the step settings from the "LIPPlanner" section of the yaml (the LIP keys are read by
     // LIPTaskPlanner), e.g.
     //   max_step_length: 0.3   # [m]
@@ -26,6 +30,7 @@ namespace biped_controllers {
     //   foothold_max_width_change: 0.05 # [m] lateral range around the nominal foothold
     //   foothold_max_rate: 0.5        # [m/s] largest foothold change per second
     //   foothold_freeze_phase: 0.8    # the foothold no longer changes after this step phase
+    //   max_turn_per_step: 0.2        # [rad] largest heading change of a step
     // A key that is missing keeps its default from the header. The stance width is measured at
     // reset() (the hip_width key is not used).
     WalkPlanner::WalkPlanner(tsid::robots::RobotWrapper &robot, const std::string &CONFIG_YAML_PATH,
@@ -71,6 +76,7 @@ namespace biped_controllers {
         read("foothold_max_width_change", this->foothold_max_width_change_);
         read("foothold_max_rate", this->foothold_max_rate_);
         read("foothold_freeze_phase", this->foothold_freeze_phase_);
+        read("max_turn_per_step", this->max_turn_per_step_);
         if (cfg["foothold_adaptation"])
         {
             try
@@ -85,11 +91,11 @@ namespace biped_controllers {
         }
         if (this->max_step_length_ < 0.0 || this->step_height_ < 0.0 || this->sole_x_min_ > this->sole_x_max_ ||
             this->sole_y_half_ < 0.0 || this->late_descent_speed_ < 0.0 || this->foothold_max_width_change_ < 0.0 ||
-            this->swing_landing_depth_ < 0.0 || this->t_ds_ < 0.0 ||
+            this->swing_landing_depth_ < 0.0 || this->t_ds_ < 0.0 || this->max_turn_per_step_ < 0.0 ||
             this->foothold_max_rate_ < 0.0)
         {
             throw std::runtime_error("WalkPlanner: max_step_length, step_height, sole_y_half, late_descent_speed, "
-                                     "foothold_max_width_change, foothold_max_rate, swing_landing_depth and double_support_time must be >= 0, "
+                                     "foothold_max_width_change, foothold_max_rate, swing_landing_depth, double_support_time and max_turn_per_step must be >= 0, "
                                      "sole_x_min <= sole_x_max (file '" + CONFIG_YAML_PATH + "')");
         }
 
@@ -127,6 +133,16 @@ namespace biped_controllers {
         this->swing_pos_l_ = this->swing_start_pos_;
         this->swing_vel_l_.setZero();
         this->swing_acc_l_.setZero();
+
+        // yaw: right foot relative to the left one; heading and torso between the feet
+        const double frame_yaw = yawOf(this->oMs_.rotation());
+        this->swing_yaw_start_l_ = wrapAngle(yawOf(this->data_.oMf[this->foot_id_[1]].rotation()) - frame_yaw);
+        this->swing_yaw_l_ = this->swing_yaw_start_l_;
+        this->swing_wz_l_ = 0.0;
+        this->swing_dwz_l_ = 0.0;
+        this->heading_ = frame_yaw + 0.5 * this->swing_yaw_start_l_;
+        this->heading_err_ = 0.0;
+        this->step_h_.setZero();
 
         // CoM at rest in the support frame, LIP at the CoM height above the ground, init phase next
         const Vector3d com = this->oMs_.actInv(pinocchio::centerOfMass(this->robot_.model(), this->data_, q));
@@ -209,6 +225,13 @@ namespace biped_controllers {
                 this->computeLateDescent();
             }
         }
+        else
+        {
+            // both feet down: the other foot keeps its yaw
+            this->swing_yaw_l_ = this->swing_yaw_start_l_;
+            this->swing_wz_l_ = 0.0;
+            this->swing_dwz_l_ = 0.0;
+        }
 
         this->toWorld();
     }
@@ -219,7 +242,8 @@ namespace biped_controllers {
     //   double support: CP at the start of the single support of the periodic gait (Stage 3b),
     //         t_ds; with E_ss = e^{w Tswing}, E_ds = e^{w t_ds}, relative to the stance ankle
     //           cp_start = ( s (1 + E_ds) / (2 (E_ds E_ss - 1)),  y_f (1 + E_ds) / (2 (1 + E_ds E_ss)) )
-    //         (s, y_f: nominal foothold of the coming swing)
+    //         (s, y_f: nominal step of the coming swing in the heading axes, then rotated by the
+    //         heading error)
     //   swing: CP at the touchdown, E_ss cp_start (t_ds = 0: s b / (b - 1), y_f b / (b + 1)), to
     //         Tswing (0 once late); ZMP on the stance sole
     //   last swing: middle between the stance ankle and the foothold shifted by the CoM bias (the CP
@@ -237,8 +261,10 @@ namespace biped_controllers {
         // periodic gait CP at the start of the single support (Stage 3b)
         const double w = this->lip_.getOmega();
         const double e_ss = std::exp(w * this->T_), e_ds = std::exp(w * this->t_ds_);
-        const Vector2d cp_start(this->foot_nominal_.x() * (1.0 + e_ds) / (2.0 * (e_ds * e_ss - 1.0)),
-                                this->foot_nominal_.y() * (1.0 + e_ds) / (2.0 * (1.0 + e_ds * e_ss)));
+        // (heading axes, rotated by the heading error into the support frame)
+        const Vector2d cp_start = Eigen::Rotation2Dd(this->heading_err_) *
+                                  Vector2d(this->step_h_.x() * (1.0 + e_ds) / (2.0 * (e_ds * e_ss - 1.0)),
+                                           this->step_h_.y() * (1.0 + e_ds) / (2.0 * (1.0 + e_ds * e_ss)));
 
         switch (this->phase_)
         {
@@ -310,8 +336,8 @@ namespace biped_controllers {
             // closing step: the swing foot lands beside the stance foot (no step length), the feet
             // end side by side
             this->last_step_ = true;
-            this->foot_nominal_.x() = 0.0;
-            this->foothold_ = this->foot_nominal_;
+            this->step_h_.x() = 0.0;
+            this->setNominalFoothold();
         }
         this->in_ds_ = this->t_ds_ > 0.0; // both feet loaded until the trailing foot lifts off
     }
@@ -345,17 +371,37 @@ namespace biped_controllers {
         const pinocchio::SE3 sMs_old = this->oMs_.actInv(oMs_old);
         this->lip_.transformState(sMs_old.rotation().topLeftCorner<2, 2>(), sMs_old.translation().head<2>());
 
-        // swing foot: lifts off where it is now (feet of supportFrame(), before measureCP() below
-        // runs its own kinematics), lands step_length ahead and hip_width aside of the stance ankle,
-        // at its height; the step starts from the nominal foothold, adapted during the step
+        // swing foot: lifts off where it is now, with its yaw (feet of supportFrame(), before
+        // measureCP() below runs its own kinematics)
         const int swing = this->left_stance_ ? 1 : 0;
+        const double frame_yaw = yawOf(this->oMs_.rotation());
         this->swing_start_pos_ = this->oMs_.actInv(this->data_.oMf[this->foot_id_[swing]].translation());
-        this->foot_nominal_ << this->step_length_, this->left_stance_ ? -this->hip_width_ : this->hip_width_, 0.0;
-        this->foothold_ = this->foot_nominal_;
+        this->swing_yaw_start_l_ = wrapAngle(yawOf(this->data_.oMf[this->foot_id_[swing]].rotation()) - frame_yaw);
+        this->swing_yaw_l_ = this->swing_yaw_start_l_;
+
+        // heading of this step: advanced by the yaw rate command over one step period, at most
+        // max_turn_per_step from the stance foot (the heading cannot run away from the feet)
+        const double turn = std::clamp(this->yaw_rate_cmd_ * (this->T_ + this->t_ds_), -this->max_turn_per_step_,
+                                       this->max_turn_per_step_);
+        this->heading_err_ = std::clamp(wrapAngle(this->heading_ + turn - frame_yaw), -this->max_turn_per_step_,
+                                        this->max_turn_per_step_);
+        this->heading_ = frame_yaw + this->heading_err_;
+
+        // the swing foot lands step_length ahead and hip_width aside of the stance ankle along the
+        // heading, at its height; the step starts from the nominal foothold, adapted during the step
+        this->step_h_ << this->step_length_, this->left_stance_ ? -this->hip_width_ : this->hip_width_;
+        this->setNominalFoothold();
 
         // touchdown: planned CoM and CP pulled toward the measured ones (new frame)
         this->measureCP(q, v);
         this->lip_.blendTowardMeasured();
+    }
+
+    void WalkPlanner::setNominalFoothold()
+    {
+        this->foot_nominal_.head<2>() = Eigen::Rotation2Dd(this->heading_err_) * this->step_h_;
+        this->foot_nominal_.z() = 0.0;
+        this->foothold_ = this->foot_nominal_;
     }
 
     void WalkPlanner::measureCP(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
@@ -385,12 +431,15 @@ namespace biped_controllers {
             return;
         }
 
-        // foothold for the predicted CP, in the limits around the nominal one
+        // foothold for the predicted CP, in the limits around the nominal one (heading axes: step
+        // length, lateral range around the stance width)
+        const Eigen::Rotation2Dd R_err(this->heading_err_);
         const Vector2d cp_end = this->lip_.getPredictedEndCP();
-        Vector2d target = cp_end - (cp_target - this->foot_nominal_.head<2>());
-        target.x() = std::clamp(target.x(), -this->max_step_length_, this->max_step_length_);
-        target.y() = std::clamp(target.y(), this->foot_nominal_.y() - this->foothold_max_width_change_,
-                                this->foot_nominal_.y() + this->foothold_max_width_change_);
+        Vector2d target_h = R_err.inverse() * (cp_end - (cp_target - this->foot_nominal_.head<2>()));
+        target_h.x() = std::clamp(target_h.x(), -this->max_step_length_, this->max_step_length_);
+        target_h.y() = std::clamp(target_h.y(), this->step_h_.y() - this->foothold_max_width_change_,
+                                  this->step_h_.y() + this->foothold_max_width_change_);
+        const Vector2d target = R_err * target_h;
 
         // rate limit: the swing target moves smoothly
         const Vector2d step = target - this->foothold_.head<2>();
@@ -426,6 +475,12 @@ namespace biped_controllers {
         this->swing_vel_l_.z() += dbump / this->T_;
         this->swing_acc_l_ = (ddc / T2) * delta;
         this->swing_acc_l_.z() += ddbump / T2;
+
+        // yaw: from the liftoff yaw to the heading on the same cycloid
+        const double dyaw = wrapAngle(this->heading_err_ - this->swing_yaw_start_l_);
+        this->swing_yaw_l_ = this->swing_yaw_start_l_ + c * dyaw;
+        this->swing_wz_l_ = (dc / this->T_) * dyaw;
+        this->swing_dwz_l_ = (ddc / T2) * dyaw;
     }
 
     // late touchdown, after computeSwingTrajectory(1) (foothold, at rest): the foot keeps going down
@@ -476,7 +531,10 @@ namespace biped_controllers {
         this->com_vel_.noalias() = R * this->lip_.getRefCoMVelocity();
         this->com_acc_.noalias() = R * this->lip_.getRefCoMAcceleration();
 
-        // swing foot ankle
+        // swing foot ankle: position, flat orientation at its yaw; torso yaw between the feet
+        const double frame_yaw = yawOf(R);
+        this->swing_rot_ = Eigen::AngleAxisd(frame_yaw + this->swing_yaw_l_, Vector3d::UnitZ()).toRotationMatrix();
+        this->base_yaw_ = frame_yaw + 0.5 * this->swing_yaw_l_;
         this->swing_foot_pos_ = this->oMs_.act(this->swing_pos_l_);
         this->swing_foot_vel_.noalias() = R * this->swing_vel_l_;
         this->swing_foot_acc_.noalias() = R * this->swing_acc_l_;

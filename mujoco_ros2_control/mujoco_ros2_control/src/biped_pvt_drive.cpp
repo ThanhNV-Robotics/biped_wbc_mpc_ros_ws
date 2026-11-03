@@ -33,6 +33,36 @@ std::string BipedPvtDrive::configure(const mjModel* m, std::vector<JointConfig> 
   joints_ = std::move(joints);
   params_ = params;
   const std::size_t n = joints_.size();
+
+  // parallel ankles: both joints of each ankle get the sum of the two motors' gains
+  if (params_.parallel_ankles)
+  {
+    const auto find = [this](const std::string& name) {
+      for (std::size_t i = 0; i < joints_.size(); ++i)
+      {
+        if (joints_[i].name == name)
+        {
+          return static_cast<int>(i);
+        }
+      }
+      return -1;
+    };
+    const char* side[2] = { "left", "right" };
+    for (int s = 0; s < 2; ++s)
+    {
+      const int roll = find(std::string(side[s]) + "_ankle_roll_joint");
+      const int pitch = find(std::string(side[s]) + "_ankle_pitch_joint");
+      if (roll < 0 || pitch < 0)
+      {
+        return std::string("parallel_ankles: no joints ") + side[s] + "_ankle_roll_joint / " + side[s] +
+               "_ankle_pitch_joint";
+      }
+      const double kp = joints_[roll].kp + joints_[pitch].kp;
+      const double kd = joints_[roll].kd + joints_[pitch].kd;
+      joints_[roll].kp = joints_[pitch].kp = kp;
+      joints_[roll].kd = joints_[pitch].kd = kd;
+    }
+  }
   for (Setpoint* s : { &cmd_, &sp_ })
   {
     s->pos.assign(n, 0.0);
@@ -178,6 +208,7 @@ void BipedPvtDrive::apply(mjData* d)
     }
     d->ctrl[j.actuator_id] = tau;  // MuJoCo clamps to the actuator ctrlrange (motor torque limit)
   }
+
 }
 
 }  // namespace mujoco_ros2_control

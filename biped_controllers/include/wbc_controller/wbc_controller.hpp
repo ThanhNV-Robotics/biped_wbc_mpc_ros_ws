@@ -17,6 +17,7 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "humanoid_mpc_msgs/msg/motion_command.hpp"
+#include "humanoid_mpc_msgs/msg/walking_velocity_command.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 
 
@@ -89,6 +90,9 @@ protected:
 
   // on_configure: subscription /humanoid/motion_command (keyboard / joystick, B7)
   void setupCommandSubscriber ();
+  // on_configure, after AllocateBuffers: drive kp / kd of every joint from the ros2_control <joint>
+  // params of robot_description (the gains the hardware / simulated drives use); missing -> 0 (warned)
+  void loadDriveGains ();
 
   // update(), after estimate(): a new motion command starts its transition (startTransition);
   // ignored while a transition runs. Real-time.
@@ -213,8 +217,12 @@ protected:
   static constexpr double kMinTouchdownPhase = 0.7; // use_time_base false: earlier touchdowns ignored (tsid_examples touchdown_phase_min)
   double walk_cmd_time_ = 0.0;            // [s] update time of the last WALKING message
   bool stop_requested_ = false;           // the planner was asked to stop (this walk)
-  Eigen::VectorXd q_des_, v_des_;         // joint command while walking: the measured joint state (na)
+  Eigen::VectorXd q_des_, v_des_;         // joint command while walking: the measured joint state
+                                          // integrated one cycle with the TSID accelerations (na)
+  Eigen::VectorXd drive_kp_, drive_kd_;   // drive gains per joint, Pinocchio order (na), loadDriveGains
   pinocchio::SE3 swing_pose_;             // swing foot reference of this cycle (world)
+  pinocchio::SE3 base_pose_ = pinocchio::SE3::Identity(); // torso orientation reference while walking (yaw)
+  Eigen::Matrix<double, 6, 1> base_vel_ = Eigen::Matrix<double, 6, 1>::Zero(), base_acc_ = Eigen::Matrix<double, 6, 1>::Zero();
   Eigen::Matrix<double, 6, 1> swing_vel_, swing_acc_; // [linear; angular]
   Eigen::Matrix<double, 6, 1> zero6_ = Eigen::Matrix<double, 6, 1>::Zero();
 
@@ -234,6 +242,20 @@ protected:
   realtime_tools::RealtimeBuffer<MotionCommandSample> command_buffer_;
   uint64_t command_seq_ = 0;               // subscriber thread: messages received
   uint64_t last_command_seq_ = 0;          // update(): last message handled
+
+  // Turn command (/humanoid/walking_velocity_command, angular_velocity_z in [-1, 1]): the
+  // subscriber thread writes, update() reads; no message for kWalkTimeout -> no turning
+  struct TurnCommandSample
+  {
+    double wz = 0.0;
+    uint64_t seq = 0;
+  };
+  rclcpp::Subscription<humanoid_mpc_msgs::msg::WalkingVelocityCommand>::SharedPtr turn_sub_;
+  realtime_tools::RealtimeBuffer<TurnCommandSample> turn_buffer_;
+  uint64_t turn_seq_ = 0;                  // subscriber thread: messages received
+  uint64_t last_turn_seq_ = 0;             // update(): last message handled
+  double turn_cmd_ = 0.0;                  // last turn command in [-1, 1]
+  double turn_cmd_time_ = -std::numeric_limits<double>::infinity(); // [s] update time of its message
 
   // Debug topic ~/estimate (std_msgs/Float64MultiArray, 50 Hz), for PlotJuggler. data layout
   // (world frame, [left, right] per foot):

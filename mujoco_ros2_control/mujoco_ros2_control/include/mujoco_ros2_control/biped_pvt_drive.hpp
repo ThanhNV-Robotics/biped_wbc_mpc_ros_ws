@@ -17,8 +17,12 @@ namespace mujoco_ros2_control
 ///   tau = kp * (p_cmd - q) + kd * (v_cmd - dq) + tau_ff
 /// with fixed per-joint gains (joint params kp / kd, from biped_hardware/config/joint_gains.yaml),
 /// evaluated in the physics thread before every mj_step: the real motors run their PD loop on the
-/// drive, much faster than the 500 Hz command rate. Joint space only: the MJCF ankle is a serial
-/// roll / pitch chain (the parallel ankle linkage is not simulated).
+/// drive, much faster than the 500 Hz command rate. Joint space: the MJCF ankle is a serial roll /
+/// pitch chain (the parallel ankle linkage is not simulated). With Params::parallel_ankles the ankle
+/// kp / kd are the robot's motor-space gains (joint_gains.yaml section `robot`: each ankle joint
+/// carries one of the two ankle motors); both ankle joints then use the sum of the two motors'
+/// gains (each motor moves roll and pitch together: near the neutral pose the roll stiffness is
+/// exactly that sum, pitch is stiffer on the robot).
 ///
 /// States, as the board reports them:
 ///   DISABLED  zero torque (motors off): at start and after disable()
@@ -44,6 +48,9 @@ public:
     double command_timeout{ 0.02 };  // s of sim time, 0 = no timeout (firmware: 20 ms)
     double damping_kd{ 1.0 };        // Nm*s/rad (firmware: kd 1.0)
     double damping_duration{ 1.0 };  // s (firmware: 1 s)
+    // the *_ankle_roll_joint / *_ankle_pitch_joint gains are the two ankle motors' gains: both
+    // joints use their sum (see above); false: every joint its own gains
+    bool parallel_ankles{ false };
   };
 
   struct JointConfig

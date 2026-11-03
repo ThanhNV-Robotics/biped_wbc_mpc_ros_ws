@@ -50,6 +50,13 @@ namespace biped_controllers {
     // at once: new support frame on the landed foot, the plan pulled toward the measured CoM / CP,
     // the next double support. Without touchdown() at Tswing the step is late: the ZMP stays on the
     // stance sole (the CP diverges) and the swing foot keeps descending below the foothold.
+    //
+    // Heading (setYawRateCommand()): at each support switch the heading of the coming step advances
+    // by the yaw rate times one step period (double support + swing), at most max_turn_per_step from
+    // the new stance foot. The nominal step (step_length, +-stance width), the CP targets and the
+    // foothold limits are defined in the heading axes and rotated by the heading error (heading -
+    // stance foot yaw) into the support frame; the swing foot turns to the heading on the cycloid
+    // of the swing. The torso yaw reference is the mean of the two feet yaw references.
     class WalkPlanner
     {
         public:
@@ -76,6 +83,9 @@ namespace biped_controllers {
             // in the next planWalking(), early or late. Ignored outside the swing
             void touchdown() { this->touchdown_ = true; }
 
+            // yaw rate command [rad/s] (z up, left turn positive), used from the next step on
+            void setYawRateCommand(double wz) { this->yaw_rate_cmd_ = wz; }
+
             // forward speed [m/s] -> step length (clamped to [0, max_step_length]), used from the
             // next step on
             void setVelocityCommand(double vx);
@@ -93,8 +103,17 @@ namespace biped_controllers {
             const Vector3d &getRefSwingFootPosition() const { return this->swing_foot_pos_; }
             const Vector3d &getRefSwingFootVelocity() const { return this->swing_foot_vel_; }
             const Vector3d &getRefSwingFootAcceleration() const { return this->swing_foot_acc_; }
-            // swing foot orientation: flat, same yaw as the support frame (no turning yet, B11)
-            const Eigen::Matrix3d &getRefSwingFootRotation() const { return this->oMs_.rotation(); }
+            // swing foot orientation: flat, turning from its liftoff yaw to the heading of the step;
+            // its yaw rate and acceleration [rad/s, rad/s^2] (about the world z axis)
+            const Eigen::Matrix3d &getRefSwingFootRotation() const { return this->swing_rot_; }
+            double getRefSwingFootYawRate() const { return this->swing_wz_l_; }
+            double getRefSwingFootYawAcc() const { return this->swing_dwz_l_; }
+            // torso yaw reference: mean of the stance foot and the swing (other) foot yaw references
+            // (continuous across a touchdown); its rate and acceleration
+            double getRefBaseYaw() const { return this->base_yaw_; }
+            double getRefBaseYawRate() const { return 0.5 * this->swing_wz_l_; }
+            double getRefBaseYawAcc() const { return 0.5 * this->swing_dwz_l_; }
+            double getHeading() const { return this->heading_; } // world yaw of the current step
             Vector2d getRefZMP() const;  // world (x, y)
             Vector2d getRefCP() const;   // world (x, y)
             Vector2d getMeasuredCP() const; // world (x, y): CP of the robot, c + dc / w
@@ -140,6 +159,8 @@ namespace biped_controllers {
             void adaptFoothold(const Vector2d &cp_target);
             // both feet stay down: CP target in the middle of the feet, swing foot reference at rest
             void startStop();
+            // nominal foothold of the step: step_h_ rotated by the heading error into the support frame
+            void setNominalFoothold();
             // swing foot reference at phase phi (support frame), from swing_start_pos_ to foothold_
             void computeSwingTrajectory(double phi);
             // late state: the swing foot reference descends below the foothold (support frame)
@@ -176,6 +197,7 @@ namespace biped_controllers {
             double foothold_max_width_change_{0.05}; // [m] lateral range around the nominal foothold
             double foothold_max_rate_{0.5};          // [m/s] largest foothold change per second
             double foothold_freeze_phase_{0.8};      // the foothold no longer changes after this phase
+            double max_turn_per_step_{0.2};          // [rad] largest heading change of a step
 
             WalkPhase phase_ = WalkPhase::INIT;  // phase of this cycle
             bool stop_requested_ = false;        // requestStop(): last step from the next phase end on
@@ -190,6 +212,17 @@ namespace biped_controllers {
             bool late_ = false;                  // the step is past Tswing without touchdown
             double late_time_ = 0.0;             // [s] in the late state
             Vector2d cp_meas_ = Vector2d::Zero(); // measured CP of this cycle, support frame
+
+            // heading
+            double yaw_rate_cmd_ = 0.0;          // [rad/s] setYawRateCommand()
+            double heading_ = 0.0;               // [rad] world yaw of the current step (walking direction)
+            double heading_err_ = 0.0;           // [rad] heading - stance foot yaw: rotation of the step
+            Vector2d step_h_ = Vector2d::Zero(); // nominal step in the heading axes (step_length, +-stance width)
+            // yaw of the swing foot (both feet down: the other foot) relative to the support frame:
+            // at liftoff, reference of this cycle and its rate / acceleration (cycloid, as the position)
+            double swing_yaw_start_l_ = 0.0, swing_yaw_l_ = 0.0, swing_wz_l_ = 0.0, swing_dwz_l_ = 0.0;
+            double base_yaw_ = 0.0;              // [rad] torso yaw reference (world)
+            Eigen::Matrix3d swing_rot_ = Eigen::Matrix3d::Identity(); // swing foot orientation (world)
 
             pinocchio::SE3 oMs_ = pinocchio::SE3::Identity(); // support frame (world <- support)
 

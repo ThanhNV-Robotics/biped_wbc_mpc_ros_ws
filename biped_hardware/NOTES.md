@@ -281,7 +281,7 @@ coupling of the gains not handled yet); start range = URDF limits; hardware star
   mode at 0 Nm (limp). PVT mode has no mode switching. Also fixed two `get_clock()` calls that do
   not exist in Humble (the package did not compile on Humble).
 - User decision: the sim ankle is a serial chain, no ankle kinematics in sim (joint-space gains).
-- `urdf/biped_hw.urdf.xacro use_sim:=true`, `launch/sim.launch.py`, `config/joint_gains_sim.yaml`,
+- `urdf/biped_hw.urdf.xacro use_sim:=true`, `launch/sim.launch.py`, `config/joint_gains.yaml` (section `robot`),
   `biped_description/mjcf/scene_hanging_12dof_v2.xml` (torso welded at 1.0 m, keyframe `hang`).
 - Tested standalone (drive + MuJoCo 3.13, no ROS): limp hang; activation holds within 0.006 rad;
   20 ms without commands → damping → disabled. kp 100 / kd 2 stable; ankle roll chatters from

@@ -1425,6 +1425,7 @@ bool MujocoSystemInterface::configure_pvt_drive()
     params.command_timeout = std::stod(get_hardware_parameter_or(get_hardware_info(), "command_timeout", "0.02"));
     params.damping_kd = std::stod(get_hardware_parameter_or(get_hardware_info(), "damping_kd", "1.0"));
     params.damping_duration = std::stod(get_hardware_parameter_or(get_hardware_info(), "damping_duration", "1.0"));
+    params.parallel_ankles = get_hardware_parameter_or(get_hardware_info(), "parallel_ankles", "false") == "true";
 
     for (const auto& info : get_hardware_info().joints)
     {
@@ -1504,7 +1505,11 @@ bool MujocoSystemInterface::configure_pvt_drive()
   RCLCPP_INFO(get_logger(), "PVT mode (biped motors): %zu joints, tau = kp (p - q) + kd (v - dq) + tau_ff every "
                             "physics step; command timeout %.3f s -> damping kd %.2f for %.2f s -> disabled",
               n, params.command_timeout, params.damping_kd, params.damping_duration);
-  for (const auto& j : joints)
+  if (params.parallel_ankles)
+  {
+    RCLCPP_INFO(get_logger(), "  parallel ankles: ankle kp / kd = sum of the two ankle motors' gains (robot gains)");
+  }
+  for (const auto& j : pvt_drive_->joints())  // effective gains (ankles summed)
   {
     RCLCPP_INFO(get_logger(), "  %-24s kp %7.2f  kd %6.3f  range [%.3f, %.3f]", j.name.c_str(), j.kp, j.kd, j.lower,
                 j.upper);

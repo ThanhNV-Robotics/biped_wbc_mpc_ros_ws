@@ -11,7 +11,8 @@
   direction = +1 / -1 so that a positive motor angle matches the positive URDF joint angle.
   Verified on the robot 2026-10-23 by moving each joint by hand against RViz (step 3).
 
-  kp / kd come from config/joint_gains.yaml (argument `gains`): written to the motors when the
+  kp / kd come from config/joint_gains.yaml (argument `gains`), section `robot`, for the robot and
+  the simulation alike (a file without that section is used as is): written to the motors when the
   hardware is activated, then fixed (PVT commands only).
 
   use_sim:=true replaces BipedSystem with the MuJoCo simulation (mujoco_ros2_control in PVT mode,
@@ -35,7 +36,11 @@
   <xacro:arg name="lockstep" default="false"/>
   <xacro:arg name="lockstep_steps" default="1"/>  <!-- physics steps per control cycle (500 Hz: 2) -->
 
-  <xacro:property name="gains" value="${xacro.load_yaml('$(arg gains)')}"/>
+  <!-- gains: section `robot` of the file (also in the simulation), or the whole file if it has no
+       such section (joint-space gains as they are) -->
+  <xacro:property name="gains_file" value="${xacro.load_yaml('$(arg gains)')}"/>
+  <xacro:property name="robot_gains" value="${'robot' in gains_file}"/>
+  <xacro:property name="gains" value="${gains_file['robot'] if robot_gains else gains_file}"/>
 
   <xacro:include filename="$(find biped_description)/urdf/$(arg model)"/>
 
@@ -66,6 +71,9 @@
              Timeout 100 ms in sim (the robot's firmware uses 20 ms): more tolerant of slow
              cycles while the controller is being developed. -->
         <param name="pvt_mode">true</param>
+        <!-- section robot: the ankle kp / kd are the robot's motor-space gains, both sim ankle joints
+             take the sum of the two ankle motors' gains -->
+        <param name="parallel_ankles">${'true' if robot_gains else 'false'}</param>
         <param name="command_timeout">0.1</param>
         <param name="damping_kd">1.0</param>
         <param name="damping_duration">1.0</param>

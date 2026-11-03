@@ -1,10 +1,12 @@
 #include "wbc_controller/wbc_controller.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <string>
 #include <vector>
 
+#include "hardware_interface/component_parser.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "biped_wbc/common/urdf_geometry.hpp"
 #include "biped_wbc/common/utils.hpp"   // computeIK_Leg, quinticTrajectory
@@ -100,6 +102,9 @@ namespace biped_controllers
 
         // per-cycle buffers with their final sizes: update() never allocates
         this->AllocateBuffers();
+
+        // drive gains of the hardware: PVT feedforward torque while walking
+        this->loadDriveGains();
 
         // debug topic of the estimate
         this->setupDebugPublisher();
@@ -525,6 +530,107 @@ namespace biped_controllers
     }
 
     // ---------------------------------------------------------------------
+    // on_configure: drive gains of the joints from robot_description, Pinocchio order. They are the
+    // ros2_control <joint> params kp / kd (biped_hw.urdf.xacro, from the `gains` file of the launch),
+    // the gains the hardware / simulated drives apply. Parallel ankles (the robot, or the simulation
+    // with the robot gains: hardware param parallel_ankles): the ankle gains are those of the two
+    // ankle motors, each ankle joint takes their sum, as the simulated drive (an approximation of
+    // the linkage)
+    // ---------------------------------------------------------------------
+    void WBCController::loadDriveGains ()
+    {
+        const auto logger = get_node()->get_logger();
+        const int na = this->robotModel().na();
+        this->drive_kp_ = Eigen::VectorXd::Zero(na);
+        this->drive_kd_ = Eigen::VectorXd::Zero(na);
+
+        // robot_description of the controller manager (the controller sees its parameters)
+        std::string urdf;
+        if (!get_node()->get_parameter("robot_description", urdf) || urdf.empty())
+        {
+            RCLCPP_WARN(logger, "no robot_description: drive gains 0 (PVT feedforward = TSID torque)");
+            return;
+        }
+        std::vector<hardware_interface::HardwareInfo> infos;
+        try
+        {
+            infos = hardware_interface::parse_control_resources_from_urdf(urdf);
+        }
+        catch (const std::exception &e)
+        {
+            RCLCPP_WARN(logger, "robot_description: %s; drive gains 0", e.what());
+            return;
+        }
+
+        // kp / kd of each controlled joint (ros2_control order -> Pinocchio order)
+        int found = 0;
+        for (std::size_t i = 0; i < this->params_.joints.size(); ++i)
+        {
+            for (const auto &info : infos)
+            {
+                for (const auto &joint : info.joints)
+                {
+                    if (joint.name != this->params_.joints[i] || !joint.parameters.count("kp") ||
+                        !joint.parameters.count("kd"))
+                    {
+                        continue;
+                    }
+                    const int j = this->joint_map_.toPin(i);
+                    this->drive_kp_(j) = std::stod(joint.parameters.at("kp"));
+                    this->drive_kd_(j) = std::stod(joint.parameters.at("kd"));
+                    ++found;
+                }
+            }
+        }
+        // parallel ankles: the real BipedSystem (no such param) always, the simulation if it says so
+        bool parallel_ankles = true;
+        for (const auto &info : infos)
+        {
+            const auto it = info.hardware_parameters.find("parallel_ankles");
+            if (it != info.hardware_parameters.end())
+            {
+                parallel_ankles = (it->second == "true");
+            }
+        }
+        if (parallel_ankles)
+        {
+            const pinocchio::Model &model = this->robotModel().model();
+            for (const char *side : {"left", "right"})
+            {
+                const std::string roll = std::string(side) + "_ankle_roll_joint";
+                const std::string pitch = std::string(side) + "_ankle_pitch_joint";
+                if (!model.existJointName(roll) || !model.existJointName(pitch))
+                {
+                    continue;
+                }
+                // actuated index: velocity index after the 6 free-flyer DoF (as JointMap)
+                const int r = model.joints[model.getJointId(roll)].idx_v() - 6;
+                const int p = model.joints[model.getJointId(pitch)].idx_v() - 6;
+                const double kp = this->drive_kp_(r) + this->drive_kp_(p);
+                const double kd = this->drive_kd_(r) + this->drive_kd_(p);
+                this->drive_kp_(r) = this->drive_kp_(p) = kp;
+                this->drive_kd_(r) = this->drive_kd_(p) = kd;
+            }
+        }
+        if (found != static_cast<int>(this->params_.joints.size()))
+        {
+            RCLCPP_WARN(logger, "drive gains found for %d of %zu joints (the others 0)", found, this->params_.joints.size());
+        }
+        RCLCPP_INFO(logger, "drive gains (kp / kd, Pinocchio order%s) for the PVT feedforward: %s",
+                    parallel_ankles ? ", ankles: sum of the two motors" : "",
+                    [&]() {
+                        std::string s;
+                        for (int j = 0; j < na; ++j)
+                        {
+                            char buf[32];
+                            std::snprintf(buf, sizeof(buf), "%s%.1f/%.2f", j ? " " : "", this->drive_kp_(j), this->drive_kd_(j));
+                            s += buf;
+                        }
+                        return s;
+                    }().c_str());
+    }
+
+    // ---------------------------------------------------------------------
     // on_configure: subscription of the motion commands. The callback (executor thread) only
     // stores the command with a count; update() reads it without waiting (RealtimeBuffer).
     // ---------------------------------------------------------------------
@@ -543,6 +649,17 @@ namespace biped_controllers
                 sample.command = msg->command;
                 sample.seq = ++this->command_seq_;
                 this->command_buffer_.writeFromNonRT(sample);
+            });
+
+        // turn command of the velocity command (best effort, as its publishers)
+        this->turn_sub_ = get_node()->create_subscription<humanoid_mpc_msgs::msg::WalkingVelocityCommand>(
+            "/humanoid/walking_velocity_command", rclcpp::SensorDataQoS(),
+            [this](const humanoid_mpc_msgs::msg::WalkingVelocityCommand::SharedPtr msg)
+            {
+                TurnCommandSample sample;
+                sample.wz = msg->angular_velocity_z;
+                sample.seq = ++this->turn_seq_;
+                this->turn_buffer_.writeFromNonRT(sample);
             });
     }
 
@@ -690,8 +807,11 @@ namespace biped_controllers
         this->liftoff_seen_ = false;
         this->swing_state_ = SwingState::SWING;
 
-        // base upright: roll = pitch = yaw = 0 (translation masked out in the task)
-        this->qp_tsid_controller_->setBaseReference(pinocchio::SE3::Identity(), this->zero6_, this->zero6_);
+        // base upright at the yaw between the feet (translation masked out in the task); turning
+        // moves it with the feet (computeWalkCommand)
+        this->base_pose_.rotation() =
+            Eigen::AngleAxisd(this->walk_planner_->getRefBaseYaw(), Eigen::Vector3d::UnitZ()).toRotationMatrix();
+        this->qp_tsid_controller_->setBaseReference(this->base_pose_, this->zero6_, this->zero6_);
 
         // joint command: from the last one until the first walk cycle (the posture reference stays
         // the stand pose)
@@ -722,9 +842,20 @@ namespace biped_controllers
             RCLCPP_INFO(logger, "walk command released: stopping");
         }
 
-        // planner: one cycle at the walking speed of the yaml (walk_vx, 0 = stepping in place). Its
-        // timing (CoM plan, support switch) is time based in both modes
-        this->walk_planner_->setVelocityCommand(this->params_.walk_vx);
+        // turn command: the last message, 0 once it is older than kWalkTimeout (key / stick released)
+        const TurnCommandSample &turn = *this->turn_buffer_.readFromRT();
+        if (turn.seq != this->last_turn_seq_)
+        {
+            this->last_turn_seq_ = turn.seq;
+            this->turn_cmd_ = std::clamp(turn.wz, -1.0, 1.0);
+            this->turn_cmd_time_ = time.seconds();
+        }
+        const double turn_cmd = time.seconds() - this->turn_cmd_time_ <= kWalkTimeout ? this->turn_cmd_ : 0.0;
+        this->walk_planner_->setYawRateCommand(turn_cmd * this->params_.max_yaw_rate);
+
+        // planner speed: the walking speed of the yaml (walk_vx, 0 = stepping in place); turning
+        // happens in place (no step length while a turn is commanded). Both from the next step on
+        this->walk_planner_->setVelocityCommand(turn_cmd != 0.0 ? 0.0 : this->params_.walk_vx);
         this->walk_planner_->planWalking(this->q_, this->v_);
         const bool swinging = this->walk_planner_->isSwinging();
         const int swing_foot = this->walk_planner_->getSwingFoot();
@@ -840,9 +971,9 @@ namespace biped_controllers
                 this->swing_pose_.rotation() = this->walk_planner_->getRefSwingFootRotation();
                 this->swing_pose_.translation() = this->walk_planner_->getRefSwingFootPosition();
                 this->swing_vel_.head<3>() = this->walk_planner_->getRefSwingFootVelocity();
-                this->swing_vel_.tail<3>().setZero();
+                this->swing_vel_.tail<3>() << 0.0, 0.0, this->walk_planner_->getRefSwingFootYawRate();
                 this->swing_acc_.head<3>() = this->walk_planner_->getRefSwingFootAcceleration();
-                this->swing_acc_.tail<3>().setZero();
+                this->swing_acc_.tail<3>() << 0.0, 0.0, this->walk_planner_->getRefSwingFootYawAcc();
             }
             this->qp_tsid_controller_->setSwingReference(swing_foot, this->swing_pose_, this->swing_vel_, this->swing_acc_);
             if (this->qp_tsid_controller_->isContactActive(swing_foot))
@@ -850,6 +981,13 @@ namespace biped_controllers
                 this->qp_tsid_controller_->liftFoot(swing_foot);
             }
         }
+
+        // torso yaw between the feet (upright), with its rate / acceleration feedforward
+        this->base_pose_.rotation() =
+            Eigen::AngleAxisd(this->walk_planner_->getRefBaseYaw(), Eigen::Vector3d::UnitZ()).toRotationMatrix();
+        this->base_vel_(5) = this->walk_planner_->getRefBaseYawRate();
+        this->base_acc_(5) = this->walk_planner_->getRefBaseYawAcc();
+        this->qp_tsid_controller_->setBaseReference(this->base_pose_, this->base_vel_, this->base_acc_);
 
         // CoM reference of the planner (copied into the size-3 buffers: no temporary)
         this->com_ref_ = this->walk_planner_->getRefCoMPosition();
@@ -870,14 +1008,28 @@ namespace biped_controllers
         this->dv_ = this->qp_tsid_controller_->getAccelerations();
         this->tau_ = this->qp_tsid_controller_->getTorques();
 
-        // drive command: the measured joint state, so the drive PD is zero at the read instant and
-        // the TSID torque does the work (as torque control). Not q + v dt: kp * v * dt pushes along
-        // the joint velocity (negative damping), large on the light swing ankle
-        this->q_des_ = this->q_.tail(na);
-        this->v_des_ = this->v_.tail(na);
+        // drive command (PVT): the measured joint state integrated one cycle with the TSID
+        // accelerations, v_des = v + dv dt, q_des = q + v dt + dv dt^2 / 2 (from the measurement each
+        // cycle: no drift), and the feedforward torque minus the drive PD at that state,
+        //   tau_ff = tau - [kp (q_des - q) + kd (v_des - v)]
+        // so the drive applies the TSID torque at the measured state, and its PD only acts on the
+        // deviation from the predicted motion (latency, between the cycles). torque_mode: only the
+        // effort is sent (drive kp = kd = 0), tau_ff = tau
+        const double dt = this->dt_;
+        const auto qj = this->q_.tail(na), vj = this->v_.tail(na), dvj = this->dv_.tail(na);
+        this->v_des_ = vj + dt * dvj;
+        this->q_des_ = qj + dt * vj + (0.5 * dt * dt) * dvj;
         this->q_cmd_ = this->q_des_;
         this->v_cmd_ = this->v_des_;
-        this->tau_cmd_ = this->tau_;
+        if (this->params_.torque_mode)
+        {
+            this->tau_cmd_ = this->tau_;
+        }
+        else
+        {
+            this->tau_cmd_ = this->tau_ - (this->drive_kp_.cwiseProduct(this->q_des_ - qj) +
+                                           this->drive_kd_.cwiseProduct(this->v_des_ - vj));
+        }
 
         // at rest (double support) once the planned CoM has reached its CP (the middle of the feet,
         // it converges after the stop phase): standing again, every reference held where it is (the

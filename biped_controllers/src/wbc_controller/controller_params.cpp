@@ -30,6 +30,7 @@ void ControllerParams::declare(rclcpp_lifecycle::LifecycleNode &node) const
   declare("ground_truth_topic", this->ground_truth_topic);
   declare("torque_mode", this->torque_mode);
   declare("walk_vx", this->walk_vx);
+  declare("max_yaw_rate", this->max_yaw_rate);
   declare("use_time_base", this->use_time_base);
   declare("touchdown_confirm_time", this->touchdown_confirm_time);
   declare("late_touchdown_timeout", this->late_touchdown_timeout);
@@ -53,6 +54,7 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   this->ground_truth_topic = node.get_parameter("ground_truth_topic").as_string();
   this->torque_mode = node.get_parameter("torque_mode").as_bool();
   this->walk_vx = node.get_parameter("walk_vx").as_double();
+  this->max_yaw_rate = node.get_parameter("max_yaw_rate").as_double();
   this->use_time_base = node.get_parameter("use_time_base").as_bool();
   this->touchdown_confirm_time = node.get_parameter("touchdown_confirm_time").as_double();
   this->late_touchdown_timeout = node.get_parameter("late_touchdown_timeout").as_double();
@@ -72,6 +74,11 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   if (this->walk_vx < 0.0)
   {
     RCLCPP_ERROR(logger, "parameter 'walk_vx' = %.3f m/s: must be >= 0 (forward walking only)", this->walk_vx);
+    return false;
+  }
+  if (this->max_yaw_rate < 0.0)
+  {
+    RCLCPP_ERROR(logger, "parameter 'max_yaw_rate' = %.3f rad/s: must be >= 0", this->max_yaw_rate);
     return false;
   }
   if (this->touchdown_confirm_time < 0.0 || this->late_touchdown_timeout < 0.0)
@@ -100,6 +107,7 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
               this->left_foot_frame.c_str(), this->right_foot_frame.c_str(), this->imu_name.c_str(),
               this->enabled_interface.c_str());
   RCLCPP_INFO(logger, "walk_vx: %.3f m/s%s", this->walk_vx, this->walk_vx == 0.0 ? " (stepping in place)" : "");
+  RCLCPP_INFO(logger, "max_yaw_rate: %.3f rad/s (turn command of /humanoid/walking_velocity_command)", this->max_yaw_rate);
   RCLCPP_INFO(logger, "use_time_base: %s", this->use_time_base
                                                ? "true (step ends after Tswing)"
                                                : "false (event based: steps end at the touchdown of the contact estimator)");

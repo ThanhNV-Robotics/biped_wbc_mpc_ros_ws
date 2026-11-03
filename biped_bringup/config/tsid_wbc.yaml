@@ -19,6 +19,7 @@ LIPPlanner:
   foothold_max_width_change: 0.05 # [m] lateral range around the nominal foothold
   foothold_max_rate: 0.5 # [m/s] largest foothold change per second (smooth swing target)
   foothold_freeze_phase: 0.8 # the foothold no longer changes after this step phase
+  max_turn_per_step: 0.2 # [rad] largest heading change of a step (turning: max_yaw_rate of the controller yaml)
 
 contact_tasks: # List of 6D rigid contacts
   - contact_frame: "left_ankle_pitch_link"

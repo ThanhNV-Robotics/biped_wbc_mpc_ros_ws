@@ -79,7 +79,7 @@ def generate_launch_description():
             description='URDF file name inside biped_description/urdf'),
         DeclareLaunchArgument(
             'gains',
-            default_value=PathJoinSubstitution([hw_share, 'config', 'joint_gains_sim.yaml']),
+            default_value=PathJoinSubstitution([hw_share, 'config', 'joint_gains.yaml']),
             description='kp / kd per joint, fixed while active'),
         DeclareLaunchArgument(
             'mujoco_scene',

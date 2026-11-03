@@ -1,7 +1,18 @@
-# Impedance gains written to the motors when BipedSystem is activated (enabled), then fixed:
-# while active only PVT commands (position, velocity, feed-forward torque) are sent.
+# Joint drive gains of the robot, used by the real robot AND the MuJoCo simulation (one set of
+# gains, no mismatch): urdf/biped_hw.urdf.xacro reads section `robot` for both. The drive law,
+# every cycle (robot: on the motor drives; simulation: every physics step):
 #
-# Motor law: tau = kp * (pos_target - q) + kd * (vel_target - dq) + tau_ff   [Nm, rad, rad/s]
+#   tau = kp * (pos_target - q) + kd * (vel_target - dq) + tau_ff   [Nm, rad, rad/s]
+#
+# The WBC reads the same gains from robot_description (PVT feedforward tau_ff = TSID torque - drive
+# PD). kp must be in [0, 1000], kd in [0, 50] (checked in on_init).
+# Another file can be passed with the launch argument `gains:=`: with a `robot` section it is used as
+# this one; without it (just the joint lines) its gains act on the joints as they are (the
+# simulation then applies no ankle sum, see below).
+
+# ---- Real robot ----------------------------------------------------------------------------------
+# Impedance gains written to the motors when BipedSystem is activated (enabled), then fixed: while
+# active only PVT commands (position, velocity, feed-forward torque) are sent.
 #
 # Hips / knees: the joint's own motor (direction does not matter for gains).
 # Ankles: the gains of the MOTOR each ankle joint carries, in motor space:
@@ -13,19 +24,31 @@
 # The firmware writes these at enable, reads them back and refuses to enable on a mismatch.
 # The motors' RAM gains were all 0 on 2026-10-23 (`nucleotool md -i <id> info`).
 #
-# START VALUES ARE 0 (motors enabled but limp). Fill in your values before jogging.
-# kp must be in [0, 1000], kd in [0, 50] (checked in on_init).
+# ---- In the simulation ---------------------------------------------------------------------------
+# The MJCF ankle is a serial roll / pitch chain (the linkage is not simulated): both ankle joints use
+# the sum of the two ankle motors' gains (hardware param parallel_ankles; the WBC's feed-forward
+# too). Exact for roll near neutral (100 Nm/rad from 50 + 50); pitch is about 3.5x stiffer on the
+# robot (Jacobian 1.87 per motor: ~350 Nm/rad).
+# Limits of the simulation for these gains:
+#   - The MJCF links are light: with the 1 ms explicit step, kd * 0.001 / (joint inertia) must stay
+#     well below 2 or the joint chatters. Ankle roll is the critical one (armature 0.00088 kg m^2,
+#     40 g link): kd 3 already chatters there, keep the ankle kd (the sum) <= ~1.
+#   - Standing on the drives alone (floating base, before the WBC takes over) the ankles carry the
+#     whole robot as an inverted pendulum: 2 * ankle kp (the sum) must exceed m g h (20.7 kg, CoM
+#     ~0.6 m -> ~120 Nm/rad). The sum 100 / 1.0 stands upright (tilt 0.2 deg).
+#   - torque_mode: true (controllers_sim_floating.yaml) runs the drives with kp = kd = 0 while the
+#     WBC is active: these gains then only act before (holding the pose at activation).
+robot:
+  left_hip_pitch_joint:    {kp: 120.0, kd: 1.20}   # MD 10
+  left_hip_roll_joint:     {kp: 150.0, kd: 1.5}    # MD 20
+  left_hip_yaw_joint:      {kp: 80.0,  kd: 0.75}   # MD 30
+  left_knee_pitch_joint:   {kp: 100.0, kd: 0.5}    # MD 40
+  left_ankle_roll_joint:   {kp: 50.0,  kd: 0.5}    # MD 50 (upper ankle motor)
+  left_ankle_pitch_joint:  {kp: 50.0,  kd: 0.5}    # MD 60 (lower ankle motor)
 
-left_hip_pitch_joint:    {kp: 120.0, kd: 1.20}   # MD 10
-left_hip_roll_joint:     {kp: 150.0, kd: 1.5}   # MD 20
-left_hip_yaw_joint:      {kp: 80.0, kd: 0.75}   # MD 30
-left_knee_pitch_joint:   {kp: 100.0, kd: 0.5}   # MD 40
-left_ankle_roll_joint:   {kp: 30.0, kd: 0.5}   # MD 50 (upper ankle motor)
-left_ankle_pitch_joint:  {kp: 50.0, kd: 0.5}   # MD 60 (lower ankle motor)
-
-right_hip_pitch_joint:   {kp: 120.0, kd: 1.20}   # MD 70
-right_hip_roll_joint:    {kp: 150.0, kd: 1.5}   # MD 80
-right_hip_yaw_joint:     {kp: 80.0, kd: 0.75}   # MD 90
-right_knee_pitch_joint:  {kp: 100.0, kd: 0.5}   # MD 100
-right_ankle_roll_joint:  {kp: 30.0, kd: 0.5}   # MD 110 (upper ankle motor)
-right_ankle_pitch_joint: {kp: 50.0, kd: 0.5}   # MD 120 (lower ankle motor)
+  right_hip_pitch_joint:   {kp: 120.0, kd: 1.20}   # MD 70
+  right_hip_roll_joint:    {kp: 150.0, kd: 1.5}    # MD 80
+  right_hip_yaw_joint:     {kp: 80.0,  kd: 0.75}   # MD 90
+  right_knee_pitch_joint:  {kp: 100.0, kd: 0.5}    # MD 100
+  right_ankle_roll_joint:  {kp: 50.0,  kd: 0.5}    # MD 110 (upper ankle motor)
+  right_ankle_pitch_joint: {kp: 50.0,  kd: 0.5}    # MD 120 (lower ankle motor)

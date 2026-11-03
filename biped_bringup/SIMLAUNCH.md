@@ -48,7 +48,7 @@ Declared at the bottom of the file with `DeclareLaunchArgument`, read with
 | Argument | Default | Goes to |
 |---|---|---|
 | `model` | `v2_biped_robot_12dof.urdf` | xacro: which URDF to include |
-| `gains` | `<share>/biped_hardware/config/joint_gains_sim.yaml` | xacro: kp / kd of every joint |
+| `gains` | `<share>/biped_hardware/config/joint_gains.yaml` | xacro: kp / kd of every joint (section `robot`, as the robot) |
 | `mujoco_scene` | `scene_floatingbase_12dof_v2.xml` | xacro → hardware param `mujoco_model` |
 | `initial_keyframe` | `home` | xacro → hardware param `initial_keyframe` |
 | `headless` | `false` | xacro → hardware param `headless` (no MuJoCo window) |
@@ -63,7 +63,7 @@ The launch runs `xacro` once and keeps its output (a complete URDF, as one strin
 ```bash
 xacro <share>/biped_hardware/urdf/biped_hw.urdf.xacro \
   use_sim:=true model:=v2_biped_robot_12dof.urdf \
-  gains:=<share>/biped_hardware/config/joint_gains_sim.yaml \
+  gains:=<share>/biped_hardware/config/joint_gains.yaml \
   mujoco_scene:=scene_floatingbase_12dof_v2.xml initial_keyframe:=home headless:=false
 ```
 
@@ -75,7 +75,7 @@ Files read by xacro:
 |---|---|---|
 | `urdf/biped_hw.urdf.xacro` | biped_hardware | top file: arguments, the `<ros2_control>` block |
 | `urdf/v2_biped_robot_12dof.urdf` | biped_description | `<xacro:include>`: 14 links / joints, inertias, meshes (`package://biped_description/urdf/meshes/*.stl`) |
-| `config/joint_gains_sim.yaml` | biped_hardware | `xacro.load_yaml`: kp / kd per joint |
+| `config/joint_gains.yaml` | biped_hardware | `xacro.load_yaml`: kp / kd per joint (section `robot`) |
 
 What the `<ros2_control name="BipedSystem">` block becomes with `use_sim:=true`:
 
@@ -299,7 +299,7 @@ ros2 control list_hardware_components     # BipedSystem: active
 | `launch/sim_floating.launch.py` | biped_bringup | `ros2 launch` |
 | `urdf/biped_hw.urdf.xacro` | biped_hardware | xacro (step 2) |
 | `urdf/v2_biped_robot_12dof.urdf` + `urdf/meshes/*.stl` | biped_description | xacro, robot_state_publisher, rviz2 |
-| `config/joint_gains_sim.yaml` | biped_hardware | xacro → kp / kd in the URDF |
+| `config/joint_gains.yaml` | biped_hardware | xacro → kp / kd in the URDF (section `robot`) |
 | `config/controllers.yaml` | biped_bringup | controller_manager + controllers |
 | `config/controllers_sim_floating.yaml` | biped_bringup | controller_manager (activate at startup) |
 | `mjcf/scene_floatingbase_12dof_v2.xml` (keyframe `home`) | biped_description | MuJoCo plugin |
@@ -321,7 +321,7 @@ ros2 control list_hardware_components     # BipedSystem: active
   robot starts at one pose and jumps to the other).
 - Joint order of `HOME` = `joints:` of `position_controller` in `controllers.yaml`
   (left hip pitch, hip roll, hip yaw, knee, ankle roll, ankle pitch, then right).
-- Joint names: URDF, MJCF, `joint_gains_sim.yaml`, `controllers.yaml`.
+- Joint names: URDF, MJCF, `joint_gains.yaml` (both sections), `controllers.yaml`.
 - Only one controller may claim the position interfaces: deactivate `position_controller` before
   activating `joint_jogging_controller` or a WBC that uses them
   (`ros2 control switch_controllers --deactivate position_controller --activate <other>`).

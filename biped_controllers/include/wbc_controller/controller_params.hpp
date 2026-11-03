@@ -41,6 +41,9 @@ struct ControllerParams
   // [m/s] forward walking speed of the walk command (step length = walk_vx * Tswing, clamped to
   // [0, max_step_length] of the planner yaml); 0 = stepping in place
   double walk_vx = 0.0;
+  // [rad/s] yaw rate at full turn command: angular_velocity_z in [-1, 1] of
+  // /humanoid/walking_velocity_command times this (left turn positive); 0 = no turning
+  double max_yaw_rate = 0.2;
   // contact switching while walking. true: time based, the swing foot lands at the end of the
   // step (Tswing, phase variable of the planner). false: event based (contact FSM of Bledt et al.
   // ICRA 2018, Sec. VI): when the contact estimator (contact fusion) detects the swing foot on the
