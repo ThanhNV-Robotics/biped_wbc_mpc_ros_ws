@@ -24,6 +24,7 @@
 #include "biped_wbc/planner/WalkPlanner.hpp"
 #include "mjSimulator/LIPSimulator.hpp"
 #include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/multibody/joint/joint-free-flyer.hpp>
 
 using biped_controllers::WalkPlanner;
@@ -74,6 +75,7 @@ int main(int argc, char **argv)
     q0.tail(robot->na()) = utils::computeIntialStandConfig(model, data, kHipWidth, kBaseHeight);
     q0(2) = kBaseHeight + kAnkleHeight; // ankles kAnkleHeight above the ground (z = 0)
     Eigen::VectorXd q = q0;
+    Eigen::VectorXd v = Eigen::VectorXd::Zero(model.nv); // finite difference of q: measured CP of the planner
     planner->reset(q);
     int ik_failures = 0;
 
@@ -124,6 +126,7 @@ int main(int argc, char **argv)
         if (sim->ConsumeRestart())
         {
             q = q0;
+            v.setZero();
             planner->reset(q);
             com_hist.clear();
             zmp_hist.clear();
@@ -139,8 +142,10 @@ int main(int argc, char **argv)
         }
         while (!paused && sim_time + dt <= wall)
         {
-            planner->planWalking(q);
+            planner->planWalking(q, v);
+            const Eigen::VectorXd q_prev = q;
             trackPlan();
+            v = pinocchio::difference(model, q_prev, q) / dt;
             sim_time += dt;
             if (++ticks % std::max(1, static_cast<int>(0.01 / dt)) == 0)
             {

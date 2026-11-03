@@ -208,6 +208,12 @@ namespace biped_controllers
         this->contact_active_[i] = true;
     }
 
+    pinocchio::SE3 QP_TSID::getFootPose(int i)
+    {
+        // same source as the contact reference of landFoot: TSID data of the last solve
+        return this->robot_wrapper_.framePosition(this->tsid_.data(), this->foot_id_[i]);
+    }
+
     bool QP_TSID::solve(double t, const Eigen::VectorXd &q, const Eigen::VectorXd &v)
     {
         // QP of this cycle from the current tasks, contacts and state

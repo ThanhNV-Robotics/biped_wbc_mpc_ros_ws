@@ -685,9 +685,10 @@ namespace biped_controllers
     {
         // planner from the estimated state: support frame on the left ankle, LIP at the CoM height
         this->walk_planner_->reset(this->q_);
+        this->walk_planner_->setWaitForTouchdown(!this->params_.use_time_base); // event based: late steps wait
         this->prev_swing_foot_ = -1; // touchdown detection: no step yet
         this->liftoff_seen_ = false;
-        this->landed_ = false;
+        this->swing_state_ = SwingState::SWING;
 
         // base upright: roll = pitch = yaw = 0 (translation masked out in the task)
         this->qp_tsid_controller_->setBaseReference(pinocchio::SE3::Identity(), this->zero6_, this->zero6_);
@@ -724,35 +725,94 @@ namespace biped_controllers
         // planner: one cycle at the walking speed of the yaml (walk_vx, 0 = stepping in place). Its
         // timing (CoM plan, support switch) is time based in both modes
         this->walk_planner_->setVelocityCommand(this->params_.walk_vx);
-        this->walk_planner_->planWalking(this->q_);
+        this->walk_planner_->planWalking(this->q_, this->v_);
         const bool swinging = this->walk_planner_->isSwinging();
         const int swing_foot = this->walk_planner_->getSwingFoot();
 
-        // early touchdown (use_time_base false): the contact estimator (estimate() of this cycle)
-        // has seen the swing foot off the ground in this step and now on it, past kMinTouchdownPhase.
-        // The foot lands in TSID at once and stays down until the planner's step ends; a late
-        // touchdown lands at the end of the step (Tswing, the time-out)
-        if (swinging && swing_foot != this->prev_swing_foot_)
+        // contact FSM of the swing foot (use_time_base false, Bledt et al. ICRA 2018, Sec. VI) with
+        // the contact estimator (estimate() of this cycle); an early contact counts only after the
+        // foot was seen off the ground in this step and from kMinTouchdownPhase on. A confirmed
+        // touchdown (CONTACT) ends the planner's step at once (touchdown()), early or late, and its
+        // double support starts; without it the step waits at Tswing (late)
+        if (swinging && swing_foot != this->prev_swing_foot_) // first cycle of a new step (other foot swings)
         {
-            this->liftoff_seen_ = false; // new step
-            this->landed_ = false;
+            this->liftoff_seen_ = false;                       // the new swing foot is still down
+            this->swing_state_ = SwingState::SWING;            // FSM restarts: follow the swing trajectory
         }
-        if (!this->params_.use_time_base && swinging && !this->landed_)
+        // run the FSM only in event mode, during a step, until the touchdown is confirmed
+        if (!this->params_.use_time_base && swinging && this->swing_state_ != SwingState::CONTACT)
         {
-            const bool contact = this->contact_fusion_->getContactState(swing_foot);
-            this->liftoff_seen_ = this->liftoff_seen_ || !contact;
-            if (this->liftoff_seen_ && contact && this->walk_planner_->getPhase() >= kMinTouchdownPhase)
+            const bool contact = this->contact_fusion_->getContactState(swing_foot); // estimated contact s_hat
+            const double phase = this->walk_planner_->getPhase();                   // step phase in [0, 1)
+            const char *foot_name = swing_foot == 0 ? "left" : "right";             // for the logs
+            this->liftoff_seen_ = this->liftoff_seen_ || !contact;                   // latched once the foot is seen in the air
+            if (this->swing_state_ == SwingState::SWING) // SWING: waiting for a touchdown
             {
-                this->landed_ = true;
-                RCLCPP_INFO(logger, "touchdown of the %s foot detected at step phase %.2f: contact on",
-                            swing_foot == 0 ? "left" : "right", this->walk_planner_->getPhase());
+                // SWING -> EARLY: contact before the step ends, stop the trajectory and hold the foot
+                // where it touched down (flat, the planned orientation); no load on it yet
+                // (liftoff seen: not the contact still reported right after liftoff; phase: no touchdown
+                // in the first half of the swing)
+                if (this->liftoff_seen_ && contact && phase >= kMinTouchdownPhase)
+                {
+                    this->swing_state_ = SwingState::EARLY;                // stop following the trajectory
+                    this->early_start_time_ = time.seconds();              // t0: start of the confirmation timer
+                    this->hold_pose_.translation() = this->qp_tsid_controller_->getFootPose(swing_foot).translation(); // hold where it touched down
+                    this->hold_pose_.rotation() = this->walk_planner_->getRefSwingFootRotation();                   // flat, planned yaw
+                    RCLCPP_INFO(logger, "early touchdown of the %s foot at step phase %.2f: holding the foot",
+                                foot_name, phase);
+                }
+                // SWING -> LATE: the step reached its end (planner waits at phase 1) without contact
+                else if (this->walk_planner_->isLate())
+                {
+                    this->swing_state_ = SwingState::LATE; // the planner's swing reference descends below the foothold
+                    RCLCPP_INFO(logger, "late touchdown of the %s foot: no contact at the end of the step, descending",
+                                foot_name);
+                }
+            }
+            else if (this->swing_state_ == SwingState::LATE) // LATE: waiting for any contact
+            {
+                const double late_time = this->walk_planner_->getLateTime(); // [s] past Tswing
+                if (contact) // LATE -> CONTACT: the paper's s_hat = 1, no confirmation (the foot is overdue)
+                {
+                    this->swing_state_ = SwingState::CONTACT;
+                    RCLCPP_INFO(logger, "late touchdown of the %s foot %.3f s after the step end: contact on",
+                                foot_name, late_time);
+                }
+                else if (this->params_.late_touchdown_timeout > 0.0 && late_time >= this->params_.late_touchdown_timeout)
+                {
+                    this->swing_state_ = SwingState::CONTACT; // timeout: the foot lands in TSID in the air
+                    RCLCPP_WARN(logger, "no touchdown of the %s foot %.3f s after the step end: contact on anyway",
+                                foot_name, late_time);
+                }
+            }
+            else if (!contact) // EARLY, contact gone
+            {
+                // EARLY -> SWING: fleeting contact (lost before the confirmation), the trajectory resumes
+                this->swing_state_ = SwingState::SWING; // back to the swing reference of the planner
+                RCLCPP_INFO(logger, "contact of the %s foot lost after %.3f s: swing resumes", foot_name,
+                            time.seconds() - this->early_start_time_);
+            }
+            else if (time.seconds() - this->early_start_time_ >= this->params_.touchdown_confirm_time) // EARLY, contact held t >= t0 + t_delay
+            {
+                // EARLY -> CONTACT: the contact held for t_delay, the foot carries load (lands below)
+                this->swing_state_ = SwingState::CONTACT; // landFoot in the contact loop below; FSM idle until the next step
+                RCLCPP_INFO(logger, "touchdown of the %s foot confirmed at step phase %.2f: contact on",
+                            foot_name, phase);
+            }
+            // touchdown: the planner ends the step at Tswing, or in its next cycle if it is late
+            if (this->swing_state_ == SwingState::CONTACT)
+            {
+                this->walk_planner_->touchdown();
             }
         }
-        this->prev_swing_foot_ = swinging ? swing_foot : -1;
-        const bool in_swing = swinging && !this->landed_;
+        this->prev_swing_foot_ = swinging ? swing_foot : -1;                          // detects the next step
+        const bool in_swing = swinging && this->swing_state_ != SwingState::CONTACT; // SWING / EARLY / LATE: swing task, no contact
 
         // contacts: the plan, the swing foot down once landed; land first, then lift with its
-        // swing reference set
+        // swing reference set. Contact fusion prior (next estimate()): the plan and the swing phase,
+        // 0.5 with both feet down (double support, as tsid_examples); a LATE swing foot is scheduled
+        // in contact (paper Sec. VI, s_phi = 1), its stance phase counting from the step end (the
+        // prior favors a contact more as the foot gets later)
         for (int i = 0; i < 2; ++i)
         {
             const bool in_contact = !(in_swing && swing_foot == i);
@@ -760,17 +820,30 @@ namespace biped_controllers
             {
                 this->qp_tsid_controller_->landFoot(i);
             }
-            this->scheduled_contact_[i] = in_contact;
-            this->contact_phase_[i] = this->walk_planner_->getPhase();
+            const bool late_foot = !in_contact && this->swing_state_ == SwingState::LATE;
+            this->scheduled_contact_[i] = in_contact || late_foot;
+            this->contact_phase_[i] = late_foot  ? this->walk_planner_->getLateTime() / this->walk_planner_->getTswing()
+                                      : swinging ? this->walk_planner_->getPhase()
+                                                 : 0.5;
         }
         if (in_swing)
         {
-            this->swing_pose_.rotation() = this->walk_planner_->getRefSwingFootRotation();
-            this->swing_pose_.translation() = this->walk_planner_->getRefSwingFootPosition();
-            this->swing_vel_.head<3>() = this->walk_planner_->getRefSwingFootVelocity();
-            this->swing_vel_.tail<3>().setZero();
-            this->swing_acc_.head<3>() = this->walk_planner_->getRefSwingFootAcceleration();
-            this->swing_acc_.tail<3>().setZero();
+            // swing trajectory of the planner, or (EARLY) the touchdown pose at rest
+            if (this->swing_state_ == SwingState::EARLY)
+            {
+                this->swing_pose_ = this->hold_pose_;
+                this->swing_vel_.setZero();
+                this->swing_acc_.setZero();
+            }
+            else
+            {
+                this->swing_pose_.rotation() = this->walk_planner_->getRefSwingFootRotation();
+                this->swing_pose_.translation() = this->walk_planner_->getRefSwingFootPosition();
+                this->swing_vel_.head<3>() = this->walk_planner_->getRefSwingFootVelocity();
+                this->swing_vel_.tail<3>().setZero();
+                this->swing_acc_.head<3>() = this->walk_planner_->getRefSwingFootAcceleration();
+                this->swing_acc_.tail<3>().setZero();
+            }
             this->qp_tsid_controller_->setSwingReference(swing_foot, this->swing_pose_, this->swing_vel_, this->swing_acc_);
             if (this->qp_tsid_controller_->isContactActive(swing_foot))
             {
@@ -892,7 +965,9 @@ namespace biped_controllers
         this->rt_debug_pub_->lock();
         auto &msg = this->rt_debug_pub_->msg_;
         msg.layout.dim.resize(1);
-        msg.layout.dim[0].label = "p_base[3] v_base[3] contact_prob[2] f_z[2] sole_z[2] contact[2] accel_bias[3]";
+        msg.layout.dim[0].label = "p_base[3] v_base[3] contact_prob[2] f_z[2] sole_z[2] contact[2] accel_bias[3] "
+                                  "cp_ref[2] cp_meas[2] zmp_ref[2] com_ref[2] foothold[2] swing_phase "
+                                  "walk_state swing_state swing_foot"; // walk planner, world xy
         msg.layout.dim[0].size = kDebugSize;
         msg.layout.dim[0].stride = kDebugSize;
         msg.data.assign(kDebugSize, 0.0);
@@ -936,6 +1011,22 @@ namespace biped_controllers
             d[10 + i] = this->contact_fusion_->getFootHeight(i);
             d[12 + i] = this->contact_fusion_->getContactState(i) ? 1.0 : 0.0;
         }
+
+        // walk planner (last plan, world xy): CP, measured CP, ZMP, CoM, foothold; swing phase;
+        // walk state 0 init / 1 double support / 2 swing / 3 stop / 4 rest; swing FSM state
+        const Vector2d cp = this->walk_planner_->getRefCP(), cp_meas = this->walk_planner_->getMeasuredCP();
+        const Vector2d zmp = this->walk_planner_->getRefZMP();
+        const Vector3d com = this->walk_planner_->getRefCoMPosition(), foot = this->walk_planner_->getFoothold();
+        const double xy[10] = {cp.x(), cp.y(), cp_meas.x(), cp_meas.y(), zmp.x(), zmp.y(),
+                               com.x(), com.y(), foot.x(), foot.y()};
+        for (int k = 0; k < 10; ++k) d[17 + k] = xy[k];
+        d[27] = this->walk_planner_->getPhase();
+        const WalkPhase phase = this->walk_planner_->getWalkPhase();
+        d[28] = phase == WalkPhase::INIT ? 0.0
+              : phase == WalkPhase::STEP ? (this->walk_planner_->inDoubleSupport() ? 1.0 : 2.0)
+              : phase == WalkPhase::STOP ? 3.0 : 4.0;
+        d[29] = static_cast<double>(this->swing_state_);
+        d[30] = this->walk_planner_->getSwingFoot();
         this->rt_debug_pub_->unlockAndPublish();
     }
 

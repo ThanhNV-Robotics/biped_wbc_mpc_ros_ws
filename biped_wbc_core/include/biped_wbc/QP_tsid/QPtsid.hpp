@@ -74,6 +74,9 @@ namespace biped_controllers
         void liftFoot(int i);
         void landFoot(int i);
         bool isContactActive(int i) const { return this->contact_active_[i]; }
+        // ankle pose of foot i (0 left, 1 right), world frame, from the state of the last solve
+        // (e.g. to hold a swing foot where it touched down)
+        pinocchio::SE3 getFootPose(int i);
 
         // solve the QP of this cycle (t [s]: drives the contact transitions); false if the QP failed
         // (the last solution is kept)

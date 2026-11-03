@@ -3,8 +3,22 @@ LIPPlanner:
   sampling_frequency: 500 # Hz
   com_height: 0.45  # com height
   max_step_length: 0.3
+  double_support_time: 0.2 # [s] double support at the start of each step (after the touchdown, before the trailing foot lifts off); 0 = instant switch
   hip_width: 0.27 #
-  step_height: 0.1 # [m] swing foot peak height above the ground (at mid-swing)
+  step_height: 0.05 # [m] swing foot peak height above the ground (at mid-swing)
+  swing_landing_depth: 0.0 # [m] the swing trajectory ends this far below the foothold: the foot lands before the step end, moving down (an impact the contact estimator detects)
+  # late touchdown (use_time_base false): no contact at the end of the step -> the swing foot keeps
+  # descending below the foothold until the touchdown
+  late_descent_speed: 0.2 # [m/s] descent speed below the foothold
+  late_descent_ramp_time: 0.05 # [s] the descent speed ramps up from 0 over this time (no velocity jump)
+  late_max_depth: 0.05 # [m] deepest swing target below the foothold
+  # CP feedback (tsid_examples doc/event_based_control.md, Stage 1-3)
+  cp_feedback_gain: 0.3 # measured-CP blend of the receding-horizon ZMP and of the touchdown re-seed (0 = open loop)
+  zmp_hold_time: 0.03 # [s] the ZMP is held for the last part of a phase (the solution diverges as the remaining time -> 0)
+  foothold_adaptation: true # the foothold follows the predicted end-of-step CP
+  foothold_max_width_change: 0.05 # [m] lateral range around the nominal foothold
+  foothold_max_rate: 0.5 # [m/s] largest foothold change per second (smooth swing target)
+  foothold_freeze_phase: 0.8 # the foothold no longer changes after this step phase
 
 contact_tasks: # List of 6D rigid contacts
   - contact_frame: "left_ankle_pitch_link"

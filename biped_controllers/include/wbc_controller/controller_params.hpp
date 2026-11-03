@@ -42,10 +42,18 @@ struct ControllerParams
   // [0, max_step_length] of the planner yaml); 0 = stepping in place
   double walk_vx = 0.0;
   // contact switching while walking. true: time based, the swing foot lands at the end of the
-  // step (Tswing, phase variable of the planner). false: the swing foot lands in TSID when the
-  // contact estimator (contact fusion) detects it on the ground, from step phase 0.5 on (Tswing
-  // is the time-out). The planner's timing (CoM plan, support switch) and the liftoff stay time based
+  // step (Tswing, phase variable of the planner). false: event based (contact FSM of Bledt et al.
+  // ICRA 2018, Sec. VI): when the contact estimator (contact fusion) detects the swing foot on the
+  // ground, from step phase 0.5 on, the foot is held where it is (early touchdown) and lands in
+  // TSID once the contact has held for touchdown_confirm_time; without contact at Tswing the step
+  // waits (late touchdown, the foot keeps descending) until the contact. The liftoff stays time based
   bool use_time_base = true;
+  // [s] use_time_base false: an early contact must hold this long before the foot carries load
+  // (the paper's t_delay), so a fleeting touch or a slip does not land the foot
+  double touchdown_confirm_time = 0.025;
+  // [s] use_time_base false: longest wait for a late touchdown (no contact at the end of the step);
+  // then the foot lands in TSID anyway (in the air). 0 = no timeout, wait for the contact
+  double late_touchdown_timeout = 0.0;
 
   // resolved by read(): absolute paths of the URDF and of the config yaml
   std::string urdf_path;

@@ -22,3 +22,9 @@ wbc_controller:
     # step, the planner's phase variable); false = the contact estimator (the foot lands at the
     # detected touchdown, from step phase 0.5 on; Tswing is the time-out). The CoM plan stays time based
     use_time_base: false
+    # [s] use_time_base false: an early contact holds the swing foot where it touched down; the
+    # foot carries load (TSID contact) only once the contact has held this long
+    touchdown_confirm_time: 0.025
+    # [s] use_time_base false: longest wait for a late touchdown (no contact at the end of the step),
+    # then the foot lands in TSID anyway; 0 = no timeout, the step waits for the contact
+    late_touchdown_timeout: 0.05

@@ -168,7 +168,16 @@ protected:
   // use_time_base false: the contact estimator saw the swing foot off the ground in this step
   // (a touchdown counts only after it, not the contact it still reports right after the liftoff)
   bool liftoff_seen_ = false;
-  bool landed_ = false;                   // the swing foot of this step touched down: in contact
+  // contact FSM of the swing foot (Bledt et al. ICRA 2018, Sec. VI, use_time_base false):
+  // SWING follows the swing trajectory; EARLY: contact detected before the step ends, the foot is
+  // held where it touched down (swing task) until the contact is confirmed; LATE: the step reached
+  // Tswing without contact, the planner waits (phase 1) and the foot keeps descending until a
+  // contact (or late_touchdown_timeout); CONTACT: the foot is in TSID contact (carries load) and
+  // the planner was told (touchdown()), the step ends at Tswing or at once if it was late
+  enum class SwingState { SWING, EARLY, LATE, CONTACT };
+  SwingState swing_state_ = SwingState::SWING;
+  double early_start_time_ = 0.0;         // [s] update time of the early contact (t0 of the paper)
+  pinocchio::SE3 hold_pose_;              // EARLY: swing foot reference, the touchdown pose (world)
   int prev_swing_foot_ = -1;              // swing foot of the last cycle, -1 = none
   Eigen::VectorXd dv_;                    // accelerations solved by TSID (nv)
   Eigen::VectorXd tau_;                   // joint torques solved by TSID (na)
@@ -201,7 +210,7 @@ protected:
   bool in_walking_pose_ = false;          // last transition was init walking (walking allowed)
   static constexpr double kWalkTimeout = 0.3;  // [s] no WALKING message -> stop
   static constexpr double kRestTolerance = 0.002; // [m] planned CoM - CP at rest -> standing again
-  static constexpr double kMinTouchdownPhase = 0.5; // use_time_base false: earlier touchdowns ignored
+  static constexpr double kMinTouchdownPhase = 0.7; // use_time_base false: earlier touchdowns ignored (tsid_examples touchdown_phase_min)
   double walk_cmd_time_ = 0.0;            // [s] update time of the last WALKING message
   bool stop_requested_ = false;           // the planner was asked to stop (this walk)
   Eigen::VectorXd q_des_, v_des_;         // joint command while walking: the measured joint state (na)
@@ -237,7 +246,7 @@ protected:
   //   14-16 accelerometer bias estimate [m/s^2]
   // Message sized once in setupDebugPublisher: publishDebug only overwrites the values.
   static constexpr int kDebugDecimation = 10;  // 500 Hz control / 10 = 50 Hz
-  static constexpr std::size_t kDebugSize = 17;
+  static constexpr std::size_t kDebugSize = 31; // layout: label of the message (publishDebug)
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr debug_pub_;
   std::unique_ptr<realtime_tools::RealtimePublisher<std_msgs::msg::Float64MultiArray>> rt_debug_pub_;
   int debug_counter_ = 0;

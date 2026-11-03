@@ -31,6 +31,8 @@ void ControllerParams::declare(rclcpp_lifecycle::LifecycleNode &node) const
   declare("torque_mode", this->torque_mode);
   declare("walk_vx", this->walk_vx);
   declare("use_time_base", this->use_time_base);
+  declare("touchdown_confirm_time", this->touchdown_confirm_time);
+  declare("late_touchdown_timeout", this->late_touchdown_timeout);
 }
 
 bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
@@ -52,6 +54,8 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   this->torque_mode = node.get_parameter("torque_mode").as_bool();
   this->walk_vx = node.get_parameter("walk_vx").as_double();
   this->use_time_base = node.get_parameter("use_time_base").as_bool();
+  this->touchdown_confirm_time = node.get_parameter("touchdown_confirm_time").as_double();
+  this->late_touchdown_timeout = node.get_parameter("late_touchdown_timeout").as_double();
 
   // values without a usable default
   if (this->joints.empty())
@@ -68,6 +72,12 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   if (this->walk_vx < 0.0)
   {
     RCLCPP_ERROR(logger, "parameter 'walk_vx' = %.3f m/s: must be >= 0 (forward walking only)", this->walk_vx);
+    return false;
+  }
+  if (this->touchdown_confirm_time < 0.0 || this->late_touchdown_timeout < 0.0)
+  {
+    RCLCPP_ERROR(logger, "parameters 'touchdown_confirm_time' = %.3f s, 'late_touchdown_timeout' = %.3f s: must be >= 0",
+                 this->touchdown_confirm_time, this->late_touchdown_timeout);
     return false;
   }
 
@@ -92,7 +102,12 @@ bool ControllerParams::read(rclcpp_lifecycle::LifecycleNode &node)
   RCLCPP_INFO(logger, "walk_vx: %.3f m/s%s", this->walk_vx, this->walk_vx == 0.0 ? " (stepping in place)" : "");
   RCLCPP_INFO(logger, "use_time_base: %s", this->use_time_base
                                                ? "true (step ends after Tswing)"
-                                               : "false (swing foot lands at the touchdown of the contact estimator)");
+                                               : "false (event based: steps end at the touchdown of the contact estimator)");
+  if (!this->use_time_base)
+  {
+    RCLCPP_INFO(logger, "touchdown_confirm_time: %.3f s, late_touchdown_timeout: %.3f s%s", this->touchdown_confirm_time,
+                this->late_touchdown_timeout, this->late_touchdown_timeout == 0.0 ? " (none)" : "");
+  }
   if (this->torque_mode)
   {
     RCLCPP_WARN(logger, "torque_mode: only the effort commands are claimed, tau = TSID torque (drive kp = kd = 0)");

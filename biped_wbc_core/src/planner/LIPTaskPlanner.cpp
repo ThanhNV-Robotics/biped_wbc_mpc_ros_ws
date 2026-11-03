@@ -12,6 +12,8 @@ namespace biped_controllers
     //     Tswing: 1.0               # [s] swing (step) duration
     //     sampling_frequency: 500   # [Hz] planner rate -> dt = 1 / f
     //     com_height: 0.45          # [m] CoM height of the LIP model
+    //     cp_feedback_gain: 0.3     # measured-CP blend of the ZMP (0 = open loop)
+    //     zmp_hold_time: 0.03       # [s] the ZMP is held for the last part of a phase
     // (the foot keys of the section, e.g. max_step_length, hip_width, are FootPlanner's)
     // A key that is missing keeps its default from the header. A missing file / section or an
     // invalid value throws std::runtime_error (a constructor cannot return an error code); the
@@ -56,11 +58,18 @@ namespace biped_controllers
         read("sampling_frequency", frequency);
         read("Tswing", this->T_);
         read("com_height", this->zc_);
+        read("cp_feedback_gain", this->cp_feedback_gain_);
+        read("zmp_hold_time", this->zmp_hold_time_);
 
         // check the values before using them (a zero rate or height would divide by zero later)
         if (this->T_ <= 0.0 || this->zc_ <= 0.0 || frequency <= 0.0)
         {
             throw std::runtime_error("LIPTaskPlanner: Tswing, com_height and sampling_frequency must be > 0 "
+                                     "(file '" + CONFIG_YAML_PATH + "')");
+        }
+        if (this->cp_feedback_gain_ < 0.0 || this->cp_feedback_gain_ > 1.0 || this->zmp_hold_time_ < 0.0)
+        {
+            throw std::runtime_error("LIPTaskPlanner: cp_feedback_gain must be in [0, 1], zmp_hold_time >= 0 "
                                      "(file '" + CONFIG_YAML_PATH + "')");
         }
         this->dt_ = 1.0 / frequency;
@@ -121,52 +130,83 @@ namespace biped_controllers
         // walking state: init phase first
         this->done_init_walking_ = false;
         this->phi_com_ = 0.0;
-        this->cp0_ = com;
-        this->phase_start_ = true;
+        this->cp_fb_ = com;
+        this->t_rem_ = this->T_;
+        this->has_meas_ = false;
     }
 
-
-    // ZMP, constant over the phase, that brings the CP from cp0_ (its value at the phase start) to
-    // cp_d_ at the end of the phase (as walk_planner.cpp of tsid_examples, commit 4de357c).
-    // CP solution with a constant ZMP p over T: cp(T) = p + e^{w T} (cp0 - p), solved for p so
-    // that cp(T) = cp_d:  p = (cp_d - b cp0) / (1 - b), b = e^{w T}
-    Vector2d LIPTaskPlanner::zmpForTargetCP() const
+    void LIPTaskPlanner::setMeasuredState(const Vector2d &com, const Vector2d &cp)
     {
-        const double b = std::exp(this->w_ * this->T_);
-        return (this->cp_d_ - b * this->cp0_) / (1.0 - b);
+        this->com_meas_ = com;
+        this->cp_meas_ = cp;
+        this->has_meas_ = true;
+    }
+
+    void LIPTaskPlanner::blendTowardMeasured()
+    {
+        if (!this->has_meas_) return;
+        this->com_ += this->cp_feedback_gain_ * (this->com_meas_ - this->com_);
+        this->cp_ += this->cp_feedback_gain_ * (this->cp_meas_ - this->cp_);
+    }
+
+    Vector2d LIPTaskPlanner::getPredictedEndCP() const
+    {
+        return this->zmp_d_ + std::exp(this->w_ * this->t_rem_) * (this->cp_fb_ - this->zmp_d_);
+    }
+
+    // constant ZMP that brings the CP from cp to cp_d_ in the time t (tsid_examples walk_planner.cpp,
+    // Stage 1). CP solution with a constant ZMP p: cp(t) = p + e^{w t} (cp - p), solved for p so
+    // that cp(t) = cp_d:  p = (cp_d - b cp) / (1 - b), b = e^{w t}
+    Vector2d LIPTaskPlanner::zmpForTargetCP(const Vector2d &cp, double t) const
+    {
+        const double b = std::exp(this->w_ * t);
+        return (this->cp_d_ - b * cp) / (1.0 - b);
     }
 
     // one planning cycle (WalkPlanner.init_walking / plan_walking, CoM part). The init phase and
     // the steps differ only in cp_target and the ZMP limits (WalkPlanner).
+    // Receding horizon (tsid_examples walk_planner.cpp, Stage 1 + 2): every cycle the constant ZMP
+    // that brings cp_fb (planned CP blended toward the measured one) to the target in the remaining
+    // time of the phase. Undisturbed it is the once-per-phase solution; a CP error (clamped ZMP,
+    // a step that ended late, the robot lagging the plan) is spread over the rest of the phase
     void LIPTaskPlanner::planWalking(const Vector2d &cp_target, const Vector2d &zmp_min, const Vector2d &zmp_max)
     {
-        // timing base: phase of the init phase / current step
+        // remaining time of the phase from this cycle on, then the phase at the end of the cycle
+        const double t_rem = std::max(this->T_ * (1.0 - this->phi_com_), 0.0);
         this->phi_com_ += this->dt_ / this->T_;
-
-        // first cycle of a phase: the CP the phase starts from (in the frame of this phase)
-        if (this->phase_start_)
+        if (this->phi_com_ < 1.0)
         {
-            this->cp0_ = this->cp_;
-            this->phase_start_ = false;
+            this->planCycle(cp_target, t_rem, zmp_min, zmp_max);
+            return;
         }
 
-        // drive the CP to the target by the end of the phase
+        // end of the phase: the foot at the target becomes the stance foot, ZMP onto it; the next
+        // phase is a step
         this->cp_d_ = cp_target;
+        this->zmp_d_ = this->cp_d_;
+        this->phi_com_ = 0.0;
+        this->done_init_walking_ = true;
+        this->ComputeCP(this->zmp_d_);
+        this->ComputeCoM(this->cp_);
+    }
 
-        if (this->phi_com_ >= 1.0)
+    void LIPTaskPlanner::planCycle(const Vector2d &cp_target, double t_rem, const Vector2d &zmp_min,
+                                   const Vector2d &zmp_max)
+    {
+        // drive the CP to the target in the remaining time, from the blended CP
+        this->t_rem_ = std::max(t_rem, 0.0);
+        this->cp_d_ = cp_target;
+        this->cp_fb_ = this->has_meas_ ? Vector2d(this->cp_ + this->cp_feedback_gain_ * (this->cp_meas_ - this->cp_))
+                                       : this->cp_;
+
+        // inside the limits (e.g. the stance sole): the CP may then miss cp_d a bit. Near the end
+        // the ZMP is held (the solution diverges as t_rem -> 0), still kept in the limits of this
+        // cycle (they change at a liftoff: double support band -> stance sole)
+        if (this->t_rem_ > this->zmp_hold_time_)
         {
-            // end of the phase: the foot at the target becomes the stance foot, ZMP onto it; the
-            // next phase is a step
-            this->zmp_d_ = this->cp_d_;
-            this->phi_com_ = 0.0;
-            this->done_init_walking_ = true;
-            this->phase_start_ = true;
+            this->zmp_d_ = this->zmpForTargetCP(this->cp_fb_, this->t_rem_);
         }
-        else
-        {
-            // inside the limits (e.g. the stance sole): the CP may then miss cp_d a bit
-            this->zmp_d_ = this->zmpForTargetCP().cwiseMax(zmp_min).cwiseMin(zmp_max);
-        }
+        this->zmp_d_ = this->zmp_d_.cwiseMax(zmp_min).cwiseMin(zmp_max);
 
         // integrate the LIP (exact discretization): CP driven by the ZMP, CoM driven by the new CP
         this->ComputeCP(this->zmp_d_);
@@ -187,7 +227,7 @@ namespace biped_controllers
         this->cp_ = R * this->cp_ + t;
         this->zmp_d_ = R * this->zmp_d_ + t;
         this->cp_d_ = R * this->cp_d_ + t;
-        this->cp0_ = R * this->cp0_ + t;
+        this->cp_fb_ = R * this->cp_fb_ + t;
     }
 
     // CoM reference at the LIP height

@@ -13,10 +13,19 @@ namespace biped_controllers {
     // Reads the step settings from the "LIPPlanner" section of the yaml (the LIP keys are read by
     // LIPTaskPlanner), e.g.
     //   max_step_length: 0.3   # [m]
+    //   double_support_time: 0.2 # [s] double support at the start of each step (0: instant switch)
     //   step_height: 0.05      # [m] swing foot peak height
+    //   swing_landing_depth: 0.01 # [m] end of the swing trajectory below the foothold
     //   sole_x_min: -0.04      # [m] ZMP limits in single support, stance ankle frame
     //   sole_x_max: 0.12
     //   sole_y_half: 0.02
+    //   late_descent_speed: 0.2       # [m/s] late touchdown: swing foot descent below the foothold
+    //   late_descent_ramp_time: 0.05  # [s] the descent speed ramps up from 0
+    //   late_max_depth: 0.02          # [m] deepest target below the foothold
+    //   foothold_adaptation: true     # CP-based foothold adaptation
+    //   foothold_max_width_change: 0.05 # [m] lateral range around the nominal foothold
+    //   foothold_max_rate: 0.5        # [m/s] largest foothold change per second
+    //   foothold_freeze_phase: 0.8    # the foothold no longer changes after this step phase
     // A key that is missing keeps its default from the header. The stance width is measured at
     // reset() (the hip_width key is not used).
     WalkPlanner::WalkPlanner(tsid::robots::RobotWrapper &robot, const std::string &CONFIG_YAML_PATH,
@@ -50,14 +59,37 @@ namespace biped_controllers {
             }
         };
         read("max_step_length", this->max_step_length_);
+        read("double_support_time", this->t_ds_);
         read("step_height", this->step_height_);
+        read("swing_landing_depth", this->swing_landing_depth_);
         read("sole_x_min", this->sole_x_min_);
         read("sole_x_max", this->sole_x_max_);
         read("sole_y_half", this->sole_y_half_);
-        if (this->max_step_length_ < 0.0 || this->step_height_ < 0.0 || this->sole_x_min_ > this->sole_x_max_ ||
-            this->sole_y_half_ < 0.0)
+        read("late_descent_speed", this->late_descent_speed_);
+        read("late_descent_ramp_time", this->late_descent_ramp_time_);
+        read("late_max_depth", this->late_max_depth_);
+        read("foothold_max_width_change", this->foothold_max_width_change_);
+        read("foothold_max_rate", this->foothold_max_rate_);
+        read("foothold_freeze_phase", this->foothold_freeze_phase_);
+        if (cfg["foothold_adaptation"])
         {
-            throw std::runtime_error("WalkPlanner: max_step_length, step_height and sole_y_half must be >= 0, "
+            try
+            {
+                this->foothold_adaptation_ = cfg["foothold_adaptation"].as<bool>();
+            }
+            catch (const YAML::Exception &e)
+            {
+                throw std::runtime_error("WalkPlanner: 'foothold_adaptation' in '" + CONFIG_YAML_PATH +
+                                         "' is not true / false: " + e.what());
+            }
+        }
+        if (this->max_step_length_ < 0.0 || this->step_height_ < 0.0 || this->sole_x_min_ > this->sole_x_max_ ||
+            this->sole_y_half_ < 0.0 || this->late_descent_speed_ < 0.0 || this->foothold_max_width_change_ < 0.0 ||
+            this->swing_landing_depth_ < 0.0 || this->t_ds_ < 0.0 ||
+            this->foothold_max_rate_ < 0.0)
+        {
+            throw std::runtime_error("WalkPlanner: max_step_length, step_height, sole_y_half, late_descent_speed, "
+                                     "foothold_max_width_change, foothold_max_rate, swing_landing_depth and double_support_time must be >= 0, "
                                      "sole_x_min <= sole_x_max (file '" + CONFIG_YAML_PATH + "')");
         }
 
@@ -91,6 +123,7 @@ namespace biped_controllers {
         // right foot standing where it is (support frame), at rest
         this->swing_start_pos_ = this->oMs_.actInv(this->data_.oMf[this->foot_id_[1]].translation());
         this->foothold_ = this->swing_start_pos_;
+        this->foot_nominal_ = this->swing_start_pos_;
         this->swing_pos_l_ = this->swing_start_pos_;
         this->swing_vel_l_.setZero();
         this->swing_acc_l_.setZero();
@@ -103,10 +136,15 @@ namespace biped_controllers {
         // stance width: distance of the ankles now (the footholds and CP targets lie on the feet)
         this->hip_width_ = this->swing_start_pos_.head<2>().norm();
         this->lip_.reset(com.head<2>());
-        this->phi_prev_ = 0.0;
+        this->cp_meas_ = com.head<2>();
+        this->phase_time_ = 0.0;
+        this->in_ds_ = false;
         this->phase_ = WalkPhase::INIT;
         this->stop_requested_ = false;
         this->last_step_ = false;
+        this->touchdown_ = false;
+        this->late_ = false;
+        this->late_time_ = 0.0;
 
         this->toWorld(); // transform swing trajectory to global frame
     }
@@ -117,62 +155,120 @@ namespace biped_controllers {
     }
 
     // main function run in control update()
-    void WalkPlanner::planWalking(const Eigen::VectorXd &q)
+    void WalkPlanner::planWalking(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
     {
-        // CP target of this phase (support frame) and ZMP limits, as walk_planner.cpp of
-        // tsid_examples (commit 4de357c):
-        //   init: the stance ankle shifted by the CoM bias (the CoM keeps its x), double support
-        //   step: end-of-step CP of the periodic gait with a constant ZMP at the stance ankle,
-        //         sagittal s b / (b - 1), lateral y_f b / (b + 1) (b = e^{w T}, y_f = foothold y);
-        //         ZMP on the stance sole
-        //   last step: middle between the stance ankle and the foothold shifted by the CoM bias (the CP
-        //         is between the feet at touchdown); ZMP on the stance sole
-        //   stop / rest: middle of the feet shifted by the CoM bias, double support
-        Vector2d cp_target = this->com_bias_;
-        Vector2d zmp_min = Vector2d::Constant(-1e9), zmp_max = Vector2d::Constant(1e9);
-        if (this->phase_ == WalkPhase::STEP)
+        // CP feedback: CoM and CP of the robot in the support frame
+        this->measureCP(q, v);
+
+        // CoM: one LIP cycle toward the CP target of the current (sub)phase in its remaining time
+        Vector2d cp_target, zmp_min, zmp_max;
+        const double t_rem = this->phaseTarget(cp_target, zmp_min, zmp_max);
+        this->lip_.planCycle(cp_target, t_rem, zmp_min, zmp_max);
+        this->phase_time_ += this->lip_.getDt();
+
+        // events of this cycle
+        if (this->inDoubleSupport())
         {
-            const double b = std::exp(this->lip_.getOmega() * this->T_);
-            if (this->last_step_)
+            // end of the double support: the trailing foot lifts off, its swing starts
+            if (this->phase_time_ >= this->t_ds_)
             {
-                cp_target += 0.5 * this->foothold_.head<2>();
+                this->in_ds_ = false;
+                this->phase_time_ = 0.0;
+                this->touchdown_ = false;
+            }
+        }
+        else if (this->phase_ == WalkPhase::STEP)
+        {
+            // swing: ends at the touchdown (event based) or at Tswing (time based); event based
+            // without touchdown at Tswing: late, the step waits
+            const bool swing_end = this->phase_time_ >= this->T_;
+            if (this->touchdown_ || (swing_end && !this->wait_touchdown_))
+            {
+                this->endStep(q, v);
             }
             else
             {
-                cp_target << this->foothold_.x() * b / (b - 1.0), this->foothold_.y() * b / (b + 1.0);
+                this->adaptFoothold(cp_target); // the step goes on: foothold for the predicted CP
             }
-            zmp_min << this->sole_x_min_, -this->sole_y_half_;
-            zmp_max << this->sole_x_max_, this->sole_y_half_;
         }
-        else if (this->phase_ == WalkPhase::STOP || this->phase_ == WalkPhase::REST)
+        else if (this->phase_time_ >= this->T_)
         {
-            cp_target += this->stop_target_;
+            this->endOfPhase(q, v); // init / stop / rest
         }
 
-        // CoM: one LIP cycle
-        this->lip_.planWalking(cp_target, zmp_min, zmp_max);
+        // late: the swing is past Tswing without touchdown
+        this->late_ = this->isSwinging() && this->phase_time_ >= this->T_;
+        this->late_time_ = this->late_ ? this->phase_time_ - this->T_ : 0.0;
 
-        // phase wrapped (time based): next phase
-        // switching stand/swing based on phase timing 
-        if (this->lip_.getPhase() < this->phi_prev_) // end of phase
+        // swing foot of this cycle (both feet stand in the other phases); late: below the foothold
+        if (this->isSwinging())
         {
-            this->endOfPhase(q);
-        }
-        this->phi_prev_ = this->lip_.getPhase();
-
-        // swing foot of this cycle (both feet stand in the other phases)
-        if (this->phase_ == WalkPhase::STEP)
-        {
-            this->computeSwingTrajectory(this->lip_.getPhase());
+            this->computeSwingTrajectory(this->getPhase());
+            if (this->late_)
+            {
+                this->computeLateDescent();
+            }
         }
 
-        this->toWorld(); 
+        this->toWorld();
     }
 
-    // INIT -> STEP (right foot first) or STOP; STEP -> STEP (support switch; the last step once a stop
-    // is requested) or, after the last step, STOP (the landed foot stays down); STOP -> REST; REST stays
-    void WalkPlanner::endOfPhase(const Eigen::VectorXd &q)
+    // CP target of the current (sub)phase (support frame), ZMP limits, remaining time. As
+    // walk_planner.cpp of tsid_examples:
+    //   init: the stance ankle shifted by the CoM bias (the CoM keeps its x), Tswing
+    //   double support: CP at the start of the single support of the periodic gait (Stage 3b),
+    //         t_ds; with E_ss = e^{w Tswing}, E_ds = e^{w t_ds}, relative to the stance ankle
+    //           cp_start = ( s (1 + E_ds) / (2 (E_ds E_ss - 1)),  y_f (1 + E_ds) / (2 (1 + E_ds E_ss)) )
+    //         (s, y_f: nominal foothold of the coming swing)
+    //   swing: CP at the touchdown, E_ss cp_start (t_ds = 0: s b / (b - 1), y_f b / (b + 1)), to
+    //         Tswing (0 once late); ZMP on the stance sole
+    //   last swing: middle between the stance ankle and the foothold shifted by the CoM bias (the CP
+    //         is between the feet at touchdown)
+    //   stop / rest: middle of the feet shifted by the CoM bias, Tswing
+    // The targets use the nominal foothold: the adapted one follows the CP (adaptFoothold). With
+    // both feet down (init, double support, stop, rest) the ZMP is in the box around both soles
+    double WalkPlanner::phaseTarget(Vector2d &cp_target, Vector2d &zmp_min, Vector2d &zmp_max) const
     {
+        // double support limits: the stance ankle (origin) and the other standing ankle
+        const Vector2d other = this->swing_start_pos_.head<2>();
+        zmp_min << std::min(0.0, other.x()) + this->sole_x_min_, std::min(0.0, other.y()) - this->sole_y_half_;
+        zmp_max << std::max(0.0, other.x()) + this->sole_x_max_, std::max(0.0, other.y()) + this->sole_y_half_;
+
+        // periodic gait CP at the start of the single support (Stage 3b)
+        const double w = this->lip_.getOmega();
+        const double e_ss = std::exp(w * this->T_), e_ds = std::exp(w * this->t_ds_);
+        const Vector2d cp_start(this->foot_nominal_.x() * (1.0 + e_ds) / (2.0 * (e_ds * e_ss - 1.0)),
+                                this->foot_nominal_.y() * (1.0 + e_ds) / (2.0 * (1.0 + e_ds * e_ss)));
+
+        switch (this->phase_)
+        {
+        case WalkPhase::INIT:
+            cp_target = this->com_bias_;
+            return this->T_ - this->phase_time_;
+        case WalkPhase::STEP:
+            if (this->in_ds_)
+            {
+                cp_target = cp_start;
+                return this->t_ds_ - this->phase_time_;
+            }
+            cp_target = this->last_step_ ? Vector2d(this->com_bias_ + 0.5 * this->foot_nominal_.head<2>())
+                                         : Vector2d(e_ss * cp_start);
+            zmp_min << this->sole_x_min_, -this->sole_y_half_;
+            zmp_max << this->sole_x_max_, this->sole_y_half_;
+            return std::max(this->T_ - this->phase_time_, 0.0);
+        case WalkPhase::STOP:
+        case WalkPhase::REST:
+            break;
+        }
+        cp_target = this->com_bias_ + this->stop_target_;
+        return this->T_ - this->phase_time_;
+    }
+
+    // INIT -> first step (right foot first, no double support: both feet were down) or STOP;
+    // STOP -> REST; REST stays (repeats)
+    void WalkPlanner::endOfPhase(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
+    {
+        this->phase_time_ = 0.0;
         switch (this->phase_)
         {
         case WalkPhase::INIT:
@@ -182,27 +278,42 @@ namespace biped_controllers {
             }
             else
             {
-                this->switchSupport(q, true);
+                this->switchSupport(q, v, true);
                 this->phase_ = WalkPhase::STEP;
-            }
-            break;
-        case WalkPhase::STEP:
-            this->switchSupport(q, false);
-            if (this->last_step_)
-            {
-                this->startStop();
-            }
-            else if (this->stop_requested_)
-            {
-                this->last_step_ = true;
+                this->in_ds_ = false;
+                this->touchdown_ = false;
             }
             break;
         case WalkPhase::STOP:
             this->phase_ = WalkPhase::REST;
             break;
+        case WalkPhase::STEP:
         case WalkPhase::REST:
             break;
         }
+    }
+
+    // STEP -> STEP (support switch, double support first; the last step once a stop is requested)
+    // or, after the last step, STOP (the landed foot stays down)
+    void WalkPlanner::endStep(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
+    {
+        this->phase_time_ = 0.0;
+        this->touchdown_ = false;
+        this->switchSupport(q, v, false);
+        if (this->last_step_)
+        {
+            this->startStop();
+            return;
+        }
+        if (this->stop_requested_)
+        {
+            // closing step: the swing foot lands beside the stance foot (no step length), the feet
+            // end side by side
+            this->last_step_ = true;
+            this->foot_nominal_.x() = 0.0;
+            this->foothold_ = this->foot_nominal_;
+        }
+        this->in_ds_ = this->t_ds_ > 0.0; // both feet loaded until the trailing foot lifts off
     }
 
     void WalkPlanner::startStop()
@@ -217,7 +328,7 @@ namespace biped_controllers {
 
     // first_step: end of the init phase, the left foot stays the stance foot and the right one swings;
     // otherwise the landed foot becomes the stance foot
-    void WalkPlanner::switchSupport(const Eigen::VectorXd &q, bool first_step)
+    void WalkPlanner::switchSupport(const Eigen::VectorXd &q, const Eigen::VectorXd &v, bool first_step)
     {
         // new stance foot and its support frame from the estimated state
         if (!first_step)
@@ -234,16 +345,65 @@ namespace biped_controllers {
         const pinocchio::SE3 sMs_old = this->oMs_.actInv(oMs_old);
         this->lip_.transformState(sMs_old.rotation().topLeftCorner<2, 2>(), sMs_old.translation().head<2>());
 
-        // swing foot: lifts off where it is now, lands step_length ahead and hip_width aside of
-        // the stance ankle, at its height
+        // swing foot: lifts off where it is now (feet of supportFrame(), before measureCP() below
+        // runs its own kinematics), lands step_length ahead and hip_width aside of the stance ankle,
+        // at its height; the step starts from the nominal foothold, adapted during the step
         const int swing = this->left_stance_ ? 1 : 0;
         this->swing_start_pos_ = this->oMs_.actInv(this->data_.oMf[this->foot_id_[swing]].translation());
-        this->foothold_ << this->step_length_, this->left_stance_ ? -this->hip_width_ : this->hip_width_, 0.0;
+        this->foot_nominal_ << this->step_length_, this->left_stance_ ? -this->hip_width_ : this->hip_width_, 0.0;
+        this->foothold_ = this->foot_nominal_;
+
+        // touchdown: planned CoM and CP pulled toward the measured ones (new frame)
+        this->measureCP(q, v);
+        this->lip_.blendTowardMeasured();
+    }
+
+    void WalkPlanner::measureCP(const Eigen::VectorXd &q, const Eigen::VectorXd &v)
+    {
+        // CoM and its velocity (world), into the support frame (yaw only: planar part exact)
+        pinocchio::centerOfMass(this->robot_.model(), this->data_, q, v);
+        const Vector3d com_l = this->oMs_.actInv(this->data_.com[0]);
+        const Vector3d vcom_l = this->oMs_.rotation().transpose() * this->data_.vcom[0];
+
+        // CP of the LIP: c + dc / w
+        this->cp_meas_ = com_l.head<2>() + vcom_l.head<2>() / this->lip_.getOmega();
+        this->lip_.setMeasuredState(com_l.head<2>(), this->cp_meas_);
+    }
+
+    // Stage 3 of tsid_examples walk_planner.cpp: the ZMP can only move on the sole, the foothold
+    // takes over the rest of the correction. With the predicted CP at the end of the step
+    //   cp_end = p + e^{w t_rem} (cp_fb - p)
+    // the next step starts like the planned one if its foot is where the CP target is relative to
+    // the nominal foothold:  foothold = cp_end - (cp_target - foot_nominal). Unclamped ZMP:
+    // cp_end = cp_target, the foothold is the nominal one. e^{w t_rem} is large early in the step,
+    // so the foothold is clamped (step length, lateral range), rate limited, and frozen late in
+    // the swing (the swing foot must land where it is going)
+    void WalkPlanner::adaptFoothold(const Vector2d &cp_target)
+    {
+        if (!this->foothold_adaptation_ || this->late_ || this->getPhase() > this->foothold_freeze_phase_)
+        {
+            return;
+        }
+
+        // foothold for the predicted CP, in the limits around the nominal one
+        const Vector2d cp_end = this->lip_.getPredictedEndCP();
+        Vector2d target = cp_end - (cp_target - this->foot_nominal_.head<2>());
+        target.x() = std::clamp(target.x(), -this->max_step_length_, this->max_step_length_);
+        target.y() = std::clamp(target.y(), this->foot_nominal_.y() - this->foothold_max_width_change_,
+                                this->foot_nominal_.y() + this->foothold_max_width_change_);
+
+        // rate limit: the swing target moves smoothly
+        const Vector2d step = target - this->foothold_.head<2>();
+        const double max_step = this->foothold_max_rate_ * this->lip_.getDt();
+        const double n = step.norm();
+        this->foothold_.head<2>() += (n > max_step) ? Vector2d(step * (max_step / n)) : step;
     }
 
     // swing foot at phase phi (support frame), as foot_placement.cpp of tsid_examples: cycloid from
     // liftoff to the foothold, zero velocity at both ends, plus a z bump of step_height at phi = 0.5
     //   c(phi) = (2 pi phi - sin(2 pi phi)) / (2 pi),  bump(phi) = h (1 - cos(2 pi phi)) / 2
+    // The cycloid ends swing_landing_depth below the foothold: the foot crosses the ground (the
+    // foothold height) before phi = 1, still moving down, and lands there with an impact
     void WalkPlanner::computeSwingTrajectory(double phi)
     {
         // cycloid and bump with their derivatives w.r.t. phi
@@ -257,7 +417,8 @@ namespace biped_controllers {
         const double ddbump = 0.5 * h * w * w * std::cos(w * phi);
 
         // position, and the time derivatives (dphi/dt = 1 / T)
-        const Vector3d delta = this->foothold_ - this->swing_start_pos_;
+        Vector3d delta = this->foothold_ - this->swing_start_pos_;
+        delta.z() -= this->swing_landing_depth_; // end below the ground: landing with a downward velocity
         const double T2 = this->T_ * this->T_;
         this->swing_pos_l_ = this->swing_start_pos_ + c * delta;
         this->swing_pos_l_.z() += bump;
@@ -265,6 +426,41 @@ namespace biped_controllers {
         this->swing_vel_l_.z() += dbump / this->T_;
         this->swing_acc_l_ = (ddc / T2) * delta;
         this->swing_acc_l_.z() += ddbump / T2;
+    }
+
+    // late touchdown, after computeSwingTrajectory(1) (foothold, at rest): the foot keeps going down
+    // (as tsid_examples foot_placement), speed ramped from 0 to late_descent_speed over the ramp
+    // time (constant acceleration), then constant, at most late_max_depth below the foothold
+    void WalkPlanner::computeLateDescent()
+    {
+        // depth below the foothold, its rate and acceleration at the late time t
+        const double t = this->late_time_;
+        const double v = this->late_descent_speed_;
+        const double Tr = this->late_descent_ramp_time_;
+        double depth, vel, acc;
+        if (Tr > 0.0 && t < Tr)
+        {
+            depth = 0.5 * v * t * t / Tr; // ramp: constant acceleration v / Tr
+            vel = v * t / Tr;
+            acc = v / Tr;
+        }
+        else
+        {
+            depth = (Tr > 0.0 ? 0.5 * v * Tr : 0.0) + v * (t - std::max(Tr, 0.0)); // constant speed
+            vel = v;
+            acc = 0.0;
+        }
+
+        // bottomed out: held at the max depth
+        if (this->late_max_depth_ > 0.0 && depth >= this->late_max_depth_)
+        {
+            depth = this->late_max_depth_;
+            vel = 0.0;
+            acc = 0.0;
+        }
+        this->swing_pos_l_.z() -= depth;
+        this->swing_vel_l_.z() -= vel;
+        this->swing_acc_l_.z() -= acc;
     }
 
     // support frame -> world: positions with the full transform, velocities / accelerations with the
@@ -290,6 +486,11 @@ namespace biped_controllers {
     {
         const Vector2d &zmp = this->lip_.getRefZMP();
         return this->oMs_.act(Vector3d(zmp.x(), zmp.y(), 0.0)).head<2>();
+    }
+
+    Vector2d WalkPlanner::getMeasuredCP() const
+    {
+        return this->oMs_.act(Vector3d(this->cp_meas_.x(), this->cp_meas_.y(), 0.0)).head<2>();
     }
 
     Vector2d WalkPlanner::getRefCP() const

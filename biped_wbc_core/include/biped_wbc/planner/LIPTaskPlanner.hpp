@@ -56,6 +56,27 @@ namespace biped_controllers
                              const Vector2d &zmp_min = Vector2d::Constant(-1e9),
                              const Vector2d &zmp_max = Vector2d::Constant(1e9));
 
+            // one cycle with the caller's timing (WalkPlanner: steps of variable length, double
+            // support): the ZMP that brings the CP (cp_fb) to cp_target in the remaining time t_rem,
+            // in [zmp_min, zmp_max]; held (still kept in the limits) once t_rem <= zmp_hold_time,
+            // e.g. a late step (t_rem 0). Then the CP and the CoM are integrated. The own phase of
+            // planWalking() is not used
+            void planCycle(const Vector2d &cp_target, double t_rem, const Vector2d &zmp_min, const Vector2d &zmp_max);
+
+            // ---- CP feedback (tsid_examples doc/event_based_control.md, Stage 1 + 2) ----
+            // measured CoM and CP (c + dc / w) of the robot in the planning frame, for the next
+            // planWalking(): its ZMP drives cp_fb = cp + cp_feedback_gain (cp_meas - cp) (the planned
+            // CP blended toward the measured one) to the target. Without a measurement: open loop
+            void setMeasuredState(const Vector2d &com, const Vector2d &cp);
+            // pull the planned CoM and CP toward the measured ones by cp_feedback_gain (touchdown:
+            // the plan cannot drift away from the robot over the steps)
+            void blendTowardMeasured();
+            // CP at the end of the phase if the ZMP of this cycle is kept over the remaining time,
+            // from cp_fb: p + e^{w t_rem} (cp_fb - p) (WalkPlanner: foothold adaptation)
+            Vector2d getPredictedEndCP() const;
+            // remaining time of the phase at the start of this cycle [s] (0 while held)
+            double getRemainingTime() const { return this->t_rem_; }
+
             // LIP height [m] (default: com_height of the yaml), e.g. the CoM height of the pose the
             // robot walks in; w = sqrt(g / zc) follows. zc <= 0 is ignored
             void setComHeight(double zc);
@@ -71,8 +92,8 @@ namespace biped_controllers
 
             const Vector2d &getRefZMP() const { return this->zmp_d_; }
             const Vector2d &getRefCP() const { return this->cp_; }
-            // phase of the current step / init phase in [0, 1) (ContactFusion: phi)
-            double getPhase() const { return this->phi_com_; }
+            // phase of the current step / init phase in [0, 1) (ContactFusion: phi); 1 while held
+            double getPhase() const { return this->phi_com_; }       // planWalking() only
             bool isInitWalkingDone() const { return this->done_init_walking_; }
             // planner period [s] (1 / sampling_frequency of the yaml): call planWalking() at this rate
             double getDt() const { return this->dt_; }
@@ -82,12 +103,14 @@ namespace biped_controllers
             double getOmega() const { return this->w_; }
 
         private:
-            // ZMP that brings the CP from cp0_ to cp_d_ at the end of the phase (constant over the phase)
-            Vector2d zmpForTargetCP() const;
+            // constant ZMP that brings the CP from cp to cp_d_ in the time t
+            Vector2d zmpForTargetCP(const Vector2d &cp, double t) const;
 
             double T_{1.0}; // swing time
             double dt_{0.002}; // default frequency is 500Hz
             double zc_{0.45};  // com height
+            double cp_feedback_gain_{0.3}; // measured-CP blend (0 = open loop, 1 = measured CP only)
+            double zmp_hold_time_{0.03};   // [s] below this remaining time the ZMP is held (ill-conditioned)
 
             // LIP attributes
             const double g_ = 9.81;
@@ -101,8 +124,13 @@ namespace biped_controllers
 
             Vector2d zmp_d_ = Vector2d::Zero(); // desired ZMP
             Vector2d cp_d_ = Vector2d::Zero();  // desired CP at the end of the step
-            Vector2d cp0_ = Vector2d::Zero();   // CP at the start of the phase
-            bool phase_start_ = true;           // next cycle is the first of a phase (cp0_ is taken)
+
+            // CP feedback
+            bool has_meas_ = false;              // setMeasuredState() called since reset()
+            Vector2d com_meas_ = Vector2d::Zero(); // measured CoM, planning frame
+            Vector2d cp_meas_ = Vector2d::Zero();  // measured CP, planning frame
+            Vector2d cp_fb_ = Vector2d::Zero();    // CP the ZMP of this cycle starts from (blend)
+            double t_rem_ = 0.0;                   // remaining phase time at the start of this cycle [s]
 
             // walking state
             bool done_init_walking_ = false;
